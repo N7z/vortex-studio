@@ -62,7 +62,7 @@ export default function StartScreen({ onOpen, onCreate, onUpload }) {
                 {error && <div style={{ color: '#e05252' }}>{error}</div>}
                 {mine.length > 0 && (
                     <>
-                        <h2>Your maps <span className="ttl-note">kept for {ttl}h — download what you want to keep</span></h2>
+                        <h2>Your maps <span className="ttl-note">kept for {ttl}h, download what you want to keep</span></h2>
                         {mine.map((m) => (
                             <a key={m.name} onClick={() => onOpen(m.name)}>{m.name}.json</a>
                         ))}
@@ -76,7 +76,7 @@ export default function StartScreen({ onOpen, onCreate, onUpload }) {
             <div className="start-footer">
                 <strong>This is NOT affiliated with https://playvortex.io.</strong> Vortex Studio is
                 an independent fan-made map editor that works right in your browser. We never ask
-                you to log in, create an account, or download anything — it simply edits map
+                you to log in, create an account, or download anything: it simply edits map
                 .json files.
             </div>
         </div>

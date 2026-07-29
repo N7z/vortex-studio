@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
     SelectIcon, MoveIcon, RotateIcon, ScaleIcon, PartIcon, SpawnIcon,
-    CopyIcon, PasteIcon, DuplicateIcon, SaveIcon, DownloadIcon,
+    CopyIcon, PasteIcon, DuplicateIcon, SaveIcon, DownloadIcon, HelpIcon,
 } from './icons';
 
 const TOOLS = [
@@ -17,6 +17,8 @@ export default function Toolbar({
     onAddPart, onAddSpawn, onCopy, onPaste, onDuplicate,
     onSave, onDownload, canSave,
 }) {
+    const [helpOpen, setHelpOpen] = useState(false);
+
     const numInput = (key) => (e) => {
         const v = parseFloat(e.target.value);
         if (!Number.isNaN(v) && v > 0) setSnap({ ...snap, [key]: v });
@@ -90,6 +92,38 @@ export default function Toolbar({
                     Download
                 </button>
             </div>
+            <div className="group help-group">
+                <button className="tool-btn" onClick={() => setHelpOpen((o) => !o)}>
+                    <HelpIcon />
+                    Help
+                </button>
+            </div>
+            {helpOpen && (
+                <>
+                    <div className="help-backdrop" onClick={() => setHelpOpen(false)} />
+                    <div className="help-pop">
+                        <h3>Quick help</h3>
+                        <h4>Camera</h4>
+                        <ul>
+                            <li>Hold <b>right mouse</b> to look around</li>
+                            <li>While holding it: <b>WASD</b> to fly, <b>E</b> up, <b>Q</b> down, <b>Shift</b> faster</li>
+                            <li><b>Middle mouse</b> pans, <b>wheel</b> zooms</li>
+                        </ul>
+                        <h4>Editing</h4>
+                        <ul>
+                            <li><b>Left click</b> selects a part, tools on keys <b>1-4</b></li>
+                            <li>The checkboxes and values in the top bar snap moving and scaling (studs) and rotating (degrees)</li>
+                            <li><b>Ctrl+C / Ctrl+V</b> copy and paste, <b>Ctrl+D</b> duplicates in place, <b>Delete</b> removes</li>
+                            <li><b>Ctrl+S</b> saves</li>
+                        </ul>
+                        <h4>Your maps</h4>
+                        <ul>
+                            <li>Saved maps live in your anonymous session for 24 hours</li>
+                            <li>Use <b>Download</b> to keep a .json copy, and upload it back anytime</li>
+                        </ul>
+                    </div>
+                </>
+            )}
         </div>
     );
 }

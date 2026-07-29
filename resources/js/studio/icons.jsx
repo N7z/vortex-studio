@@ -70,6 +70,14 @@ export const SaveIcon = () => (
     </svg>
 );
 
+export const HelpIcon = () => (
+    <svg viewBox="0 0 24 24" {...S}>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M9.3 9.2a2.8 2.8 0 1 1 3.9 3c-.8.5-1.2 1-1.2 1.9" />
+        <circle cx="12" cy="17.3" r="0.4" fill="currentColor" />
+    </svg>
+);
+
 export const DownloadIcon = () => (
     <svg viewBox="0 0 24 24" {...S}>
         <path d="M12 3v12M12 15l-4.5-4.5M12 15l4.5-4.5M4 19h16" />

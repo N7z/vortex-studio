@@ -22,7 +22,7 @@ export default function Explorer({ parts, selectedId, setSelectedId, mapName }) 
             <div className="panel-body" ref={listRef}>
                 <div className="tree-item" onClick={() => setSelectedId(null)}>
                     <span className="icon"><WorkspaceIcon /></span>
-                    Workspace{mapName ? ` — ${mapName}` : ''}
+                    Workspace{mapName ? `: ${mapName}` : ''}
                 </div>
                 {parts.map((p, i) => (
                     <div

@@ -58,7 +58,7 @@ export default function App() {
         setMapName(name);
         setSelectedId(null);
         dirty.current = true;
-        flash(`Loaded upload as ${name}.json — Save to keep it`);
+        flash(`Loaded upload as ${name}.json, Save to keep it`);
     };
 
     const download = () => {

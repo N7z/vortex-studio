@@ -29,7 +29,7 @@ export default function Properties({ part, onChange }) {
 
     return (
         <div className="panel properties">
-            <div className="panel-title">Properties — {part.T}</div>
+            <div className="panel-title">Properties: {part.T}</div>
             <div className="panel-body">
                 <div className="props">
                     <div className="prop-row">

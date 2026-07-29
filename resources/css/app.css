@@ -68,6 +68,31 @@ body {
 .snap-icon { display: flex; align-items: center; color: #8a8a94; }
 .snap-icon svg { width: 14px; height: 14px; }
 
+.help-group { margin-left: auto; border-right: none; border-left: 1px solid #1c1c22; }
+
+.help-backdrop { position: fixed; inset: 0; z-index: 40; }
+
+.help-pop {
+    position: absolute;
+    top: 70px;
+    right: 8px;
+    z-index: 50;
+    width: 340px;
+    background: #14141a;
+    border: 1px solid #26262e;
+    border-radius: 6px;
+    padding: 14px 16px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    font-size: 12px;
+    line-height: 1.55;
+    color: #b9b9c0;
+}
+.help-pop h3 { font-size: 14px; font-weight: 600; color: #e5e5ea; margin-bottom: 8px; }
+.help-pop h4 { font-size: 12px; font-weight: 600; color: #8f8f98; margin: 10px 0 4px; text-transform: uppercase; letter-spacing: 0.4px; }
+.help-pop ul { list-style: none; }
+.help-pop li { margin-bottom: 3px; }
+.help-pop b { color: #dcdce2; font-weight: 600; }
+
 /* ---------- layout ---------- */
 
 .main { display: flex; flex: 1; min-height: 0; }
