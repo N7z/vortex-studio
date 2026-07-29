@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
     SelectIcon, MoveIcon, RotateIcon, ScaleIcon, PartIcon, SpawnIcon,
-    CopyIcon, PasteIcon, DuplicateIcon, SaveIcon, DownloadIcon, HelpIcon,
+    CopyIcon, PasteIcon, DuplicateIcon, SaveIcon, DownloadIcon, HelpIcon, StatsIcon,
 } from './icons';
 
 const TOOLS = [
@@ -93,6 +93,10 @@ export default function Toolbar({
                 </button>
             </div>
             <div className="group help-group">
+                <a className="tool-btn" href="/stats" target="_blank" rel="noreferrer">
+                    <StatsIcon />
+                    Stats
+                </a>
                 <button className="tool-btn" onClick={() => setHelpOpen((o) => !o)}>
                     <HelpIcon />
                     Help

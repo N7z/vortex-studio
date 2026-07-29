@@ -48,6 +48,7 @@ body {
 }
 
 .tool-btn svg { width: 22px; height: 22px; }
+a.tool-btn { text-decoration: none; }
 .tool-btn:hover { background: #1d1d24; }
 .tool-btn.active { background: #2563eb; color: #fff; }
 .tool-btn:disabled { color: #4a4a52; cursor: default; }

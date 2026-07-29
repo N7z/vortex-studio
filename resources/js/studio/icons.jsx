@@ -70,6 +70,12 @@ export const SaveIcon = () => (
     </svg>
 );
 
+export const StatsIcon = () => (
+    <svg viewBox="0 0 24 24" {...S}>
+        <path d="M4 20V10M10 20V4M16 20v-8M22 20H2" />
+    </svg>
+);
+
 export const HelpIcon = () => (
     <svg viewBox="0 0 24 24" {...S}>
         <circle cx="12" cy="12" r="9" />

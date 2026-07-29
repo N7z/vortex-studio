@@ -39,6 +39,22 @@ class MapController extends Controller
         return resource_path('maps');
     }
 
+    public function stats()
+    {
+        DB::table('maps')->where('updated_at', '<', now()->subHours(self::TTL_HOURS))->delete();
+
+        $rows = DB::table('maps')->get(['token', 'data', 'updated_at']);
+
+        return view('stats', [
+            'maps' => $rows->count(),
+            'sessions' => $rows->pluck('token')->unique()->count(),
+            'parts' => $rows->sum(fn ($r) => count(json_decode($r->data) ?: [])),
+            'examples' => count(glob($this->examplesDir().DIRECTORY_SEPARATOR.'*.json')),
+            'lastSave' => $rows->max('updated_at'),
+            'ttl' => self::TTL_HOURS,
+        ]);
+    }
+
     public function index(Request $request)
     {
         DB::table('maps')->where('updated_at', '<', now()->subHours(self::TTL_HOURS))->delete();
