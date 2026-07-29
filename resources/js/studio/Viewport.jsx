@@ -237,9 +237,12 @@ export default function Viewport({ parts, selectedId, setSelectedId, tool, snap,
             }
             mesh.material.color.set(`#${part.C ?? 'a3a2a5'}`);
             const tr = part.Tr ?? 0;
-            mesh.material.transparent = tr > 0;
+            const wantTransparent = tr > 0;
+            if (mesh.material.transparent !== wantTransparent) {
+                mesh.material.transparent = wantTransparent;
+                mesh.material.needsUpdate = true;
+            }
             mesh.material.opacity = 1 - tr;
-            mesh.material.needsUpdate = false;
         }
         for (const [id, mesh] of c.meshes) {
             if (!alive.has(id)) {
