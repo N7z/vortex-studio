@@ -36,7 +36,7 @@ class MapController extends Controller
 
     private function examplesDir(): string
     {
-        return realpath(base_path('../maps'));
+        return resource_path('maps');
     }
 
     public function index(Request $request)
