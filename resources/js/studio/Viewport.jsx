@@ -2,7 +2,9 @@ import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
-import { PLACEHOLDER, makeMaterialPool, makePartGeometry, releaseStuds } from './parts3d';
+import {
+    PLACEHOLDER, makeMaterialPool, makePartGeometry, makeStudMaterial, releaseStuds,
+} from './parts3d';
 
 const TOOL_MODE = { move: 'translate', rotate: 'rotate', scale: 'scale' };
 const DEG = Math.PI / 180;
@@ -86,6 +88,7 @@ export default function Viewport({
     const gfxRef = useRef(graphics);
     gfxRef.current = graphics;
     const studs = graphics.studs;
+    const mode = graphics.mode ?? 'lit';
 
     useEffect(() => {
         const mount = mountRef.current;
@@ -721,6 +724,7 @@ export default function Viewport({
                 color: 0x2f7fd9, transparent: true, opacity: 0.45, depthWrite: false,
             }),
             studsOn: gfxRef.current.studs,
+            mode: gfxRef.current.mode ?? 'lit',
             selectedMeshes: [],
             tool: 'select',
             onTransform: () => {},
@@ -790,10 +794,11 @@ export default function Viewport({
         const c = ctx.current;
         if (!c) return;
         const g = graphics;
+        const shadows = g.shadows && (g.mode ?? 'lit') === 'lit';
         const was = c.shadows;
-        c.shadows = g.shadows;
-        c.renderer.shadowMap.enabled = g.shadows;
-        c.sun.castShadow = g.shadows;
+        c.shadows = shadows;
+        c.renderer.shadowMap.enabled = shadows;
+        c.sun.castShadow = shadows;
         c.grid.visible = g.grid;
         if (c.sun.shadow.mapSize.x !== g.shadowRes) {
             c.sun.shadow.mapSize.set(g.shadowRes, g.shadowRes);
@@ -801,9 +806,9 @@ export default function Viewport({
             c.sun.shadow.map = null;
         }
         for (const mesh of c.meshes.values()) {
-            mesh.castShadow = g.shadows;
-            mesh.receiveShadow = g.shadows;
-            if (was !== g.shadows) {
+            mesh.castShadow = shadows;
+            mesh.receiveShadow = shadows;
+            if (was !== shadows) {
                 if (Array.isArray(mesh.material)) {
                     for (const m of mesh.material) m.needsUpdate = true;
                 } else {
@@ -818,11 +823,12 @@ export default function Viewport({
     useEffect(() => {
         const c = ctx.current;
         if (!c) return;
-        const rebuild = c.studsOn !== studs;
+        const useStuds = studs && (mode === 'lit' || mode === 'unlit');
+        const rebuild = c.studsOn !== studs || c.mode !== mode;
         const alive = new Set();
 
         const setBase = (mesh, part) => {
-            const want = c.mats.acquire(part.C ?? 'a3a2a5', 1 - (part.Tr ?? 0));
+            const want = c.mats.acquire(part.C ?? 'a3a2a5', 1 - (part.Tr ?? 0), mode);
             const had = mesh.userData.base;
             if (had === want) {
                 c.mats.release(want);
@@ -861,18 +867,20 @@ export default function Viewport({
 
             const base = setBase(mesh, part);
 
-            if (!studs) {
+            if (!useStuds) {
                 if (mesh.material !== base) mesh.material = base;
                 releaseStuds(mesh);
                 continue;
             }
 
+            if (mesh.userData.studMode !== mode) releaseStuds(mesh);
             if (!mesh.userData.top) {
                 mesh.userData.studMap = c.studTex.clone();
                 mesh.userData.inletMap = c.inletTex.clone();
-                mesh.userData.top = new THREE.MeshStandardMaterial({ map: mesh.userData.studMap });
-                mesh.userData.bottom = new THREE.MeshStandardMaterial({ map: mesh.userData.inletMap });
+                mesh.userData.top = makeStudMaterial(mode, mesh.userData.studMap);
+                mesh.userData.bottom = makeStudMaterial(mode, mesh.userData.inletMap);
                 mesh.userData.slots = [base, mesh.userData.top, mesh.userData.bottom];
+                mesh.userData.studMode = mode;
             }
             const { top, bottom, studMap, inletMap, slots } = mesh.userData;
             slots[0] = base;
@@ -889,6 +897,7 @@ export default function Viewport({
             inletMap.repeat.copy(studMap.repeat);
         }
         c.studsOn = studs;
+        c.mode = mode;
 
         let removed = false;
         for (const [id, mesh] of c.meshes) {
@@ -905,7 +914,7 @@ export default function Viewport({
         if (removed || c.meshList.length !== c.meshes.size) {
             c.meshList = [...c.meshes.values()];
         }
-    }, [parts, studs]);
+    }, [parts, studs, mode]);
 
     useEffect(() => {
         const c = ctx.current;

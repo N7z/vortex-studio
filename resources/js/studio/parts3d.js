@@ -14,6 +14,14 @@ export function releaseStuds(mesh) {
     d.studMap = null;
     d.inletMap = null;
     d.slots = null;
+    d.studMode = null;
+}
+
+export function makeStudMaterial(mode, map) {
+    if (mode === 'wireframe' || mode === 'normals') return null;
+    return mode === 'unlit'
+        ? new THREE.MeshBasicMaterial({ map })
+        : new THREE.MeshStandardMaterial({ map });
 }
 
 export function makePartGeometry() {
@@ -31,18 +39,30 @@ export function makePartGeometry() {
     return geo;
 }
 
+function makeModeMaterial(mode, color, opacity) {
+    const common = { transparent: opacity < 1, opacity };
+    switch (mode) {
+        case 'normals':
+            return new THREE.MeshNormalMaterial();
+        case 'wireframe':
+            return new THREE.MeshBasicMaterial({
+                color: new THREE.Color(`#${color}`), wireframe: true, ...common,
+            });
+        case 'unlit':
+            return new THREE.MeshBasicMaterial({ color: new THREE.Color(`#${color}`), ...common });
+        default:
+            return new THREE.MeshStandardMaterial({ color: new THREE.Color(`#${color}`), ...common });
+    }
+}
+
 export function makeMaterialPool() {
     const pool = new Map();
     return {
-        acquire(color, opacity) {
-            const key = `${color}|${opacity}`;
+        acquire(color, opacity, mode = 'lit') {
+            const key = mode === 'normals' ? 'normals' : `${mode}|${color}|${opacity}`;
             let e = pool.get(key);
             if (!e) {
-                const m = new THREE.MeshStandardMaterial({
-                    color: new THREE.Color(`#${color}`),
-                    transparent: opacity < 1,
-                    opacity,
-                });
+                const m = makeModeMaterial(mode, color, opacity);
                 m.userData.key = key;
                 e = { m, n: 0 };
                 pool.set(key, e);

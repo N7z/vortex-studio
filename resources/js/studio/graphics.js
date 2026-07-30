@@ -6,7 +6,15 @@ export const DEFAULTS = {
     scale: 1,
     studs: true,
     grid: true,
+    mode: 'lit',
 };
+
+export const MODES = [
+    ['lit', 'Lit'],
+    ['unlit', 'No lighting'],
+    ['wireframe', 'Wireframe'],
+    ['normals', 'Normals'],
+];
 
 export const PRESETS = {
     High: { shadows: true, shadowRes: 2048, scale: 1, studs: true, grid: true },
@@ -27,7 +35,7 @@ export const SHADOW_RES = [
     [512, 'Low'],
 ];
 
-const num = (v, allowed, fallback) => (allowed.some(([a]) => a === v) ? v : fallback);
+const pick = (v, allowed, fallback) => (allowed.some(([a]) => a === v) ? v : fallback);
 
 export function loadGraphics() {
     let stored = {};
@@ -40,12 +48,13 @@ export function loadGraphics() {
     const legacyStuds = localStorage.getItem('studio_studs');
     return {
         shadows: typeof stored.shadows === 'boolean' ? stored.shadows : DEFAULTS.shadows,
-        shadowRes: num(stored.shadowRes, SHADOW_RES, DEFAULTS.shadowRes),
-        scale: num(stored.scale, SCALES, DEFAULTS.scale),
+        shadowRes: pick(stored.shadowRes, SHADOW_RES, DEFAULTS.shadowRes),
+        scale: pick(stored.scale, SCALES, DEFAULTS.scale),
         studs: typeof stored.studs === 'boolean'
             ? stored.studs
             : (legacyStuds === null ? DEFAULTS.studs : legacyStuds !== '0'),
         grid: typeof stored.grid === 'boolean' ? stored.grid : DEFAULTS.grid,
+        mode: pick(stored.mode, MODES, DEFAULTS.mode),
     };
 }
 

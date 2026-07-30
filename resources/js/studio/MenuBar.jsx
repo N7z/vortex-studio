@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { loadStats } from './api';
-import { PRESETS, SCALES, SHADOW_RES, presetName } from './graphics';
+import { MODES, PRESETS, SCALES, SHADOW_RES, presetName } from './graphics';
 
 const SEP = { sep: true };
 
@@ -116,6 +116,11 @@ export default function MenuBar({
             { label: 'Graphics...', onClick: () => setPop('gfx') },
             { label: 'Team panel', checked: !!teamOpen, onClick: onToggleTeam, disabled: !hasMap },
         ]],
+        ['Render', MODES.map(([value, label]) => ({
+            label,
+            checked: (graphics.mode ?? 'lit') === value,
+            onClick: () => onGraphics({ mode: value }),
+        }))],
         ['Plugins', [
             ...plugins.map((p) => ({
                 label: p.name,
