@@ -42,6 +42,7 @@ export const config = {
     maxRooms: num('MAX_ROOMS', 200),
     maxMembersPerRoom: num('MAX_MEMBERS_PER_ROOM', 16),
     maxParts: num('MAX_PARTS', 20_000),
+    maxGroups: num('MAX_GROUPS', 2_000),
     maxMessageBytes: num('MAX_MESSAGE_BYTES', 2_000_000),
     heartbeatMs: num('HEARTBEAT_SECONDS', 25) * 1000,
 };

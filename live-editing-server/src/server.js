@@ -5,7 +5,7 @@ import { config, originAllowed } from './config.js';
 import { normaliseCode } from './names.js';
 import { validPart } from './ops.js';
 import {
-    ROLE_DEVELOPER, ROLE_SPECTATOR, createRoom, getRoom, roomStats,
+    ROLE_DEVELOPER, ROLE_SPECTATOR, cleanGroups, createRoom, getRoom, roomStats,
 } from './rooms.js';
 
 const HELLO_TIMEOUT_MS = 15_000;
@@ -67,6 +67,7 @@ export function createLiveServer({ log = () => {} } = {}) {
             mapName: room.mapName,
             seq: room.seq,
             parts: room.parts,
+            groups: room.groups,
             lastSavedAt: room.lastSavedAt,
             resumed,
             you: {
@@ -89,7 +90,10 @@ export function createLiveServer({ log = () => {} } = {}) {
         const parts = cleanParts(msg.parts);
         if (!parts) return refuse(ws, 'bad map data');
 
-        const room = createRoom(mapName, parts);
+        const groups = cleanGroups(msg.groups);
+        if (!groups) return refuse(ws, 'bad group data');
+
+        const room = createRoom(mapName, parts, groups);
         if (!room) return refuse(ws, 'the server is at its room limit, try again later');
 
         const { member } = room.add(ws);
@@ -177,8 +181,16 @@ export function createLiveServer({ log = () => {} } = {}) {
                 const bad = room.applyFrom(member, msg.op);
                 if (bad) {
                     fail(ws, bad);
-                    send(ws, { t: 'snapshot', parts: room.parts, seq: room.seq });
+                    send(ws, {
+                        t: 'snapshot', parts: room.parts, groups: room.groups, seq: room.seq,
+                    });
                 }
+
+                return;
+            }
+            case 'groups': {
+                const bad = room.setGroupsFrom(member, msg.groups);
+                if (bad) fail(ws, bad);
 
                 return;
             }
@@ -195,7 +207,9 @@ export function createLiveServer({ log = () => {} } = {}) {
                 return room.broadcast({ t: 'saved', at: room.lastSavedAt });
             }
             case 'resync':
-                return send(ws, { t: 'snapshot', parts: room.parts, seq: room.seq });
+                return send(ws, {
+                    t: 'snapshot', parts: room.parts, groups: room.groups, seq: room.seq,
+                });
             case 'ping':
                 return send(ws, { t: 'pong' });
             default:

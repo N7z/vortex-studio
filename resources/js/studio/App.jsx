@@ -37,6 +37,8 @@ const NEW_SPAWN = {
     T: 'SpawnLocation', Shape: 'Block', C: '4db84b',
 };
 
+const groupKey = (gs) => JSON.stringify(gs.map((g) => [g.id, g.name, g.ids]));
+
 export default function App() {
     const [mapName, setMapName] = useState(null);
     const [parts, setParts] = useState([]);
@@ -65,17 +67,20 @@ export default function App() {
     const future = useRef([]);
     const partsRef = useRef(parts);
     partsRef.current = parts;
+    const syncedGroups = useRef(null);
 
     const flash = useCallback((msg) => {
         setStatus(msg);
         setTimeout(() => setStatus((s) => (s === msg ? '' : s)), 2500);
     }, []);
 
-    const resetDocument = (name, data, isDirty) => {
+    const resetDocument = (name, data, isDirty, remoteGroups) => {
         setParts(data);
         setMapName(name);
         setSelectedIds([]);
-        setGroups(loadGroups(name, data));
+        const next = remoteGroups ?? loadGroups(name, data);
+        syncedGroups.current = groupKey(next);
+        setGroups(next);
         history.current = [];
         future.current = [];
         dirty.current = isDirty;
@@ -85,7 +90,7 @@ export default function App() {
         onWelcome: (msg) => {
             setJoining(null);
             setTeamOpen(true);
-            resetDocument(msg.mapName, msg.parts, false);
+            resetDocument(msg.mapName, msg.parts, false, msg.groups ?? []);
             flash(msg.resumed
                 ? `Back in session ${msg.code}`
                 : `Live session ${msg.code} as ${msg.you.name}`);
@@ -101,8 +106,16 @@ export default function App() {
         },
         onSnapshot: (msg) => {
             setParts(msg.parts);
+            if (msg.groups) {
+                syncedGroups.current = groupKey(msg.groups);
+                setGroups(msg.groups);
+            }
             history.current = [];
             future.current = [];
+        },
+        onGroups: (msg) => {
+            syncedGroups.current = groupKey(msg.groups);
+            setGroups(msg.groups);
         },
         onError: (message) => {
             setJoining(null);
@@ -387,6 +400,14 @@ export default function App() {
         if (mapName) saveGroups(mapName, groups, parts);
     }, [mapName, groups, parts]);
 
+    useEffect(() => {
+        if (!live.live || !live.canEdit) return;
+        const key = groupKey(groups);
+        if (key === syncedGroups.current) return;
+        syncedGroups.current = key;
+        live.sendGroups(groups);
+    }, [groups, live.live, live.canEdit, live.sendGroups]);
+
     const changeGraphics = (patch) => {
         setGraphics((g) => {
             const next = { ...g, ...patch };
@@ -471,7 +492,7 @@ export default function App() {
 
     const goLive = () => {
         if (!mapName) return;
-        live.host(mapName, partsRef.current);
+        live.host(mapName, partsRef.current, groups);
         setTeamOpen(true);
     };
 

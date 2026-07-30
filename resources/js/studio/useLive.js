@@ -3,7 +3,7 @@ import { LiveClient } from './live';
 
 const EMPTY = [];
 
-export default function useLive({ onWelcome, onOp, onSnapshot, onError, onNotice }) {
+export default function useLive({ onWelcome, onOp, onSnapshot, onGroups, onError, onNotice }) {
     const [status, setStatus] = useState('offline');
     const [code, setCode] = useState(null);
     const [me, setMe] = useState(null);
@@ -11,7 +11,7 @@ export default function useLive({ onWelcome, onOp, onSnapshot, onError, onNotice
     const [lastSavedAt, setLastSavedAt] = useState(null);
 
     const cbs = useRef({});
-    cbs.current = { onWelcome, onOp, onSnapshot, onError, onNotice };
+    cbs.current = { onWelcome, onOp, onSnapshot, onGroups, onError, onNotice };
 
     const client = useRef(null);
     if (!client.current) {
@@ -35,6 +35,7 @@ export default function useLive({ onWelcome, onOp, onSnapshot, onError, onNotice
             onYou: (msg) => setMe((cur) => (cur ? { ...cur, role: msg.role, owner: msg.owner } : cur)),
             onOp: (msg) => cbs.current.onOp?.(msg),
             onSnapshot: (msg) => cbs.current.onSnapshot?.(msg),
+            onGroups: (msg) => cbs.current.onGroups?.(msg),
             onSelection: (msg) => setMembers((ms) => ms.map(
                 (m) => (m.id === msg.id ? { ...m, selection: msg.selection } : m),
             )),
@@ -54,8 +55,8 @@ export default function useLive({ onWelcome, onOp, onSnapshot, onError, onNotice
         });
     }
 
-    const host = useCallback((mapName, parts) => {
-        client.current.create(mapName, parts);
+    const host = useCallback((mapName, parts, groups) => {
+        client.current.create(mapName, parts, groups);
     }, []);
 
     const join = useCallback((joinCode) => {
@@ -71,6 +72,7 @@ export default function useLive({ onWelcome, onOp, onSnapshot, onError, onNotice
     }, []);
 
     const sendOp = useCallback((op) => client.current.sendOp(op), []);
+    const sendGroups = useCallback((groups) => client.current.sendGroups(groups), []);
     const sendSelection = useCallback((ids) => client.current.sendSelection(ids), []);
     const setRole = useCallback((id, role) => client.current.setRole(id, role), []);
     const kick = useCallback((id) => client.current.kick(id), []);
@@ -101,6 +103,7 @@ export default function useLive({ onWelcome, onOp, onSnapshot, onError, onNotice
         join,
         leave,
         sendOp,
+        sendGroups,
         sendSelection,
         setRole,
         kick,

@@ -22,11 +22,28 @@ class Member {
     }
 }
 
+export function cleanGroups(input) {
+    if (input === undefined || input === null) return [];
+    if (!Array.isArray(input) || input.length > config.maxGroups) return null;
+    const out = [];
+    for (const g of input) {
+        if (!g || typeof g !== 'object') return null;
+        if (typeof g.id !== 'string' || typeof g.name !== 'string') return null;
+        if (!Array.isArray(g.ids)) return null;
+        const ids = g.ids.filter((id) => typeof id === 'string');
+        if (ids.length !== g.ids.length) return null;
+        out.push({ id: g.id.slice(0, 64), name: g.name.slice(0, 64), ids });
+    }
+
+    return out;
+}
+
 class Room {
-    constructor(code, mapName, parts) {
+    constructor(code, mapName, parts, groups = []) {
         this.code = code;
         this.mapName = mapName;
         this.parts = parts;
+        this.groups = groups;
         this.seq = 0;
         this.members = new Map();
         this.departed = new Map();
@@ -184,21 +201,42 @@ class Room {
         const next = applyOp(this.parts, op);
         if (next.length > config.maxParts) return 'map too large';
         this.parts = next;
+        if (op.t === 'remove' || op.t === 'replace') this.pruneGroups();
         this.seq++;
         this.broadcast({ t: 'op', op, seq: this.seq, from: member.id });
 
         return null;
     }
+
+    pruneGroups() {
+        if (!this.groups.length) return;
+        const alive = new Set(this.parts.map((p) => p._id));
+        this.groups = this.groups
+            .map((g) => ({ ...g, ids: g.ids.filter((id) => alive.has(id)) }))
+            .filter((g) => g.ids.length);
+    }
+
+    setGroupsFrom(member, groups) {
+        if (!this.canEdit(member)) return 'you are a spectator in this room';
+        const clean = cleanGroups(groups);
+        if (!clean) return 'bad group data';
+
+        this.groups = clean;
+        this.pruneGroups();
+        this.broadcast({ t: 'groups', groups: this.groups, from: member.id }, member.id);
+
+        return null;
+    }
 }
 
-export function createRoom(mapName, parts) {
+export function createRoom(mapName, parts, groups = []) {
     if (rooms.size >= config.maxRooms) return null;
     let code;
     do {
         code = randomCode();
     } while (rooms.has(code));
 
-    const room = new Room(code, mapName, parts);
+    const room = new Room(code, mapName, parts, groups);
     rooms.set(code, room);
 
     return room;

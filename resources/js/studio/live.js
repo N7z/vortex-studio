@@ -78,8 +78,10 @@ export class LiveClient {
         this.lastSelection = '';
     }
 
-    create(mapName, parts) {
-        this.intent = { t: 'create', mapName, parts };
+    create(mapName, parts, groups = []) {
+        this.intent = {
+            t: 'create', mapName, parts, groups,
+        };
         this.connect();
     }
 
@@ -186,6 +188,8 @@ export class LiveClient {
                 return this.handlers.onOp?.(msg);
             case 'snapshot':
                 return this.handlers.onSnapshot?.(msg);
+            case 'groups':
+                return this.handlers.onGroups?.(msg);
             case 'selection':
                 return this.handlers.onSelection?.(msg);
             case 'you':
@@ -218,6 +222,10 @@ export class LiveClient {
 
     sendOp(op) {
         return this.send({ t: 'op', op });
+    }
+
+    sendGroups(groups) {
+        return this.send({ t: 'groups', groups });
     }
 
     setRole(memberId, role) {

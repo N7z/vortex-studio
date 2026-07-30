@@ -73,10 +73,10 @@ class Client {
     }
 }
 
-async function host(parts = [part('a')]) {
+async function host(parts = [part('a')], groups) {
     const c = new Client();
     await c.open;
-    c.send({ t: 'create', mapName: 'testmap', parts });
+    c.send({ t: 'create', mapName: 'testmap', parts, groups });
     const welcome = await c.next('welcome');
 
     return { c, welcome };
@@ -448,6 +448,80 @@ test('a refused join closes the socket instead of leaving it open', async () => 
     c.send({ t: 'join', code: 'ZZZZZZ' });
     assert.match((await c.next('error')).message, /no live session/);
     assert.equal(await c.closed, 4004);
+});
+
+test('the folders the host brings reach a joiner', async () => {
+    const groups = [{ id: 'g-1', name: 'Walls', ids: ['a', 'b'] }];
+    const { c: owner, welcome: hi } = await host([part('a'), part('b')], groups);
+    const { c: other, welcome } = await guest(hi.code);
+
+    assert.deepEqual(hi.groups, groups);
+    assert.deepEqual(welcome.groups, groups);
+    owner.ws.close();
+    other.ws.close();
+});
+
+test('a folder change is relayed to the others but not echoed back', async () => {
+    const { c: owner, welcome: hi } = await host([part('a'), part('b')]);
+    const { c: other } = await guest(hi.code);
+
+    const groups = [{ id: 'g-1', name: 'Roof', ids: ['b'] }];
+    owner.send({ t: 'groups', groups });
+
+    assert.deepEqual((await other.next('groups')).groups, groups);
+    assert.equal(owner.inbox.some((m) => m.t === 'groups'), false);
+
+    const { c: late, welcome } = await guest(hi.code);
+    assert.deepEqual(welcome.groups, groups);
+
+    owner.ws.close();
+    other.ws.close();
+    late.ws.close();
+});
+
+test('a spectator cannot change the folders', async () => {
+    const { c: owner, welcome: hi } = await host([part('a')]);
+    const { c: other } = await guest(hi.code);
+
+    other.send({ t: 'groups', groups: [{ id: 'g-1', name: 'Nope', ids: ['a'] }] });
+    assert.match((await other.next('error')).message, /spectator/);
+
+    const { c: late, welcome } = await guest(hi.code);
+    assert.deepEqual(welcome.groups, []);
+
+    owner.ws.close();
+    other.ws.close();
+    late.ws.close();
+});
+
+test('deleting a part drops it from the folders, and an empty folder goes', async () => {
+    const groups = [
+        { id: 'g-1', name: 'Pair', ids: ['a', 'b'] },
+        { id: 'g-2', name: 'Lonely', ids: ['b'] },
+    ];
+    const { c: owner, welcome: hi } = await host([part('a'), part('b')], groups);
+
+    owner.send({ t: 'op', op: { t: 'remove', ids: ['b'] } });
+    await owner.next('op');
+
+    const { c: late, welcome } = await guest(hi.code);
+    assert.deepEqual(welcome.groups, [{ id: 'g-1', name: 'Pair', ids: ['a'] }]);
+
+    owner.ws.close();
+    late.ws.close();
+});
+
+test('bad folder data is refused', async () => {
+    const c = new Client();
+    await c.open;
+    c.send({ t: 'create', mapName: 'testmap', parts: [part('a')], groups: [{ id: 'g-1' }] });
+    assert.match((await c.next('error')).message, /bad group data/);
+    assert.equal(await c.closed, 4004);
+
+    const { c: owner } = await host([part('a')]);
+    owner.send({ t: 'groups', groups: 'nope' });
+    assert.match((await owner.next('error')).message, /bad group data/);
+    owner.ws.close();
 });
 
 test('garbage and unknown message types are reported, not fatal', async () => {
