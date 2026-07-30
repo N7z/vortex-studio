@@ -5,40 +5,31 @@ export const PLACEHOLDER = new THREE.MeshBasicMaterial();
 
 export const PART_TYPES = ['Part', 'SpawnLocation', 'ShirtPad', 'Truss'];
 
-export const FACE_MARKS = {
+const FACE_MARKS = {
     Part: { top: 'stud', bottom: 'inlet' },
     SpawnLocation: { top: 'spawn', bottom: 'inlet' },
     ShirtPad: { sides: 'shirt', top: 'stud', bottom: 'inlet' },
     Truss: {},
 };
 
-const DECORATIVE = new Set(['stud', 'inlet']);
+const FACES = ['sides', 'top', 'bottom'];
+const REPEATING = new Set(['stud', 'inlet']);
 
-export function faceMarks(type, studs) {
+export function partType(part) {
+    return PART_TYPES.includes(part.T) ? part.T : 'Part';
+}
+
+function marksFor(type, mode, studs) {
+    if (mode === 'wireframe' || mode === 'normals') return null;
     const spec = FACE_MARKS[type] ?? FACE_MARKS.Part;
+    let any = false;
     const out = {};
     for (const [face, mark] of Object.entries(spec)) {
-        if (studs || !DECORATIVE.has(mark)) out[face] = mark;
+        if (!studs && REPEATING.has(mark)) continue;
+        out[face] = mark;
+        any = true;
     }
-    return out;
-}
-
-export function releaseFaces(mesh) {
-    const d = mesh.userData;
-    if (!d.faces) return;
-    for (const m of d.faces) m.dispose();
-    for (const t of d.faceMaps) t.dispose();
-    d.faces = null;
-    d.faceMaps = null;
-    d.slots = null;
-    d.faceKey = null;
-}
-
-export function makeFaceMaterial(mode, map) {
-    if (mode === 'wireframe' || mode === 'normals') return null;
-    return mode === 'unlit'
-        ? new THREE.MeshBasicMaterial({ map })
-        : new THREE.MeshStandardMaterial({ map });
+    return any ? out : null;
 }
 
 export function makePartGeometry() {
@@ -61,11 +52,11 @@ const BAR = 0.12;
 export function makeTrussGeometry() {
     const off = 0.5 - BAR / 2;
     const diag = Math.SQRT2 - BAR;
-    const parts = [];
+    const bars = [];
     const add = (geo, x, y, z, rot) => {
         if (rot) geo[rot[0]](rot[1]);
         geo.translate(x, y, z);
-        parts.push(geo);
+        bars.push(geo);
     };
 
     for (const sx of [-1, 1]) {
@@ -82,19 +73,19 @@ export function makeTrussGeometry() {
         }
     }
     for (const sz of [-1, 1]) {
-        add(new THREE.BoxGeometry(diag, BAR, BAR), 0, 0, sz * off, ['rotateZ', sz * Math.PI / 4]);
+        add(new THREE.BoxGeometry(diag, BAR, BAR), 0, 0, sz * off, ['rotateZ', (sz * Math.PI) / 4]);
     }
     for (const sx of [-1, 1]) {
-        add(new THREE.BoxGeometry(BAR, BAR, diag), sx * off, 0, 0, ['rotateX', sx * Math.PI / 4]);
+        add(new THREE.BoxGeometry(BAR, BAR, diag), sx * off, 0, 0, ['rotateX', (sx * Math.PI) / 4]);
     }
 
-    const merged = mergeGeometries(parts, false);
-    for (const g of parts) g.dispose();
+    const merged = mergeGeometries(bars, false);
+    for (const g of bars) g.dispose();
     merged.clearGroups();
     return merged;
 }
 
-function makeModeMaterial(mode, color, opacity) {
+function baseMaterial(mode, color, opacity) {
     const common = { transparent: opacity < 1, opacity };
     switch (mode) {
         case 'normals':
@@ -110,36 +101,86 @@ function makeModeMaterial(mode, color, opacity) {
     }
 }
 
-export function makeMaterialPool() {
-    const pool = new Map();
+export function makeMaterialSets(tex) {
+    const sets = new Map();
+    const maps = new Map();
+
+    const mapFor = (mark, rx, rz) => {
+        if (!REPEATING.has(mark)) return tex[mark];
+        const key = `${mark}|${rx}|${rz}`;
+        let m = maps.get(key);
+        if (!m) {
+            m = tex[mark].clone();
+            m.repeat.set(rx, rz);
+            m.needsUpdate = true;
+            maps.set(key, m);
+        }
+        return m;
+    };
+
+    const build = (type, mode, color, opacity, marks, rx, rz) => {
+        const base = baseMaterial(mode, color, opacity);
+        if (!marks) return { materials: base, own: [base] };
+        const own = [base];
+        const materials = FACES.map((face) => {
+            const mark = marks[face];
+            if (!mark) return base;
+            const map = mapFor(mark, rx, rz);
+            const m = mode === 'unlit'
+                ? new THREE.MeshBasicMaterial({ map })
+                : new THREE.MeshStandardMaterial({ map });
+            m.color.copy(base.color);
+            m.transparent = base.transparent;
+            m.opacity = base.opacity;
+            own.push(m);
+            return m;
+        });
+        return { materials, own };
+    };
+
     return {
-        acquire(color, opacity, mode = 'lit') {
-            const key = mode === 'normals' ? 'normals' : `${mode}|${color}|${opacity}`;
-            let e = pool.get(key);
+        acquire(part, mode, studs) {
+            const type = partType(part);
+            const normals = mode === 'normals';
+            const color = normals ? '' : (part.C ?? 'a3a2a5');
+            const opacity = normals ? 1 : 1 - (part.Tr ?? 0);
+            const marks = marksFor(type, mode, studs);
+            const repeats = !!marks && FACES.some((f) => REPEATING.has(marks[f]));
+            const rx = repeats ? Math.max(1, Math.round(part.S[0])) : 0;
+            const rz = repeats ? Math.max(1, Math.round(part.S[2])) : 0;
+            const key = `${type}|${mode}|${color}|${opacity}|${rx}|${rz}`;
+
+            let e = sets.get(key);
             if (!e) {
-                const m = makeModeMaterial(mode, color, opacity);
-                m.userData.key = key;
-                e = { m, n: 0 };
-                pool.set(key, e);
+                e = {
+                    ...build(type, mode, color, opacity, marks, rx, rz),
+                    key,
+                    type,
+                    transparent: opacity < 1,
+                    n: 0,
+                };
+                sets.set(key, e);
             }
             e.n += 1;
-            return e.m;
+            return e;
         },
-        release(material) {
-            const e = material && pool.get(material.userData.key);
+        release(set) {
+            const e = set && sets.get(set.key);
             if (!e) return;
             e.n -= 1;
             if (e.n <= 0) {
-                pool.delete(material.userData.key);
-                e.m.dispose();
+                sets.delete(e.key);
+                for (const m of e.own) m.dispose();
             }
         },
         dispose() {
-            for (const e of pool.values()) e.m.dispose();
-            pool.clear();
+            for (const e of sets.values()) for (const m of e.own) m.dispose();
+            for (const m of maps.values()) m.dispose();
+            sets.clear();
+            maps.clear();
         },
         get size() {
-            return pool.size;
+            return sets.size;
         },
     };
 }

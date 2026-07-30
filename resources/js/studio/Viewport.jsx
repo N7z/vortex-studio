@@ -3,8 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import {
-    PART_TYPES, PLACEHOLDER, faceMarks, makeFaceMaterial, makeMaterialPool,
-    makePartGeometry, makeTrussGeometry, releaseFaces,
+    PLACEHOLDER, makeMaterialSets, makePartGeometry, makeTrussGeometry, partType,
 } from './parts3d';
 
 const TOOL_MODE = { move: 'translate', rotate: 'rotate', scale: 'scale' };
@@ -103,7 +102,7 @@ function makeShirtTexture() {
     });
 }
 
-const REPEATING = new Set(['stud', 'inlet']);
+const MIN_BATCH = 16;
 
 const MAX_OUTLINES = 192;
 const MAX_PREVIEWS = 256;
@@ -270,6 +269,87 @@ export default function Viewport({
             scene.add(b);
             peerBoxes.push(b);
             return b;
+        };
+
+        const batches = new Map();
+
+        const dropBatch = (inst) => {
+            scene.remove(inst);
+            inst.dispose();
+        };
+
+        const syncBatches = () => {
+            const c = ctx.current;
+            if (!c) return;
+            const members = new Map();
+            for (const mesh of c.meshList) {
+                const set = mesh.userData.set;
+                const key = set && !set.transparent ? set.key : null;
+                mesh.userData.batch = key;
+                mesh.userData.slot = -1;
+                if (!key) {
+                    mesh.visible = true;
+                    continue;
+                }
+                mesh.visible = false;
+                let list = members.get(key);
+                if (!list) {
+                    list = [];
+                    members.set(key, list);
+                }
+                mesh.userData.slot = list.length;
+                list.push(mesh);
+            }
+
+            for (const [key, list] of members) {
+                const set = list[0].userData.set;
+                const geometry = set.type === 'Truss' ? c.trussGeometry : c.geometry;
+                let inst = batches.get(key);
+                if (inst && (inst.userData.capacity < list.length
+                    || inst.material !== set.materials
+                    || inst.geometry !== geometry)) {
+                    dropBatch(inst);
+                    inst = null;
+                }
+                if (!inst) {
+                    const capacity = Math.max(MIN_BATCH, 2 ** Math.ceil(Math.log2(list.length)));
+                    inst = new THREE.InstancedMesh(geometry, set.materials, capacity);
+                    inst.userData.capacity = capacity;
+                    inst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+                    inst.frustumCulled = false;
+                    inst.castShadow = c.shadows;
+                    inst.receiveShadow = c.shadows;
+                    scene.add(inst);
+                    batches.set(key, inst);
+                }
+                inst.count = list.length;
+                for (let i = 0; i < list.length; i++) {
+                    list[i].updateWorldMatrix(true, false);
+                    inst.setMatrixAt(i, list[i].matrixWorld);
+                }
+                inst.instanceMatrix.needsUpdate = true;
+            }
+
+            for (const [key, inst] of batches) {
+                if (members.has(key)) continue;
+                dropBatch(inst);
+                batches.delete(key);
+            }
+        };
+
+        const bumpBatch = (mesh) => {
+            const inst = batches.get(mesh.userData.batch);
+            if (!inst || mesh.userData.slot < 0) return;
+            mesh.updateWorldMatrix(true, false);
+            inst.setMatrixAt(mesh.userData.slot, mesh.matrixWorld);
+            inst.instanceMatrix.needsUpdate = true;
+        };
+
+        const setBatchShadows = (on) => {
+            for (const inst of batches.values()) {
+                inst.castShadow = on;
+                inst.receiveShadow = on;
+            }
         };
 
         // With more than one part selected the gizmo drives this empty pivot, and
@@ -651,6 +731,11 @@ export default function Viewport({
             orbit.update();
             const c = ctx.current;
             const sel = c?.selectedMeshes ?? [];
+            if (drag) {
+                for (const m of drag.meshes) bumpBatch(m);
+            } else if (gizmo.dragging) {
+                for (const m of sel) bumpBatch(m);
+            }
             let shown = 0;
             if (sel.length > MAX_OUTLINES) {
                 bulkMin.set(Infinity, Infinity, Infinity);
@@ -752,7 +837,7 @@ export default function Viewport({
 
         ctx.current = {
             scene, camera, renderer, orbit, gizmo, tex, pivot, spawnPoint,
-            sun, grid, applyScale,
+            sun, grid, applyScale, syncBatches, setBatchShadows,
             isDragging: () => drag !== null,
             isDraggingMesh: (m) => !!drag?.meshes.includes(m),
             snapMove: 0,
@@ -763,7 +848,7 @@ export default function Viewport({
             meshList: [],
             geometry: makePartGeometry(),
             trussGeometry: makeTrussGeometry(),
-            mats: makeMaterialPool(),
+            sets: makeMaterialSets(tex),
             previewMeshes: [],
             previewMat: new THREE.MeshStandardMaterial({
                 color: 0x2f7fd9, transparent: true, opacity: 0.45, depthWrite: false,
@@ -807,8 +892,10 @@ export default function Viewport({
             for (const m of peerMats.values()) m.dispose();
             selEdges.dispose();
             selMat.dispose();
+            for (const inst of batches.values()) dropBatch(inst);
+            batches.clear();
             for (const t of Object.values(tex)) t.dispose();
-            ctx.current.mats.dispose();
+            ctx.current.sets.dispose();
             ctx.current.geometry.dispose();
             ctx.current.trussGeometry.dispose();
             for (const m of ctx.current.previewMeshes) scene.remove(m);
@@ -853,14 +940,11 @@ export default function Viewport({
         for (const mesh of c.meshes.values()) {
             mesh.castShadow = shadows;
             mesh.receiveShadow = shadows;
-            if (was !== shadows) {
-                if (Array.isArray(mesh.material)) {
-                    for (const m of mesh.material) m.needsUpdate = true;
-                } else {
-                    mesh.material.needsUpdate = true;
-                }
-            }
+            if (was === shadows) continue;
+            const mats = mesh.material;
+            for (const m of Array.isArray(mats) ? mats : [mats]) m.needsUpdate = true;
         }
+        c.setBatchShadows(shadows);
         c.renderer.shadowMap.needsUpdate = true;
         c.applyScale();
     }, [graphics]);
@@ -868,18 +952,18 @@ export default function Viewport({
     useEffect(() => {
         const c = ctx.current;
         if (!c) return;
-        const plain = mode === 'wireframe' || mode === 'normals';
         const rebuild = c.studsOn !== studs || c.mode !== mode;
         const alive = new Set();
 
-        const setBase = (mesh, part) => {
-            const want = c.mats.acquire(part.C ?? 'a3a2a5', 1 - (part.Tr ?? 0), mode);
-            const had = mesh.userData.base;
+        const setMaterials = (mesh, part) => {
+            const want = c.sets.acquire(part, mode, studs);
+            const had = mesh.userData.set;
             if (had === want) {
-                c.mats.release(want);
+                c.sets.release(want);
             } else {
-                if (had) c.mats.release(had);
-                mesh.userData.base = want;
+                if (had) c.sets.release(had);
+                mesh.userData.set = want;
+                mesh.material = want.materials;
             }
             return want;
         };
@@ -901,7 +985,7 @@ export default function Viewport({
                     : c.isDraggingMesh(mesh);
                 if (held) {
                     mesh.userData.part = part;
-                    setBase(mesh, part);
+                    setMaterials(mesh, part);
                     continue;
                 }
             }
@@ -910,55 +994,10 @@ export default function Viewport({
             mesh.scale.set(part.S[0], part.S[1], part.S[2]);
             mesh.rotation.set(part.R[0] * DEG, part.R[1] * DEG, part.R[2] * DEG);
 
-            const base = setBase(mesh, part);
-            const type = PART_TYPES.includes(part.T) ? part.T : 'Part';
+            setMaterials(mesh, part);
 
-            const geometry = type === 'Truss' ? c.trussGeometry : c.geometry;
+            const geometry = partType(part) === 'Truss' ? c.trussGeometry : c.geometry;
             if (mesh.geometry !== geometry) mesh.geometry = geometry;
-
-            const marks = plain ? {} : faceMarks(type, studs);
-            const key = `${type}|${mode}|${Object.entries(marks).join()}`;
-            if (mesh.userData.faceKey !== key) releaseFaces(mesh);
-
-            if (!mesh.userData.faceKey) {
-                if (!Object.keys(marks).length) {
-                    if (mesh.material !== base) mesh.material = base;
-                    continue;
-                }
-                const mats = [];
-                const maps = [];
-                const slot = (mark) => {
-                    if (!mark) return null;
-                    const shared = c.tex[mark];
-                    const map = REPEATING.has(mark) ? shared.clone() : shared;
-                    if (map !== shared) maps.push(map);
-                    const m = makeFaceMaterial(mode, map);
-                    mats.push(m);
-                    return { m, mark, map };
-                };
-                mesh.userData.faceSlots = [slot(marks.sides), slot(marks.top), slot(marks.bottom)];
-                mesh.userData.faces = mats;
-                mesh.userData.faceMaps = maps;
-                mesh.userData.slots = [base, base, base];
-                mesh.userData.faceKey = key;
-            }
-
-            const { faceSlots, slots } = mesh.userData;
-            for (let i = 0; i < 3; i++) slots[i] = faceSlots[i]?.m ?? base;
-            if (mesh.material !== slots) mesh.material = slots;
-
-            const rx = Math.max(1, Math.round(part.S[0]));
-            const rz = Math.max(1, Math.round(part.S[2]));
-            for (const s of faceSlots) {
-                if (!s) continue;
-                s.m.color.copy(base.color);
-                if (s.m.transparent !== base.transparent) {
-                    s.m.transparent = base.transparent;
-                    s.m.needsUpdate = true;
-                }
-                s.m.opacity = base.opacity;
-                if (REPEATING.has(s.mark)) s.map.repeat.set(rx, rz);
-            }
         }
         c.studsOn = studs;
         c.mode = mode;
@@ -968,9 +1007,8 @@ export default function Viewport({
             if (!alive.has(id)) {
                 if (c.gizmo.object === mesh) c.gizmo.detach();
                 mesh.removeFromParent();
-                releaseFaces(mesh);
-                c.mats.release(mesh.userData.base);
-                mesh.userData.base = null;
+                c.sets.release(mesh.userData.set);
+                mesh.userData.set = null;
                 c.meshes.delete(id);
                 removed = true;
             }
@@ -978,6 +1016,7 @@ export default function Viewport({
         if (removed || c.meshList.length !== c.meshes.size) {
             c.meshList = [...c.meshes.values()];
         }
+        c.syncBatches();
     }, [parts, studs, mode]);
 
     useEffect(() => {
