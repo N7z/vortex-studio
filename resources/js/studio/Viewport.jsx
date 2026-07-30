@@ -71,7 +71,8 @@ const readTransform = (m) => ({
 });
 
 export default function Viewport({
-    parts, selectedIds, setSelectedId, tool, snap, onTransform, onTransformMany, mapName, studs, preview,
+    parts, selectedIds, setSelectedId, tool, snap, onTransform, onTransformMany,
+    mapName, studs, preview, spawnRef, busyRef,
 }) {
     const mountRef = useRef(null);
     const ctx = useRef(null);
@@ -119,7 +120,7 @@ export default function Viewport({
 
         // One outline per selected part, created on demand and reused. Every part is a
         // unit cube scaled by its size, so an outline is that cube's edges wearing the
-        // part's world matrix — which keeps it tight around rotated parts, unlike an
+        // part's world matrix, which keeps it tight around rotated parts, unlike an
         // axis-aligned Box3Helper.
         const selEdges = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
         const selMat = new THREE.LineBasicMaterial({
@@ -168,13 +169,24 @@ export default function Viewport({
 
         const keys = new Set();
         let flying = false;
+        const syncBusy = () => {
+            if (busyRef) busyRef.current = flying || drag !== null;
+        };
+        const setFlying = (v) => {
+            flying = v;
+            syncBusy();
+        };
         const onKeyDown = (e) => {
             if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable) return;
             keys.add(e.code);
+            if (drag && e.code === 'KeyR' && !e.ctrlKey && !e.altKey) {
+                e.preventDefault();
+                rotateDrag();
+            }
         };
         const onKeyUp = (e) => keys.delete(e.code);
-        const onBlur = () => { keys.clear(); flying = false; };
-        const onWindowUp = (e) => { if (e.button === 2) flying = false; };
+        const onBlur = () => { keys.clear(); setFlying(false); pending = null; };
+        const onWindowUp = (e) => { if (e.button === 2) setFlying(false); };
         window.addEventListener('keydown', onKeyDown);
         window.addEventListener('keyup', onKeyUp);
         window.addEventListener('blur', onBlur);
@@ -197,13 +209,142 @@ export default function Viewport({
 
         const raycaster = new THREE.Raycaster();
         const down = { x: 0, y: 0 };
+
+        const pointerNdc = new THREE.Vector2();
+        const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+        const planeHit = new THREE.Vector3();
+        let pending = null;
+        let drag = null;
+
+        const castPointer = (e) => {
+            const rect = renderer.domElement.getBoundingClientRect();
+            pointerNdc.set(
+                ((e.clientX - rect.left) / rect.width) * 2 - 1,
+                -((e.clientY - rect.top) / rect.height) * 2 + 1,
+            );
+            raycaster.setFromCamera(pointerNdc, camera);
+        };
+
+        const pickMesh = (e) => {
+            const c = ctx.current;
+            if (!c) return null;
+            castPointer(e);
+            const hits = raycaster.intersectObjects([...c.meshes.values()], false);
+            if (!hits.length) return null;
+            const tied = hits.filter((h) => h.distance <= hits[0].distance + 0.01);
+            const selected = tied.find((h) => c.selectedMeshes.includes(h.object));
+            return (selected ?? hits[0]).object;
+        };
+
+        const pickSurface = (e, exclude) => {
+            const c = ctx.current;
+            if (!c) return null;
+            castPointer(e);
+            const targets = [...c.meshes.values()].filter((m) => !exclude.has(m));
+            const hits = raycaster.intersectObjects(targets, false);
+            if (hits.length) return hits[0].point.clone();
+            return raycaster.ray.intersectPlane(dragPlane, planeHit) ? planeHit.clone() : null;
+        };
+
+        const startDrag = (e) => {
+            const c = ctx.current;
+            const mesh = pending.mesh;
+            pending = null;
+            if (!c) return;
+
+            const inSelection = c.selectedMeshes.includes(mesh);
+            const meshes = inSelection ? c.selectedMeshes.slice() : [mesh];
+            if (!inSelection) c.setSelectedId(mesh.userData.id, false);
+
+            const exclude = new Set(meshes);
+            const hit = pickSurface(e, exclude);
+            if (!hit) return;
+
+            const bounds = new THREE.Box3();
+            for (const m of meshes) bounds.expandByObject(m);
+
+            drag = {
+                meshes,
+                exclude,
+                index: meshes.indexOf(mesh),
+                baseY: bounds.min.y,
+                offX: mesh.position.x - hit.x,
+                offZ: mesh.position.z - hit.z,
+                start: meshes.map((m) => m.position.clone()),
+                delta: new THREE.Vector3(),
+            };
+            orbit.enabled = false;
+            syncBusy();
+            renderer.domElement.setPointerCapture(e.pointerId);
+        };
+
+        const moveDrag = (e) => {
+            const c = ctx.current;
+            const hit = pickSurface(e, drag.exclude);
+            if (!hit || !c) return;
+            const grid = c.snapMove;
+            let x = hit.x + drag.offX;
+            let z = hit.z + drag.offZ;
+            if (grid) {
+                x = Math.round(x / grid) * grid;
+                z = Math.round(z / grid) * grid;
+            }
+            const y = drag.start[drag.index].y + (hit.y - drag.baseY);
+            drag.delta.set(x, y, z).sub(drag.start[drag.index]);
+            for (let i = 0; i < drag.meshes.length; i++) {
+                drag.meshes[i].position.copy(drag.start[i]).add(drag.delta);
+            }
+        };
+
+        const rotateDrag = () => {
+            const center = new THREE.Vector3();
+            for (const p of drag.start) center.add(p);
+            center.divideScalar(drag.start.length);
+            for (let i = 0; i < drag.meshes.length; i++) {
+                const p = drag.start[i];
+                const dx = p.x - center.x;
+                const dz = p.z - center.z;
+                p.x = center.x - dz;
+                p.z = center.z + dx;
+                drag.meshes[i].rotation.y += Math.PI / 2;
+                drag.meshes[i].position.copy(p).add(drag.delta);
+            }
+            const offX = drag.offX;
+            drag.offX = -drag.offZ;
+            drag.offZ = offX;
+        };
+
+        const endDrag = (e) => {
+            pending = null;
+            if (!drag) return;
+            const moved = drag.meshes;
+            drag = null;
+            orbit.enabled = true;
+            syncBusy();
+            if (e && renderer.domElement.hasPointerCapture(e.pointerId)) {
+                renderer.domElement.releasePointerCapture(e.pointerId);
+            }
+            ctx.current?.onTransformMany(
+                moved.map((m) => ({ id: m.userData.id, ...readTransform(m) })),
+            );
+        };
+
         const onDown = (e) => {
             down.x = e.clientX;
             down.y = e.clientY;
-            if (e.button === 2) flying = true;
+            if (e.button === 2) setFlying(true);
+            if (e.button !== 0 || gizmo.dragging || gizmo.axis) return;
+            const mesh = pickMesh(e);
+            if (mesh) pending = { mesh };
+        };
+
+        const onMove = (e) => {
+            if (pending && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) startDrag(e);
+            if (drag) moveDrag(e);
         };
         const onUp = (e) => {
             if (e.button !== 0) return;
+            endDrag(e);
             if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
             if (gizmo.dragging) return;
             const c = ctx.current;
@@ -218,7 +359,35 @@ export default function Viewport({
             c.setSelectedId(hits.length ? hits[0].object.userData.id : null, e.ctrlKey || e.metaKey);
         };
         renderer.domElement.addEventListener('pointerdown', onDown);
+        renderer.domElement.addEventListener('pointermove', onMove);
         renderer.domElement.addEventListener('pointerup', onUp);
+
+        // Where a newly added part should go: on the ground under the middle of the
+        // view, so it lands where the user is looking instead of at the origin. If the
+        // camera looks up or at the horizon there is no ground to hit, so drop back to
+        // a point a short way in front of it.
+        const ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+        const spawnDir = new THREE.Vector3();
+        const spawnHit = new THREE.Vector3();
+        const spawnNdc = new THREE.Vector2(0, 0);
+        const spawnPoint = (height) => {
+            const c = ctx.current;
+            raycaster.setFromCamera(spawnNdc, camera);
+            const hits = raycaster.intersectObjects(c?.meshes ? [...c.meshes.values()] : [], false);
+            if (hits.length && hits[0].distance <= 400) {
+                const p = hits[0].point;
+                return [round(p.x), round(p.y + height / 2), round(p.z)];
+            }
+            camera.getWorldDirection(spawnDir);
+            const ray = new THREE.Ray(camera.position.clone(), spawnDir);
+            if (!ray.intersectPlane(ground, spawnHit) || camera.position.distanceTo(spawnHit) > 400) {
+                spawnHit.copy(camera.position).addScaledVector(spawnDir, 30);
+                spawnHit.y = Math.max(spawnHit.y, height / 2);
+            } else {
+                spawnHit.y = height / 2;
+            }
+            return [round(spawnHit.x), round(spawnHit.y), round(spawnHit.z)];
+        };
 
         const resize = () => {
             const w = mount.clientWidth;
@@ -281,7 +450,9 @@ export default function Viewport({
         inletTex.anisotropy = aniso;
 
         ctx.current = {
-            scene, camera, renderer, orbit, gizmo, studTex, inletTex, pivot,
+            scene, camera, renderer, orbit, gizmo, studTex, inletTex, pivot, spawnPoint,
+            isDragging: () => drag !== null,
+            snapMove: 0,
             meshes: new Map(),
             geometry: new THREE.BoxGeometry(1, 1, 1),
             selectedMeshes: [],
@@ -294,6 +465,7 @@ export default function Viewport({
             cancelAnimationFrame(raf);
             ro.disconnect();
             renderer.domElement.removeEventListener('pointerdown', onDown);
+            renderer.domElement.removeEventListener('pointermove', onMove);
             renderer.domElement.removeEventListener('pointerup', onUp);
             window.removeEventListener('keydown', onKeyDown);
             window.removeEventListener('keyup', onKeyUp);
@@ -320,6 +492,8 @@ export default function Viewport({
         c.onTransform = onTransform;
         c.onTransformMany = onTransformMany;
         c.setSelectedId = setSelectedId;
+        c.snapMove = snap.moveOn ? snap.move : 0;
+        if (spawnRef) spawnRef.current = c.spawnPoint;
     });
 
     useEffect(() => {
@@ -347,8 +521,10 @@ export default function Viewport({
                 c.scene.add(mesh);
                 c.meshes.set(part._id, mesh);
             }
-            // Never fight the gizmo: mid-drag the part is either it or a child of the pivot.
-            if (!c.gizmo.dragging || (c.gizmo.object !== mesh && mesh.parent !== c.pivot)) {
+            const held = c.gizmo.dragging
+                ? (c.gizmo.object === mesh || mesh.parent === c.pivot)
+                : c.isDragging();
+            if (!held) {
                 mesh.position.set(part.P[0], part.P[1], part.P[2]);
                 mesh.scale.set(part.S[0], part.S[1], part.S[2]);
                 mesh.rotation.set(part.R[0] * DEG, part.R[1] * DEG, part.R[2] * DEG);

@@ -1,12 +1,37 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { listMaps } from './api';
+import { listBackups, readBackup, deleteBackup } from './backup';
 
-export default function StartScreen({ onOpen, onCreate, onUpload }) {
+const ago = (ms) => {
+    const mins = Math.round((Date.now() - ms) / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}min ago`;
+    const hours = Math.round(mins / 60);
+    return hours < 48 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`;
+};
+
+export default function StartScreen({ onOpen, onCreate, onUpload, onRestore }) {
     const [mine, setMine] = useState([]);
     const [examples, setExamples] = useState([]);
     const [ttl, setTtl] = useState(24);
+    const [backups, setBackups] = useState(() => listBackups());
     const [error, setError] = useState('');
     const fileRef = useRef(null);
+
+    const restore = (name) => {
+        const parts = readBackup(name);
+        if (!parts) {
+            alert(`The local copy of ${name}.json could not be read.`);
+            return;
+        }
+        onRestore(name, parts);
+    };
+
+    const forget = (name) => {
+        if (!confirm(`Delete the copy of ${name}.json stored on this device?`)) return;
+        deleteBackup(name);
+        setBackups(listBackups());
+    };
 
     useEffect(() => {
         listMaps()
@@ -62,9 +87,27 @@ export default function StartScreen({ onOpen, onCreate, onUpload }) {
                 {error && <div style={{ color: '#e05252' }}>{error}</div>}
                 {mine.length > 0 && (
                     <>
-                        <h2>Your maps <span className="ttl-note">kept for {ttl}h, download what you want to keep</span></h2>
+                        <h2>Your maps in the cloud <span className="ttl-note">kept {ttl}h after each save</span></h2>
                         {mine.map((m) => (
                             <a key={m.name} onClick={() => onOpen(m.name)}>{m.name}.json</a>
+                        ))}
+                    </>
+                )}
+                {backups.length > 0 && (
+                    <>
+                        <h2>On this device <span className="ttl-note">a copy of every save, kept in this browser</span></h2>
+                        {backups.map((b) => (
+                            <div className="backup-row" key={b.name}>
+                                <a onClick={() => restore(b.name)}>{b.name}.json</a>
+                                <span className="ttl-note">{ago(b.savedAt)}</span>
+                                <button
+                                    className="forget"
+                                    title="Delete this local copy"
+                                    onClick={() => forget(b.name)}
+                                >
+                                    ×
+                                </button>
+                            </div>
                         ))}
                     </>
                 )}

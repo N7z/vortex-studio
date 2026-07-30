@@ -193,15 +193,19 @@ export default function Toolbar({
                         </ul>
                         <h4>Editing</h4>
                         <ul>
-                            <li><b>Left click</b> selects a part, tools on keys <b>1-4</b></li>
+                            <li><b>Left click</b> selects a part, <b>Ctrl+click</b> adds or removes one from the selection, <b>Ctrl+A</b> selects all</li>
+                            <li>Tools on keys <b>W</b> move, <b>E</b> rotate, <b>R</b> scale (or <b>1-4</b>), free while you are not flying</li>
+                            <li><b>Drag a part</b> to slide it around: it rests on whatever surface is under the pointer, and <b>R</b> while dragging turns it 90°</li>
+                            <li>New parts appear where you are looking, not at the origin</li>
                             <li>The checkboxes and values in the top bar snap moving and scaling (studs) and rotating (degrees)</li>
-                            <li><b>Ctrl+C / Ctrl+V</b> copy and paste, <b>Ctrl+D</b> duplicates in place, <b>Delete</b> removes</li>
-                            <li><b>Ctrl+Z</b> undoes the last action</li>
+                            <li><b>Ctrl+C / Ctrl+V</b> copy and paste, <b>Ctrl+D</b> duplicates in place, <b>Delete</b> removes. All of them work on the whole selection</li>
+                            <li><b>Ctrl+Z</b> undoes the last action, <b>Ctrl+Y</b> redoes it</li>
                             <li><b>Ctrl+S</b> saves</li>
                         </ul>
                         <h4>Your maps</h4>
                         <ul>
-                            <li>Saved maps live in your anonymous session for 24 hours</li>
+                            <li>Saved maps live in your anonymous session for 24 hours, counted from your last save</li>
+                            <li>Every save also keeps a copy in this browser, listed under <b>On this device</b> on the start screen</li>
                             <li>Use <b>Download</b> to keep a .json copy, and upload it back anytime</li>
                         </ul>
                     </div>

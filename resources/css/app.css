@@ -540,6 +540,21 @@ a.tool-btn { text-decoration: none; }
 .start h2 { font-size: 14px; font-weight: 400; color: #aaa; margin: 26px 0 12px; }
 .ttl-note { font-size: 11px; color: #6e6e78; margin-left: 8px; }
 
+.backup-row { display: flex; align-items: center; margin-bottom: 10px; }
+.backup-row a { margin-bottom: 0; }
+
+.start .forget {
+    margin-left: 10px;
+    padding: 0 5px;
+    border: none;
+    background: none;
+    color: #6e6e78;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+}
+.start .forget:hover { color: #e05252; }
+
 .start-footer {
     position: absolute;
     right: 34px;

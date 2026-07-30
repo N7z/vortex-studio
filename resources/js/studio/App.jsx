@@ -12,6 +12,7 @@ import {
     userPluginSource, isBuiltin, resetBuiltin,
 } from './plugins';
 import { loadMap, saveMap } from './api';
+import { writeBackup } from './backup';
 
 let nextId = 1;
 const withId = (part) => ({ ...part, _id: nextId++ });
@@ -43,8 +44,11 @@ export default function App() {
     const previewSeq = useRef(0);
     const [status, setStatus] = useState('');
     const clipboard = useRef(null);
+    const spawnRef = useRef(null);
+    const busyRef = useRef(false);
     const dirty = useRef(false);
     const history = useRef([]);
+    const future = useRef([]);
     const partsRef = useRef(parts);
     partsRef.current = parts;
 
@@ -203,6 +207,7 @@ export default function App() {
     const mutate = (fn) => {
         history.current.push(partsRef.current);
         if (history.current.length > 100) history.current.shift();
+        future.current = [];
         dirty.current = true;
         setParts(fn);
     };
@@ -210,8 +215,19 @@ export default function App() {
     const undo = useCallback(() => {
         const prev = history.current.pop();
         if (!prev) return;
+        future.current.push(partsRef.current);
+        if (future.current.length > 100) future.current.shift();
         dirty.current = true;
         setParts(prev);
+    }, []);
+
+    const redo = useCallback(() => {
+        const next = future.current.pop();
+        if (!next) return;
+        history.current.push(partsRef.current);
+        if (history.current.length > 100) history.current.shift();
+        dirty.current = true;
+        setParts(next);
     }, []);
 
     const open = async (name) => {
@@ -221,10 +237,23 @@ export default function App() {
             setMapName(name);
             setSelectedId(null);
             history.current = [];
+            future.current = [];
             dirty.current = false;
         } catch (e) {
             flash(String(e.message ?? e));
         }
+    };
+
+    // A local backup goes straight back into the editor, dirty, so the next save
+    // (manual or auto) puts it on the server again.
+    const restore = (name, data) => {
+        setParts(data.map(withId));
+        setMapName(name);
+        setSelectedIds([]);
+        history.current = [];
+        future.current = [];
+        dirty.current = true;
+        flash(`Restored ${name}.json from this device`);
     };
 
     const openUploaded = (name, data) => {
@@ -232,6 +261,7 @@ export default function App() {
         setMapName(name);
         setSelectedId(null);
         history.current = [];
+        future.current = [];
         dirty.current = true;
         flash(`Loaded upload as ${name}.json, Save to keep it`);
     };
@@ -255,20 +285,26 @@ export default function App() {
         setMapName(name);
         setSelectedId(null);
         history.current = [];
+        future.current = [];
         dirty.current = true;
     };
 
     const save = useCallback(async (auto) => {
         if (!mapName) return;
         const snapshot = partsRef.current;
+        const clean = snapshot.map(({ _id, ...rest }) => rest);
+        // Mirror locally first: the copy that matters most is the one for a save that
+        // is about to fail. A save also restarts the server-side 24h TTL for this map.
+        const backed = writeBackup(mapName, clean);
         try {
-            const clean = snapshot.map(({ _id, ...rest }) => rest);
             await saveMap(mapName, clean);
             // Edits made while the request was in flight must stay dirty.
             if (partsRef.current === snapshot) dirty.current = false;
             flash(auto === true ? 'Auto-saved' : `Saved ${mapName}.json`);
         } catch (e) {
-            flash(String(e.message ?? e));
+            flash(backed
+                ? `Server save failed (${e.message ?? e}), kept a copy on this device`
+                : String(e.message ?? e));
         }
     }, [mapName]);
 
@@ -294,7 +330,8 @@ export default function App() {
     };
 
     const addPart = (template) => {
-        const part = withId({ ...template, P: [...template.P], S: [...template.S], R: [...template.R] });
+        const P = spawnRef.current?.(template.S[1]) ?? [...template.P];
+        const part = withId({ ...template, P, S: [...template.S], R: [...template.R] });
         mutate((ps) => [...ps, part]);
         setSelectedId(part._id);
     };
@@ -348,6 +385,7 @@ export default function App() {
             if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable) return;
             if (e.ctrlKey && e.key.toLowerCase() === 's') { e.preventDefault(); save(); return; }
             if (e.ctrlKey && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
+            if (e.ctrlKey && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
             if (e.key === 'Delete' || e.key === 'Backspace') removeSelected();
             else if (e.ctrlKey && e.key.toLowerCase() === 'c') copy();
             else if (e.ctrlKey && e.key.toLowerCase() === 'v') paste();
@@ -360,6 +398,12 @@ export default function App() {
             else if (e.key === '2') setTool('move');
             else if (e.key === '3') setTool('rotate');
             else if (e.key === '4') setTool('scale');
+            else if (!e.ctrlKey && !e.altKey && !busyRef.current) {
+                const k = e.key.toLowerCase();
+                if (k === 'w') setTool('move');
+                else if (k === 'e') setTool('rotate');
+                else if (k === 'r') setTool('scale');
+            }
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
@@ -412,6 +456,8 @@ export default function App() {
                         mapName={mapName}
                         studs={studs}
                         preview={pluginPreview}
+                        spawnRef={spawnRef}
+                        busyRef={busyRef}
                     />
                     {activePlugin && mapName && (
                         <PluginPanel
@@ -425,7 +471,12 @@ export default function App() {
                         />
                     )}
                     {mapName && <span className="credit">Developed by zPaulinBRz</span>}
-                    {!mapName && <StartScreen onOpen={open} onCreate={createNew} onUpload={openUploaded} />}
+                    {!mapName && (
+                        <StartScreen
+                            onOpen={open} onCreate={createNew}
+                            onUpload={openUploaded} onRestore={restore}
+                        />
+                    )}
                     {status && <div className="statusbar">{status}</div>}
                 </div>
                 <div className="sidebar">
