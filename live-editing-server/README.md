@@ -1,4 +1,4 @@
-# Vortex Studio — live editing server
+# Paulin Studio — live editing server
 
 Websocket room server for the studio's **live team editing**. It is a plain Node
 process that lives in this repo for convenience only: Laravel never starts it, never

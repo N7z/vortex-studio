@@ -76,7 +76,7 @@ export default function StartScreen({
     return (
         <div className="start">
             <div className="start-scroll">
-                <h1>Vortex Studio</h1>
+                <h1>Paulin Studio</h1>
                 <a onClick={create}>Create new project</a>
                 <a onClick={pickFile}>Upload a map (.json)</a>
                 <input
@@ -125,7 +125,7 @@ export default function StartScreen({
                 ))}
             </div>
             <div className="start-footer">
-                <strong>This is NOT affiliated with https://playvortex.io.</strong> Vortex Studio is
+                <strong>This is NOT affiliated with https://playvortex.io.</strong> Paulin Studio is
                 an independent fan-made map editor that works right in your browser. We never ask
                 you to log in, create an account, or download anything: it simply edits map
                 .json files.
