@@ -62,6 +62,7 @@ export default function MenuBar({
     onAddPart, onAddSpawn,
     graphics, onGraphics,
     teamOpen, onToggleTeam,
+    statsOpen, onToggleStats,
     plugins, activePluginId, onTogglePlugin, onNewPlugin,
 }) {
     const [openMenu, setOpenMenu] = useState(null);
@@ -115,6 +116,7 @@ export default function MenuBar({
             { label: 'Studs', checked: !!graphics.studs, onClick: () => onGraphics({ studs: !graphics.studs }) },
             { label: 'Graphics...', onClick: () => setPop('gfx') },
             { label: 'Team panel', checked: !!teamOpen, onClick: onToggleTeam, disabled: !hasMap },
+            { label: 'Statistics', checked: !!statsOpen, onClick: onToggleStats },
         ]],
         ['Render', MODES.map(([value, label]) => ({
             label,

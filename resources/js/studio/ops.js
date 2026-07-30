@@ -7,6 +7,29 @@ export {
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 const VEC_DEFAULT = { P: [0, 0, 0], S: [1, 1, 1], R: [0, 0, 0] };
 
+const okType = (v) => typeof v === 'string' && !!v && v.length <= 32;
+const okColor = (v) => typeof v === 'string' && /^[0-9a-fA-F]{0,6}$/.test(v);
+const okTr = (v) => isNum(v) && v >= 0 && v <= 1;
+const hasShape = (p) => okType(p?.Shape) || okType(p?.Sh);
+
+export function fillPart(part, source) {
+    const out = { ...part };
+    if (!okType(out.T)) out.T = okType(source?.T) ? source.T : 'Part';
+    if (!okColor(out.C)) out.C = okColor(source?.C) ? source.C : 'a3a2a5';
+    if (!okTr(out.Tr)) out.Tr = okTr(source?.Tr) ? source.Tr : 0;
+    if (!hasShape(out)) {
+        if (okType(source?.Shape)) out.Shape = source.Shape;
+        else if (okType(source?.Sh)) out.Sh = source.Sh;
+        else out.Shape = 'Block';
+    }
+    for (const k of ['P', 'S', 'R']) {
+        const v = out[k];
+        if (!Array.isArray(v) || v.length !== 3 || !v.every(isNum)) out[k] = [...VEC_DEFAULT[k]];
+    }
+
+    return out;
+}
+
 export function repairParts(parts) {
     let fixed = 0;
     const out = parts.map((p) => {
@@ -14,27 +37,13 @@ export function repairParts(parts) {
         for (const k of PART_KEYS) if (k in p) clean[k] = p[k];
         let bad = Object.keys(p).some((k) => k !== '_id' && !PART_KEYS.includes(k));
 
-        if (typeof clean.T !== 'string' || !clean.T || clean.T.length > 32) {
-            clean.T = 'Part';
-            bad = true;
-        }
+        if (!okType(clean.T) || !okColor(clean.C) || !okTr(clean.Tr) || !hasShape(clean)) bad = true;
         for (const k of ['P', 'S', 'R']) {
             const v = clean[k];
-            if (!Array.isArray(v) || v.length !== 3 || !v.every(isNum)) {
-                clean[k] = [...VEC_DEFAULT[k]];
-                bad = true;
-            }
-        }
-        if ('C' in clean && (typeof clean.C !== 'string' || !/^[0-9a-fA-F]{0,6}$/.test(clean.C))) {
-            delete clean.C;
-            bad = true;
-        }
-        if ('Tr' in clean && (!isNum(clean.Tr) || clean.Tr < 0 || clean.Tr > 1)) {
-            delete clean.Tr;
-            bad = true;
+            if (!Array.isArray(v) || v.length !== 3 || !v.every(isNum)) bad = true;
         }
         for (const k of ['Shape', 'Sh']) {
-            if (k in clean && (typeof clean[k] !== 'string' || clean[k].length > 32)) {
+            if (k in clean && !okType(clean[k])) {
                 delete clean[k];
                 bad = true;
             }
@@ -46,7 +55,7 @@ export function repairParts(parts) {
 
         if (!bad) return p;
         fixed += 1;
-        return clean;
+        return fillPart(clean, null);
     });
 
     return { parts: out, fixed };

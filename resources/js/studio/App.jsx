@@ -7,6 +7,7 @@ import Properties from './Properties';
 import Viewport from './Viewport';
 import PluginPanel from './PluginPanel';
 import TabBar from './TabBar';
+import StatsPanel from './StatsPanel';
 import TeamPanel from './TeamPanel';
 import ScriptTab, { TEMPLATE } from './ScriptTab';
 import {
@@ -16,7 +17,8 @@ import {
 import { loadMap, saveMap } from './api';
 import { writeBackup } from './backup';
 import {
-    addOp, applyOp, invertOp, patchOp, removeOp, repairParts, stripIds, transformOp, withNewId,
+    addOp, applyOp, fillPart, invertOp, patchOp, removeOp, repairParts, stripIds,
+    transformOp, withNewId,
 } from './ops';
 import { loadGraphics, saveGraphics } from './graphics';
 import { roomFromUrl } from './live';
@@ -66,6 +68,8 @@ export default function App() {
     const [tabs, setTabs] = useState([]);
     const [activeTab, setActiveTab] = useState('game');
     const [teamOpen, setTeamOpen] = useState(false);
+    const [statsOpen, setStatsOpen] = useState(false);
+    const statsRef = useRef(null);
     const [joining, setJoining] = useState(() => roomFromUrl());
     const tabSeq = useRef(0);
     const previewSeq = useRef(0);
@@ -459,7 +463,7 @@ export default function App() {
                 for (const { part, replace } of made) {
                     if (replace && !taken) {
                         taken = true;
-                        updates.push({ id: target._id, ...part });
+                        updates.push({ id: target._id, ...fillPart(part, target) });
                         continue;
                     }
                     if (parts.length >= MAX_PLUGIN_PARTS
@@ -467,7 +471,7 @@ export default function App() {
                         capped = true;
                         break;
                     }
-                    parts.push(part);
+                    parts.push(fillPart(part, target));
                 }
                 if (capped) break;
             }
@@ -769,6 +773,7 @@ export default function App() {
                 onAddSpawn={() => addPart(NEW_SPAWN)}
                 graphics={graphics} onGraphics={changeGraphics}
                 teamOpen={teamOpen} onToggleTeam={() => setTeamOpen((o) => !o)}
+                statsOpen={statsOpen} onToggleStats={() => setStatsOpen((o) => !o)}
                 plugins={plugins} activePluginId={activePluginId}
                 onTogglePlugin={togglePlugin} onNewPlugin={openNewPluginTab}
             />
@@ -817,6 +822,7 @@ export default function App() {
                         selectMany={selectMany}
                         faces={faces}
                         showFaces={!!activePlugin?.usesFaces}
+                        statsRef={statsRef}
                         tool={tool}
                         snap={snap}
                         canEdit={canEdit}
@@ -854,6 +860,16 @@ export default function App() {
                             onGoLive={goLive}
                             onLeave={leaveSession}
                             onClose={() => setTeamOpen(false)}
+                        />
+                    )}
+                    {statsOpen && (
+                        <StatsPanel
+                            parts={parts}
+                            selectedIds={selectedIds}
+                            groups={groups}
+                            mapName={mapName}
+                            statsRef={statsRef}
+                            onClose={() => setStatsOpen(false)}
                         />
                     )}
                     {mapName && <span className="credit">Developed by zPaulinBRz</span>}

@@ -994,3 +994,30 @@ a.tool-btn { text-decoration: none; }
 .menu-sep { height: 1px; background: #26262e; margin: 4px 2px; }
 
 .menu-backdrop { z-index: 55; }
+
+.stats-panel { width: 214px; top: 46px; right: 10px; }
+.stats-panel .team-body { gap: 0; padding: 6px 10px 9px; }
+
+.stat-group {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #6a6a74;
+    margin: 8px 0 3px;
+}
+.stat-group:first-child { margin-top: 2px; }
+
+.stat-line {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 2px 0;
+}
+.stat-key { color: #8b8b95; white-space: nowrap; }
+.stat-val {
+    color: #dcdce2;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}

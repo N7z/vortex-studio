@@ -154,7 +154,7 @@ const readTransform = (m) => ({
 export default function Viewport({
     parts, selectedIds, setSelectedId, selectMany, tool, snap, onTransform, onTransformMany,
     mapName, graphics, preview, spawnRef, busyRef, canEdit = true, peers, onView,
-    faces, showFaces = false,
+    faces, showFaces = false, statsRef,
 }) {
     const mountRef = useRef(null);
     const ctx = useRef(null);
@@ -389,6 +389,7 @@ export default function Viewport({
                 dropBatch(inst);
                 batches.delete(key);
             }
+            c.loose = c.meshList.length - [...members.values()].reduce((n, l) => n + l.length, 0);
         };
 
         const bumpBatch = (mesh) => {
@@ -781,6 +782,9 @@ export default function Viewport({
         const viewDir = new THREE.Vector3();
         let raf;
         let last = performance.now();
+        let fpsMark = last;
+        let fpsCount = 0;
+        let fps = 0;
         const tick = () => {
             raf = requestAnimationFrame(tick);
             const now = performance.now();
@@ -897,6 +901,25 @@ export default function Viewport({
             }
 
             renderer.render(scene, camera);
+
+            fpsCount++;
+            if (now - fpsMark >= 500) {
+                fps = Math.round((fpsCount * 1000) / (now - fpsMark));
+                fpsCount = 0;
+                fpsMark = now;
+            }
+            if (c?.statsRef) {
+                const info = renderer.info.render;
+                c.statsRef.current = {
+                    fps,
+                    calls: info.calls,
+                    triangles: info.triangles,
+                    batches: batches.size,
+                    loose: c.loose ?? 0,
+                    textures: renderer.info.memory.textures,
+                    materials: c.sets.size,
+                };
+            }
         };
         tick();
 
