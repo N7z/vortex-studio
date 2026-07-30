@@ -18,6 +18,39 @@ Then point the editor at it with `VITE_LIVE_URL` in the studio's `.env`:
 VITE_LIVE_URL=ws://localhost:8787
 ```
 
+## In production: it has to be `wss://`
+
+A browser on an `https://` page may not open a `ws://` socket — it is blocked outright
+("This operation is insecure"), and no header or CSP directive permits it. So something
+in front of this process has to terminate TLS.
+
+`VITE_LIVE_URL` accepts either an absolute URL or a **bare path** (`/live`), in which
+case the host and the scheme come from the page itself — `wss://` in production and
+`ws://` locally, with one value to maintain. Note it is baked in at **build time**:
+changing it means `npm run build` and redeploying `public/build`.
+
+### Behind Cloudflare (`wss://ws.example.com`)
+
+The four things that actually bite:
+
+- **Port.** Cloudflare only proxies certain ports, and for `wss://` (443) the valid
+  origin ports are 443, 2053, 2083, 2087, 2096 and 8443 — **8787 is not one of them**,
+  and by default Cloudflare connects to the origin on the same port it received. Either
+  add an **Origin Rule** rewriting the destination port to 8787, or listen on 8443 and
+  point the client at `wss://ws.example.com:8443`.
+- **The DNS record must be proxied** (orange cloud). Grey cloud means the browser
+  reaches the origin directly over plain `ws://`, which is the error you started with.
+- **`ALLOWED_ORIGINS` is the page's origin, not the socket's.** The browser sends the
+  `Origin` of the site (`https://example.com`), never `ws.example.com`. Get this wrong
+  and the upgrade is refused with a 403 that looks like the server being down.
+- **SSL/TLS mode.** With this process on plain http, Cloudflare has to reach the origin
+  over http, which is *Flexible* — a zone-wide setting. Scope it to the websocket
+  hostname with a Configuration Rule, or install a Cloudflare **Origin CA certificate**
+  here and keep Full (strict).
+
+Cloudflare closes a WebSocket idle for ~100 s. That is already covered: the heartbeat
+pings every `HEARTBEAT_SECONDS` (25 by default), which counts as traffic.
+
 ## What it is responsible for
 
 Rooms are held **in memory** and are authoritative for the *order* of edits, nothing

@@ -1,9 +1,11 @@
 import { LuaFactory } from 'wasmoon';
 import preludeSrc from './prelude.lua?raw';
 import archimedesSrc from './archimedes.lua?raw';
+import imageMakerSrc from './imagemaker.lua?raw';
 
 const BUNDLED = [
     { id: 'archimedes', src: archimedesSrc },
+    { id: 'imagemaker', src: imageMakerSrc },
 ];
 
 const STORE_KEY = 'studio_user_plugins';
@@ -45,6 +47,7 @@ export async function compilePlugin(id, src, builtin = false) {
         if (!p.name) throw new Error('plugin.name is required');
         const luaPreview = lua.global.get('__preview');
         const luaClick = lua.global.get('__click');
+        const luaSetImage = lua.global.get('__set_image');
         const ui = toArray(p.ui).map((c) => ({ ...c }));
         return {
             id,
@@ -53,12 +56,20 @@ export async function compilePlugin(id, src, builtin = false) {
             icon: p.icon,
             ui,
             defaults: Object.fromEntries(
-                ui.filter((c) => c.type !== 'button').map((c) => [c.id, c.default]),
+                ui.filter((c) => c.type !== 'button' && c.type !== 'image')
+                    .map((c) => [c.id, c.default]),
             ),
             preview: async (part, values) =>
                 normPart(await luaPreview(JSON.stringify(part), JSON.stringify(values))),
-            click: async (btnId, part, values) =>
-                normPart(await luaClick(btnId, JSON.stringify(part), JSON.stringify(values))),
+            click: async (btnId, part, values) => {
+                const res = await luaClick(btnId, JSON.stringify(part), JSON.stringify(values));
+                if (res == null || typeof res !== 'object') return [];
+                const list = res.P !== undefined ? [res] : toArray(res);
+                return list.map(normPart).filter(Boolean);
+            },
+            setImage: async (img) => {
+                await luaSetImage(img?.w ?? 0, img?.h ?? 0, img?.data ?? '');
+            },
             close: () => lua.global.close(),
         };
     } catch (e) {

@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import {
     SelectIcon, MoveIcon, RotateIcon, ScaleIcon, PartIcon, SpawnIcon,
     CopyIcon, PasteIcon, DuplicateIcon, SaveIcon, DownloadIcon, HelpIcon, StatsIcon, StudsIcon, PlusIcon,
-    TeamIcon,
+    TeamIcon, GraphicsIcon,
 } from './icons';
 import { loadStats } from './api';
+import { PRESETS, SCALES, SHADOW_RES, presetName } from './graphics';
 import { PluginIcon } from './pluginIcons';
 
 function ago(ts) {
@@ -35,11 +36,11 @@ export default function Toolbar({
     hasSelection, hasClipboard, canEdit,
     onAddPart, onAddSpawn, onCopy, onPaste, onDuplicate,
     onSave, onDownload, canSave, canDownload,
-    studs, onToggleStuds,
+    graphics, onGraphics,
     plugins, activePluginId, onTogglePlugin, onNewPlugin,
     live, teamOpen, onToggleTeam, hasMap,
 }) {
-    const [pop, setPop] = useState(null); // null | 'help' | 'stats'
+    const [pop, setPop] = useState(null); // null | 'help' | 'stats' | 'gfx'
     const [stats, setStats] = useState(null);
 
     const toggleStats = () => {
@@ -48,6 +49,10 @@ export default function Toolbar({
         setStats(null);
         loadStats().then(setStats).catch(() => setStats({ error: true }));
     };
+
+    const presetNames = Object.keys(PRESETS);
+    const current = presetName(graphics);
+    const preset = { names: presetNames, current, index: presetNames.indexOf(current) };
 
     const numInput = (key) => (e) => {
         const v = parseFloat(e.target.value);
@@ -97,7 +102,11 @@ export default function Toolbar({
                     <SpawnIcon />
                     Spawn
                 </button>
-                <button className={`tool-btn ${studs ? 'active' : ''}`} onClick={onToggleStuds} title="Show stud textures on top faces">
+                <button
+                    className={`tool-btn ${graphics.studs ? 'active' : ''}`}
+                    onClick={() => onGraphics({ studs: !graphics.studs })}
+                    title="Show stud textures on top faces"
+                >
                     <StudsIcon />
                     Studs
                 </button>
@@ -161,6 +170,14 @@ export default function Toolbar({
                 </button>
             </div>
             <div className="group help-group">
+                <button
+                    className={`tool-btn ${pop === 'gfx' ? 'active' : ''}`}
+                    onClick={() => setPop((p) => (p === 'gfx' ? null : 'gfx'))}
+                    title="Graphics quality"
+                >
+                    <GraphicsIcon />
+                    Graphics
+                </button>
                 <button className={`tool-btn ${pop === 'stats' ? 'active' : ''}`} onClick={toggleStats}>
                     <StatsIcon />
                     Stats
@@ -170,6 +187,85 @@ export default function Toolbar({
                     Help
                 </button>
             </div>
+            {pop === 'gfx' && (
+                <>
+                    <div className="help-backdrop" onClick={() => setPop(null)} />
+                    <div className="help-pop gfx-pop">
+                        <h3>Graphics</h3>
+                        <div className="gfx-seg">
+                            <span
+                                className="gfx-seg-thumb"
+                                style={{
+                                    transform: `translateX(${Math.max(0, preset.index) * 100}%)`,
+                                    opacity: preset.index < 0 ? 0 : 1,
+                                }}
+                            />
+                            {preset.names.map((name) => (
+                                <button
+                                    key={name}
+                                    className={preset.current === name ? 'active' : ''}
+                                    onClick={() => onGraphics(PRESETS[name])}
+                                >
+                                    {name}
+                                </button>
+                            ))}
+                        </div>
+                        <label className="arch-check">
+                            <input
+                                type="checkbox"
+                                checked={graphics.shadows}
+                                onChange={(e) => onGraphics({ shadows: e.target.checked })}
+                            />
+                            Shadows
+                        </label>
+                        <div className="gfx-row">
+                            <span>Shadow detail</span>
+                            <select
+                                value={graphics.shadowRes}
+                                disabled={!graphics.shadows}
+                                onChange={(e) => onGraphics({ shadowRes: Number(e.target.value) })}
+                            >
+                                {SHADOW_RES.map(([v, label]) => (
+                                    <option key={v} value={v}>{label}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="gfx-row">
+                            <span>Render resolution</span>
+                            <select
+                                value={graphics.scale}
+                                onChange={(e) => onGraphics({ scale: Number(e.target.value) })}
+                            >
+                                {SCALES.map(([v, label]) => (
+                                    <option key={v} value={v}>{label}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <label className="arch-check">
+                            <input
+                                type="checkbox"
+                                checked={graphics.studs}
+                                onChange={(e) => onGraphics({ studs: e.target.checked })}
+                            />
+                            Stud textures
+                        </label>
+                        <label className="arch-check">
+                            <input
+                                type="checkbox"
+                                checked={graphics.grid}
+                                onChange={(e) => onGraphics({ grid: e.target.checked })}
+                            />
+                            Ground grid
+                        </label>
+                        <h4>Cost</h4>
+                        <ul>
+                            <li><b>Shadows</b> draw every part twice</li>
+                            <li><b>Stud textures</b> cost one texture per part</li>
+                            <li><b>Render resolution</b> loses the least detail per frame saved</li>
+                        </ul>
+                    </div>
+                </>
+            )}
             {pop === 'stats' && (
                 <>
                     <div className="help-backdrop" onClick={() => setPop(null)} />
@@ -215,8 +311,11 @@ export default function Toolbar({
                             <li>New parts appear where you are looking, not at the origin</li>
                             <li>The checkboxes and values in the top bar snap moving and scaling (studs) and rotating (degrees)</li>
                             <li><b>Ctrl+C / Ctrl+V</b> copy and paste, <b>Ctrl+D</b> duplicates in place, <b>Delete</b> removes. All of them work on the whole selection</li>
+                            <li><b>Ctrl+G</b> groups the selection, <b>Ctrl+Shift+G</b> ungroups. Click a group to select it, double-click to rename</li>
+                            <li>Groups are Explorer-only: nothing changes in the map, and they are stored in this browser</li>
                             <li><b>Ctrl+Z</b> undoes the last action, <b>Ctrl+Y</b> redoes it</li>
                             <li><b>Ctrl+S</b> saves</li>
+                            <li><b>Graphics</b> drops quality on heavy maps. Shadows off is the biggest win</li>
                         </ul>
                         <h4>Building together</h4>
                         <ul>

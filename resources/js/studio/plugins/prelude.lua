@@ -89,6 +89,23 @@ end
 
 Icons = setmetatable({}, { __index = function(_, key) return key end })
 
+Image = nil
+
+function __set_image(w, h, data)
+    if data == nil or data == '' or w == nil or w < 1 or h < 1 then
+        Image = nil
+        return
+    end
+    local img = { w = math.floor(w), h = math.floor(h), data = data }
+    function img.pixel(x, y)
+        x, y = math.floor(x), math.floor(y)
+        if x < 0 or y < 0 or x >= img.w or y >= img.h then return nil, 0 end
+        local i = (y * img.w + x) * 8 + 1
+        return data:sub(i, i + 5), tonumber(data:sub(i + 6, i + 7), 16) or 255
+    end
+    Image = img
+end
+
 function __preview(part_json, values_json)
     if plugin == nil or plugin.preview == nil then return nil end
     return plugin.preview(json.decode(part_json), json.decode(values_json))

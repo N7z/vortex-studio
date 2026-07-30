@@ -1,3 +1,4 @@
+import { ChevronRight, Folder, MonitorCog } from 'lucide-react';
 import React from 'react';
 
 const S = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' };
@@ -114,6 +115,12 @@ export const LightingIcon = () => (
         <path d="M9 3h6l-2 8h4L8 22l2-9H6z" />
     </svg>
 );
+
+export const GraphicsIcon = () => <MonitorCog strokeWidth={1.8} />;
+
+export const FolderIcon = () => <Folder size={14} strokeWidth={2} color="#d9b45b" fill="#d9b45b" />;
+
+export const ChevronIcon = () => <ChevronRight strokeWidth={2.4} />;
 
 export const cubeIcon = (color) => (
     <svg viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8">

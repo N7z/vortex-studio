@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Toolbar from './Toolbar';
 import StartScreen from './StartScreen';
 import Explorer from './Explorer';
@@ -17,8 +17,13 @@ import { writeBackup } from './backup';
 import {
     addOp, applyOp, invertOp, patchOp, removeOp, stripIds, transformOp, withNewId,
 } from './ops';
+import { loadGraphics, saveGraphics } from './graphics';
 import { roomFromUrl } from './live';
 import useLive from './useLive';
+import { decodeImage, imageMeta } from './image';
+import {
+    addGroup, forgetGroups, loadGroups, pruneGroups, removeGroups, saveGroups, ungroupIds,
+} from './groups';
 
 const HISTORY_LIMIT = 100;
 
@@ -38,11 +43,13 @@ export default function App() {
     const [selectedIds, setSelectedIds] = useState([]);
     const [tool, setTool] = useState('select');
     const [snap, setSnap] = useState({ moveOn: true, move: 1, rotateOn: true, rotate: 15 });
-    const [studs, setStuds] = useState(() => localStorage.getItem('studio_studs') !== '0');
+    const [graphics, setGraphics] = useState(loadGraphics);
     const [plugins, setPlugins] = useState([]);
     const [activePluginId, setActivePluginId] = useState(null);
     const [pluginValues, setPluginValues] = useState({});
     const [pluginPreview, setPluginPreview] = useState(null);
+    const [pluginImages, setPluginImages] = useState({});
+    const [groups, setGroups] = useState([]);
     const [tabs, setTabs] = useState([]);
     const [activeTab, setActiveTab] = useState('game');
     const [teamOpen, setTeamOpen] = useState(false);
@@ -68,6 +75,7 @@ export default function App() {
         setParts(data);
         setMapName(name);
         setSelectedIds([]);
+        setGroups(loadGroups(name, data));
         history.current = [];
         future.current = [];
         dirty.current = isDirty;
@@ -114,12 +122,24 @@ export default function App() {
 
     // The last id added is the "primary" selection: what Properties and plugins act on.
     const selectedId = selectedIds.length ? selectedIds[selectedIds.length - 1] : null;
+    const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
     const selected = parts.find((p) => p._id === selectedId) ?? null;
-    const selectedParts = selectedIds.length > 1
-        ? parts.filter((p) => selectedIds.includes(p._id))
-        : (selected ? [selected] : []);
+    const selectedParts = useMemo(() => (
+        selectedIds.length > 1
+            ? parts.filter((p) => selectedSet.has(p._id))
+            : (selected ? [selected] : [])
+    ), [parts, selectedSet, selected]);
+    const groupSelected = useMemo(() => (
+        selectedIds.length > 1 && groups.some((g) => {
+            if (g.ids.length !== selectedIds.length) return false;
+            const ids = new Set(g.ids);
+            return selectedIds.every((id) => ids.has(id));
+        })
+    ), [groups, selectedIds]);
+    const pluginTarget = groupSelected ? null : selected;
     const activePlugin = plugins.find((p) => p.id === activePluginId) ?? null;
     const activeValues = activePlugin ? pluginValues[activePlugin.id] ?? activePlugin.defaults : null;
+    const activeImages = activePlugin ? pluginImages[activePlugin.id] ?? null : null;
 
     const select = useCallback((id, additive) => {
         setSelectedIds((cur) => {
@@ -129,6 +149,14 @@ export default function App() {
         });
     }, []);
     const setSelectedId = select;
+
+    const selectMany = useCallback((ids, additive) => {
+        setSelectedIds((cur) => {
+            if (!additive) return [...ids];
+            const seen = new Set(cur);
+            return [...cur, ...ids.filter((id) => !seen.has(id))];
+        });
+    }, []);
 
     const edit = useCallback((op) => {
         if (!canEditRef.current) {
@@ -187,14 +215,14 @@ export default function App() {
 
     useEffect(() => {
         const seq = ++previewSeq.current;
-        if (!activePlugin || !selected) {
+        if (!activePlugin || !pluginTarget) {
             setPluginPreview(null);
             return;
         }
-        activePlugin.preview(stripId(selected), activeValues)
+        activePlugin.preview(stripId(pluginTarget), activeValues)
             .then((p) => { if (previewSeq.current === seq) setPluginPreview(p); })
             .catch(() => { if (previewSeq.current === seq) setPluginPreview(null); });
-    }, [activePlugin, selected, activeValues]);
+    }, [activePlugin, pluginTarget, activeValues, activeImages]);
 
     useEffect(() => {
         if (live.live && live.canEdit) live.sendSelection(selectedIds);
@@ -293,23 +321,77 @@ export default function App() {
         return res.error ?? null;
     };
 
-    const pluginButton = async (btnId) => {
-        if (!activePlugin || !selected) return;
+    const pickImage = async (ctrlId, file) => {
+        if (!activePlugin) return;
+        const pluginId = activePlugin.id;
         try {
-            const part = await activePlugin.click(btnId, stripId(selected), activeValues);
-            if (!part) return;
-            const placed = withNewId(part);
-            edit(addOp([placed]));
-            setSelectedId(placed._id);
+            const img = await decodeImage(file);
+            await activePlugin.setImage(img);
+            setPluginImages((all) => ({
+                ...all,
+                [pluginId]: { ...(all[pluginId] ?? {}), [ctrlId]: imageMeta(img) },
+            }));
+        } catch (e) {
+            flash(`Could not read ${file.name}: ${e.message ?? e}`);
+        }
+    };
+
+    const pluginButton = async (btnId) => {
+        if (!activePlugin || !pluginTarget) return;
+        try {
+            const parts = await activePlugin.click(btnId, stripId(pluginTarget), activeValues);
+            if (!parts.length) return;
+            const placed = parts.map(withNewId);
+            edit(addOp(placed));
+            setSelectedIds(placed.map((p) => p._id));
+            if (placed.length > 1) {
+                const label = pluginImages[activePlugin.id]?.img?.name;
+                setGroups((gs) => addGroup(
+                    gs,
+                    label ? `${activePlugin.name}: ${label}` : activePlugin.name,
+                    placed.map((p) => p._id),
+                ));
+                flash(`${activePlugin.name} placed ${placed.length} parts, grouped in the explorer`);
+            }
         } catch (e) {
             flash(String(e.message ?? e));
         }
     };
 
-    const toggleStuds = () => {
-        setStuds((s) => {
-            localStorage.setItem('studio_studs', s ? '0' : '1');
-            return !s;
+    const groupSelection = useCallback(() => {
+        if (selectedIds.length < 2) return;
+        setGroups((gs) => addGroup(gs, `Group ${gs.length + 1}`, selectedIds));
+        flash(`Grouped ${selectedIds.length} parts`);
+    }, [selectedIds, flash]);
+
+    const ungroupSelection = useCallback(() => {
+        if (!selectedIds.length) return;
+        setGroups((gs) => {
+            const next = ungroupIds(gs, selectedIds);
+            if (next.length !== gs.length) flash('Ungrouped');
+            return next;
+        });
+    }, [selectedIds, flash]);
+
+    const ungroup = (groupId) => setGroups((gs) => removeGroups(gs, [groupId]));
+
+    const renameGroup = (groupId, name) => {
+        setGroups((gs) => gs.map((g) => (g.id === groupId ? { ...g, name } : g)));
+    };
+
+    useEffect(() => {
+        setGroups((gs) => pruneGroups(gs, parts));
+    }, [parts]);
+
+    useEffect(() => {
+        if (mapName) saveGroups(mapName, groups, parts);
+    }, [mapName, groups, parts]);
+
+    const changeGraphics = (patch) => {
+        setGraphics((g) => {
+            const next = { ...g, ...patch };
+            saveGraphics(next);
+            return next;
         });
     };
 
@@ -345,6 +427,7 @@ export default function App() {
     };
 
     const createNew = (name) => {
+        forgetGroups(name);
         resetDocument(name, [
             withNewId({ Tr: 0, P: [0, 0, 0], S: [200, 2, 200], R: [0, 0, 0], T: 'Part', Shape: 'Block', C: '7d7d85' }),
             withNewId(NEW_SPAWN),
@@ -471,6 +554,11 @@ export default function App() {
             else if (e.ctrlKey && e.key.toLowerCase() === 'c') copy();
             else if (e.ctrlKey && e.key.toLowerCase() === 'v') paste();
             else if (e.ctrlKey && e.key.toLowerCase() === 'd') { e.preventDefault(); duplicate(); }
+            else if (e.ctrlKey && e.key.toLowerCase() === 'g') {
+                e.preventDefault();
+                if (e.shiftKey) ungroupSelection();
+                else groupSelection();
+            }
             else if (e.ctrlKey && e.key.toLowerCase() === 'a') {
                 e.preventDefault();
                 setSelectedIds(partsRef.current.map((p) => p._id));
@@ -488,7 +576,8 @@ export default function App() {
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [save, removeSelected, undo, redo, selected, selectedIds, parts, activeTab, tabs]);
+    }, [save, removeSelected, undo, redo, selected, selectedIds, parts, activeTab, tabs,
+        groupSelection, ungroupSelection]);
 
     return (
         <div className="studio">
@@ -502,7 +591,7 @@ export default function App() {
                 onCopy={copy} onPaste={paste} onDuplicate={duplicate}
                 onSave={save} onDownload={download}
                 canSave={canSaveToServer} canDownload={!!mapName}
-                studs={studs} onToggleStuds={toggleStuds}
+                graphics={graphics} onGraphics={changeGraphics}
                 plugins={plugins} activePluginId={activePluginId} onTogglePlugin={togglePlugin}
                 onNewPlugin={openNewPluginTab}
                 live={live} teamOpen={teamOpen}
@@ -542,7 +631,7 @@ export default function App() {
                         onTransform={updateSelected}
                         onTransformMany={transformMany}
                         mapName={mapName}
-                        studs={studs}
+                        graphics={graphics}
                         preview={pluginPreview}
                         spawnRef={spawnRef}
                         busyRef={busyRef}
@@ -552,7 +641,10 @@ export default function App() {
                             plugin={activePlugin}
                             values={activeValues}
                             setValue={setPluginValue}
-                            hasSelection={!!selected}
+                            images={activeImages}
+                            onImage={pickImage}
+                            hasSelection={!!pluginTarget}
+                            targetNote={groupSelected ? 'Select a part, not a group' : null}
                             onButton={pluginButton}
                             onEdit={() => openEditTab(activePlugin.id)}
                             onClose={() => setActivePluginId(null)}
@@ -581,6 +673,10 @@ export default function App() {
                         parts={parts}
                         selectedIds={selectedIds}
                         setSelectedId={setSelectedId}
+                        selectMany={selectMany}
+                        groups={groups}
+                        onUngroup={ungroup}
+                        onRenameGroup={renameGroup}
                         mapName={mapName}
                     />
                     <Properties

@@ -1,11 +1,15 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { PencilIcon } from './icons';
 import NumberInput from './NumberInput';
 
-export default function PluginPanel({ plugin, values, setValue, hasSelection, onButton, onEdit, onClose }) {
+export default function PluginPanel({
+    plugin, values, setValue, images, onImage, hasSelection, targetNote, onButton, onEdit, onClose,
+}) {
+    const pickers = useRef({});
     const numbers = plugin.ui.filter((c) => c.type === 'number');
     const checks = plugin.ui.filter((c) => c.type === 'checkbox');
     const buttons = plugin.ui.filter((c) => c.type === 'button');
+    const pictures = plugin.ui.filter((c) => c.type === 'image');
 
     return (
         <div className="arch-pop">
@@ -16,6 +20,35 @@ export default function PluginPanel({ plugin, values, setValue, hasSelection, on
                 </button>
                 <button className="arch-close" onClick={onClose} title="Close">×</button>
             </div>
+            {pictures.map((c) => {
+                const img = images?.[c.id] ?? null;
+                return (
+                    <div className="arch-image" key={c.id}>
+                        <input
+                            type="file"
+                            accept="image/*"
+                            ref={(el) => { pickers.current[c.id] = el; }}
+                            onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) onImage(c.id, file);
+                                e.target.value = '';
+                            }}
+                        />
+                        <button onClick={() => pickers.current[c.id]?.click()}>
+                            {img ? 'Choose another image' : `Choose ${c.label.toLowerCase()}...`}
+                        </button>
+                        {img && (
+                            <div className="arch-image-info">
+                                <img src={img.url} alt={img.name} />
+                                <div>
+                                    <span className="name" title={img.name}>{img.name}</span>
+                                    <span className="dim">{img.srcW}×{img.srcH}</span>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            })}
             {numbers.length > 0 && (
                 <div className="arch-axes">
                     {numbers.map((c) => (
@@ -45,10 +78,12 @@ export default function PluginPanel({ plugin, values, setValue, hasSelection, on
                     key={c.id}
                     onClick={() => onButton(c.id)}
                     disabled={!hasSelection}
+                    title={targetNote ?? undefined}
                 >
                     {c.label}
                 </button>
             ))}
+            {targetNote && <div className="arch-note">{targetNote}</div>}
         </div>
     );
 }

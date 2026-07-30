@@ -45,10 +45,12 @@ const COMPLETIONS = [
     prop('plugin.name', 'display name shown in the toolbar'),
     prop('plugin.icon', 'any lucide icon, e.g. Icons.DraftingCompass'),
     prop('Icons', 'every lucide icon: Icons.Box, Icons.Spline, ...'),
-    prop('plugin.ui', 'list of controls: number, checkbox, button'),
+    prop('plugin.ui', 'list of controls: number, checkbox, button, image'),
     fn('plugin.preview(part, values)', 'return the ghost part shown while a part is selected'),
-    fn('plugin.click(id, part, values)', 'button handler; return a part to place it'),
+    fn('plugin.click(id, part, values)', 'button handler; return a part, or a list of parts'),
     fn('json.decode(s)', 'parse a JSON string into a table'),
+    prop('Image', 'the picked image, or nil: Image.w, Image.h, Image.pixel(x, y)'),
+    fn('Image.pixel(x, y)', '0-based, top-left origin; returns "rrggbb", alpha 0-255'),
     prop('part.P', 'position {x, y, z}'),
     prop('part.S', 'size {x, y, z}'),
     prop('part.R', 'rotation in degrees {x, y, z}'),
@@ -177,7 +179,9 @@ function ScriptHelp() {
 { id = "flip", type = "checkbox",
   label = "Flip", default = false },
 { id = "go", type = "button",
-  label = "Place" },`}</pre>
+  label = "Place" },
+{ id = "pic", type = "image",
+  label = "Image" },`}</pre>
             <p>
                 Values are read back by <code>id</code>: a control with <code>id = "dy"</code>
                 arrives as <code>values.dy</code>.
@@ -189,7 +193,21 @@ function ScriptHelp() {
             </p>
             <p>
                 <code>plugin.click(id, part, values)</code> runs when a button is pressed, with
-                the button's <code>id</code>. Return a part to add it to the map.
+                the button's <code>id</code>. Return a part, or a list of parts. A list arrives
+                selected and grouped in the Explorer.
+            </p>
+            <h4>Images</h4>
+            <p>
+                An <code>image</code> control has no <code>values</code> entry. The picked file
+                arrives as the global <code>Image</code>, <code>nil</code> when none is picked:
+            </p>
+            <pre>{`Image.w, Image.h  -- pixels
+local hex, a =
+  Image.pixel(x, y)  -- 0-based`}</pre>
+            <p>
+                <code>hex</code> goes straight into <code>part.C</code>, <code>a</code> is alpha
+                0-255. The grid is capped at 128 on its longest side; sample it down for coarser
+                output.
             </p>
             <h4>A part</h4>
             <pre>{`part.P  -- position {x, y, z}

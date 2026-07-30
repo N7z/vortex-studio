@@ -1,8 +1,29 @@
 const DEFAULT_URL = 'ws://localhost:8787';
 const RETRY_MS = [500, 1000, 2000, 4000, 8000];
 const SELECTION_THROTTLE_MS = 80;
+const SELECTION_LIMIT = 256;
 
-export const liveUrl = () => import.meta.env?.VITE_LIVE_URL || DEFAULT_URL;
+// A browser on an https page may not open a ws:// socket, so VITE_LIVE_URL is allowed
+// to be a bare path ("/live"): the host and the scheme then come from the page, which
+// is what makes a reverse-proxied session work in production and plain http work locally.
+export function liveUrl() {
+    const configured = import.meta.env?.VITE_LIVE_URL?.trim();
+    if (!configured) return DEFAULT_URL;
+
+    const secure = window.location.protocol === 'https:';
+    if (/^https?:\/\//i.test(configured)) {
+        return configured.replace(/^http/i, 'ws');
+    }
+    if (/^wss?:\/\//i.test(configured)) return configured;
+
+    const path = configured.startsWith('/') ? configured : `/${configured}`;
+
+    return `${secure ? 'wss:' : 'ws:'}//${window.location.host}${path}`;
+}
+
+export function blockedAsInsecure(url) {
+    return window.location.protocol === 'https:' && /^ws:\/\//i.test(url);
+}
 
 export const roomFromUrl = () => {
     const code = new URLSearchParams(window.location.search).get('room');
@@ -71,10 +92,19 @@ export class LiveClient {
 
     connect() {
         this.closing = false;
+        const url = liveUrl();
+        if (blockedAsInsecure(url)) {
+            this.closing = true;
+            this.handlers.onStatus?.('offline');
+            this.handlers.onError?.('The live server must be wss:// on an https page.');
+            this.handlers.onGone?.();
+
+            return;
+        }
         this.handlers.onStatus?.(this.attempt ? 'reconnecting' : 'connecting');
         let ws;
         try {
-            ws = new WebSocket(liveUrl());
+            ws = new WebSocket(url);
         } catch (e) {
             this.handlers.onError?.(String(e.message ?? e));
             this.handlers.onStatus?.('offline');
@@ -212,7 +242,8 @@ export class LiveClient {
         this.selectionTimer = null;
     }
 
-    sendSelection(ids) {
+    sendSelection(all) {
+        const ids = all.length > SELECTION_LIMIT ? all.slice(0, SELECTION_LIMIT) : all;
         const key = ids.join(',');
         if (key === this.lastSelection) return;
         this.lastSelection = key;

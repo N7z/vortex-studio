@@ -2,9 +2,11 @@ import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
+import { PLACEHOLDER, makeMaterialPool, makePartGeometry, releaseStuds } from './parts3d';
 
 const TOOL_MODE = { move: 'translate', rotate: 'rotate', scale: 'scale' };
 const DEG = Math.PI / 180;
+const IDENTITY_Q = new THREE.Quaternion();
 
 const round = (v) => Math.round(v * 100) / 100;
 
@@ -60,6 +62,8 @@ function makeInletTexture() {
     });
 }
 
+const MAX_OUTLINES = 192;
+
 const readTransform = (m) => ({
     P: [round(m.position.x), round(m.position.y), round(m.position.z)],
     R: [round(m.rotation.x / DEG), round(m.rotation.y / DEG), round(m.rotation.z / DEG)],
@@ -72,12 +76,15 @@ const readTransform = (m) => ({
 
 export default function Viewport({
     parts, selectedIds, setSelectedId, tool, snap, onTransform, onTransformMany,
-    mapName, studs, preview, spawnRef, busyRef, canEdit = true, peers,
+    mapName, graphics, preview, spawnRef, busyRef, canEdit = true, peers,
 }) {
     const mountRef = useRef(null);
     const ctx = useRef(null);
     const partsRef = useRef(parts);
     partsRef.current = parts;
+    const gfxRef = useRef(graphics);
+    gfxRef.current = graphics;
+    const studs = graphics.studs;
 
     useEffect(() => {
         const mount = mountRef.current;
@@ -126,6 +133,10 @@ export default function Viewport({
         const selMat = new THREE.LineBasicMaterial({
             color: 0x2f7fd9, depthTest: false, depthWrite: false,
         });
+        const bulkMin = new THREE.Vector3();
+        const bulkMax = new THREE.Vector3();
+        const bulkPos = new THREE.Vector3();
+        const bulkSize = new THREE.Vector3();
         const selBoxes = [];
         const selBox = () => {
             const b = new THREE.LineSegments(selEdges, selMat);
@@ -252,19 +263,21 @@ export default function Viewport({
             const c = ctx.current;
             if (!c) return null;
             castPointer(e);
-            const hits = raycaster.intersectObjects([...c.meshes.values()], false);
+            const hits = raycaster.intersectObjects(c.meshList, false);
             if (!hits.length) return null;
             const tied = hits.filter((h) => h.distance <= hits[0].distance + 0.01);
             const selected = tied.find((h) => c.selectedMeshes.includes(h.object));
             return (selected ?? hits[0]).object;
         };
 
+        const pickBuf = [];
         const pickSurface = (e, exclude) => {
             const c = ctx.current;
             if (!c) return null;
             castPointer(e);
-            const targets = [...c.meshes.values()].filter((m) => !exclude.has(m));
-            const hits = raycaster.intersectObjects(targets, false);
+            pickBuf.length = 0;
+            for (const m of c.meshList) if (!exclude.has(m)) pickBuf.push(m);
+            const hits = raycaster.intersectObjects(pickBuf, false);
             if (hits.length) return hits[0].point.clone();
             return raycaster.ray.intersectPlane(dragPlane, planeHit) ? planeHit.clone() : null;
         };
@@ -378,7 +391,7 @@ export default function Viewport({
                 -((e.clientY - rect.top) / rect.height) * 2 + 1,
             );
             raycaster.setFromCamera(ndc, camera);
-            const hits = raycaster.intersectObjects(c.meshes ? [...c.meshes.values()] : [], false);
+            const hits = raycaster.intersectObjects(c.meshList, false);
             c.setSelectedId(hits.length ? hits[0].object.userData.id : null, e.ctrlKey || e.metaKey);
         };
         renderer.domElement.addEventListener('pointerdown', onDown);
@@ -396,7 +409,7 @@ export default function Viewport({
         const spawnPoint = (height) => {
             const c = ctx.current;
             raycaster.setFromCamera(spawnNdc, camera);
-            const hits = raycaster.intersectObjects(c?.meshes ? [...c.meshes.values()] : [], false);
+            const hits = raycaster.intersectObjects(c?.meshList ?? [], false);
             if (hits.length && hits[0].distance <= 400) {
                 const p = hits[0].point;
                 return [round(p.x), round(p.y + height / 2), round(p.z)];
@@ -420,9 +433,13 @@ export default function Viewport({
             camera.updateProjectionMatrix();
             renderer.setSize(w, h);
         };
+        const applyScale = () => {
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2) * (gfxRef.current.scale ?? 1));
+            resize();
+        };
         const ro = new ResizeObserver(resize);
         ro.observe(mount);
-        resize();
+        applyScale();
 
         const fwd = new THREE.Vector3();
         const right = new THREE.Vector3();
@@ -455,18 +472,51 @@ export default function Viewport({
             orbit.update();
             const c = ctx.current;
             const sel = c?.selectedMeshes ?? [];
-            for (let i = 0; i < sel.length; i++) {
-                const b = selBoxes[i] ?? selBox();
-                sel[i].updateWorldMatrix(true, false);
-                b.matrix.copy(sel[i].matrixWorld);
+            let shown = 0;
+            if (sel.length > MAX_OUTLINES) {
+                bulkMin.set(Infinity, Infinity, Infinity);
+                bulkMax.set(-Infinity, -Infinity, -Infinity);
+                for (const m of sel) {
+                    const { position: p, scale: s } = m;
+                    bulkMin.set(
+                        Math.min(bulkMin.x, p.x - s.x / 2),
+                        Math.min(bulkMin.y, p.y - s.y / 2),
+                        Math.min(bulkMin.z, p.z - s.z / 2),
+                    );
+                    bulkMax.set(
+                        Math.max(bulkMax.x, p.x + s.x / 2),
+                        Math.max(bulkMax.y, p.y + s.y / 2),
+                        Math.max(bulkMax.z, p.z + s.z / 2),
+                    );
+                }
+                const b = selBoxes[0] ?? selBox();
+                bulkPos.addVectors(bulkMin, bulkMax).multiplyScalar(0.5);
+                bulkSize.subVectors(bulkMax, bulkMin);
+                bulkSize.set(
+                    Math.max(bulkSize.x, 0.05),
+                    Math.max(bulkSize.y, 0.05),
+                    Math.max(bulkSize.z, 0.05),
+                );
+                b.matrix.compose(bulkPos, IDENTITY_Q, bulkSize);
                 b.visible = true;
+                shown = 1;
+            } else {
+                for (let i = 0; i < sel.length; i++) {
+                    const b = selBoxes[i] ?? selBox();
+                    sel[i].updateWorldMatrix(true, false);
+                    b.matrix.copy(sel[i].matrixWorld);
+                    b.visible = true;
+                }
+                shown = sel.length;
             }
-            for (let i = sel.length; i < selBoxes.length; i++) selBoxes[i].visible = false;
+            for (let i = shown; i < selBoxes.length; i++) selBoxes[i].visible = false;
 
             let n = 0;
             for (const peer of c?.peers ?? []) {
+                if (n >= MAX_OUTLINES) break;
                 const mat = peerMat(peer.color);
                 for (const id of peer.selection) {
+                    if (n >= MAX_OUTLINES) break;
                     const mesh = c.meshes.get(id);
                     if (!mesh) continue;
                     const b = peerBoxes[n] ?? peerBox();
@@ -491,13 +541,18 @@ export default function Viewport({
 
         ctx.current = {
             scene, camera, renderer, orbit, gizmo, studTex, inletTex, pivot, spawnPoint,
+            sun, grid, applyScale,
             isDragging: () => drag !== null,
             isDraggingMesh: (m) => !!drag?.meshes.includes(m),
             snapMove: 0,
+            shadows: gfxRef.current.shadows,
             canEdit: true,
             peers: [],
             meshes: new Map(),
-            geometry: new THREE.BoxGeometry(1, 1, 1),
+            meshList: [],
+            geometry: makePartGeometry(),
+            mats: makeMaterialPool(),
+            studsOn: gfxRef.current.studs,
             selectedMeshes: [],
             onTransform: () => {},
             onTransformMany: () => {},
@@ -524,6 +579,8 @@ export default function Viewport({
             selMat.dispose();
             studTex.dispose();
             inletTex.dispose();
+            ctx.current.mats.dispose();
+            ctx.current.geometry.dispose();
             ctx.current.previewMesh?.material.dispose();
             renderer.dispose();
             mount.removeChild(renderer.domElement);
@@ -546,72 +603,121 @@ export default function Viewport({
     useEffect(() => {
         const c = ctx.current;
         if (!c) return;
+        const g = graphics;
+        const was = c.shadows;
+        c.shadows = g.shadows;
+        c.renderer.shadowMap.enabled = g.shadows;
+        c.sun.castShadow = g.shadows;
+        c.grid.visible = g.grid;
+        if (c.sun.shadow.mapSize.x !== g.shadowRes) {
+            c.sun.shadow.mapSize.set(g.shadowRes, g.shadowRes);
+            c.sun.shadow.map?.dispose();
+            c.sun.shadow.map = null;
+        }
+        for (const mesh of c.meshes.values()) {
+            mesh.castShadow = g.shadows;
+            mesh.receiveShadow = g.shadows;
+            if (was !== g.shadows) {
+                if (Array.isArray(mesh.material)) {
+                    for (const m of mesh.material) m.needsUpdate = true;
+                } else {
+                    mesh.material.needsUpdate = true;
+                }
+            }
+        }
+        c.renderer.shadowMap.needsUpdate = true;
+        c.applyScale();
+    }, [graphics]);
+
+    useEffect(() => {
+        const c = ctx.current;
+        if (!c) return;
+        const rebuild = c.studsOn !== studs;
         const alive = new Set();
+
+        const setBase = (mesh, part) => {
+            const want = c.mats.acquire(part.C ?? 'a3a2a5', 1 - (part.Tr ?? 0));
+            const had = mesh.userData.base;
+            if (had === want) {
+                c.mats.release(want);
+            } else {
+                if (had) c.mats.release(had);
+                mesh.userData.base = want;
+            }
+            return want;
+        };
+
         for (const part of parts) {
             alive.add(part._id);
             let mesh = c.meshes.get(part._id);
             if (!mesh) {
-                const base = new THREE.MeshStandardMaterial();
-                const studMap = c.studTex.clone();
-                const inletMap = c.inletTex.clone();
-                const top = new THREE.MeshStandardMaterial({ map: studMap });
-                const bottom = new THREE.MeshStandardMaterial({ map: inletMap });
-                mesh = new THREE.Mesh(c.geometry, [base, base, top, bottom, base, base]);
-                mesh.castShadow = true;
-                mesh.receiveShadow = true;
+                mesh = new THREE.Mesh(c.geometry, PLACEHOLDER);
+                mesh.castShadow = c.shadows;
+                mesh.receiveShadow = c.shadows;
                 mesh.userData.id = part._id;
-                mesh.userData.base = base;
-                mesh.userData.top = top;
-                mesh.userData.bottom = bottom;
-                mesh.userData.studMap = studMap;
-                mesh.userData.inletMap = inletMap;
                 c.scene.add(mesh);
                 c.meshes.set(part._id, mesh);
-            }
-            // Only the meshes this user is actually moving are left alone: everything
-            // else must follow the state, including a part someone else just moved.
-            const held = c.gizmo.dragging
-                ? (c.gizmo.object === mesh || mesh.parent === c.pivot)
-                : c.isDraggingMesh(mesh);
-            if (!held) {
-                mesh.position.set(part.P[0], part.P[1], part.P[2]);
-                mesh.scale.set(part.S[0], part.S[1], part.S[2]);
-                mesh.rotation.set(part.R[0] * DEG, part.R[1] * DEG, part.R[2] * DEG);
-            }
-            const { base, top, bottom, studMap, inletMap } = mesh.userData;
-            const tr = part.Tr ?? 0;
-            const wantTransparent = tr > 0;
-            for (const m of [base, top, bottom]) {
-                m.color.set(`#${part.C ?? 'a3a2a5'}`);
-                if (m.transparent !== wantTransparent) {
-                    m.transparent = wantTransparent;
-                    m.needsUpdate = true;
-                }
-                m.opacity = 1 - tr;
-            }
-            const rx = Math.max(1, Math.round(part.S[0]));
-            const rz = Math.max(1, Math.round(part.S[2]));
-            studMap.repeat.set(rx, rz);
-            inletMap.repeat.set(rx, rz);
-            for (const [m, map] of [[top, studMap], [bottom, inletMap]]) {
-                const wantMap = studs ? map : null;
-                if (m.map !== wantMap) {
-                    m.map = wantMap;
-                    m.needsUpdate = true;
+            } else {
+                if (!rebuild && mesh.userData.part === part) continue;
+                const held = c.gizmo.dragging
+                    ? (c.gizmo.object === mesh || mesh.parent === c.pivot)
+                    : c.isDraggingMesh(mesh);
+                if (held) {
+                    mesh.userData.part = part;
+                    setBase(mesh, part);
+                    continue;
                 }
             }
+            mesh.userData.part = part;
+            mesh.position.set(part.P[0], part.P[1], part.P[2]);
+            mesh.scale.set(part.S[0], part.S[1], part.S[2]);
+            mesh.rotation.set(part.R[0] * DEG, part.R[1] * DEG, part.R[2] * DEG);
+
+            const base = setBase(mesh, part);
+
+            if (!studs) {
+                if (mesh.material !== base) mesh.material = base;
+                releaseStuds(mesh);
+                continue;
+            }
+
+            if (!mesh.userData.top) {
+                mesh.userData.studMap = c.studTex.clone();
+                mesh.userData.inletMap = c.inletTex.clone();
+                mesh.userData.top = new THREE.MeshStandardMaterial({ map: mesh.userData.studMap });
+                mesh.userData.bottom = new THREE.MeshStandardMaterial({ map: mesh.userData.inletMap });
+                mesh.userData.slots = [base, mesh.userData.top, mesh.userData.bottom];
+            }
+            const { top, bottom, studMap, inletMap, slots } = mesh.userData;
+            slots[0] = base;
+            if (mesh.material !== slots) mesh.material = slots;
+            for (const m of [top, bottom]) {
+                m.color.copy(base.color);
+                if (m.transparent !== base.transparent) {
+                    m.transparent = base.transparent;
+                    m.needsUpdate = true;
+                }
+                m.opacity = base.opacity;
+            }
+            studMap.repeat.set(Math.max(1, Math.round(part.S[0])), Math.max(1, Math.round(part.S[2])));
+            inletMap.repeat.copy(studMap.repeat);
         }
+        c.studsOn = studs;
+
+        let removed = false;
         for (const [id, mesh] of c.meshes) {
             if (!alive.has(id)) {
                 if (c.gizmo.object === mesh) c.gizmo.detach();
                 mesh.removeFromParent();
-                mesh.userData.studMap.dispose();
-                mesh.userData.inletMap.dispose();
-                mesh.userData.top.dispose();
-                mesh.userData.bottom.dispose();
-                mesh.userData.base.dispose();
+                releaseStuds(mesh);
+                c.mats.release(mesh.userData.base);
+                mesh.userData.base = null;
                 c.meshes.delete(id);
+                removed = true;
             }
+        }
+        if (removed || c.meshList.length !== c.meshes.size) {
+            c.meshList = [...c.meshes.values()];
         }
     }, [parts, studs]);
 
