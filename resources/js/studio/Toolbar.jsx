@@ -3,6 +3,23 @@ import {
     SelectIcon, MoveIcon, RotateIcon, ScaleIcon, PartIcon, SpawnIcon,
     CopyIcon, PasteIcon, DuplicateIcon, SaveIcon, DownloadIcon, HelpIcon, StatsIcon,
 } from './icons';
+import { loadStats } from './api';
+
+function ago(ts) {
+    if (!ts) return 'never';
+    const s = Math.floor(Date.now() / 1000 - ts);
+    if (s < 60) return 'just now';
+    if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+    if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+    return `${Math.floor(s / 86400)} d ago`;
+}
+
+const STAT_LABELS = [
+    ['maps', 'Saved maps'],
+    ['sessions', 'Active sessions'],
+    ['parts', 'Parts across saved maps'],
+    ['examples', 'Example maps'],
+];
 
 const TOOLS = [
     ['select', 'Select', SelectIcon],
@@ -17,7 +34,15 @@ export default function Toolbar({
     onAddPart, onAddSpawn, onCopy, onPaste, onDuplicate,
     onSave, onDownload, canSave,
 }) {
-    const [helpOpen, setHelpOpen] = useState(false);
+    const [pop, setPop] = useState(null); // null | 'help' | 'stats'
+    const [stats, setStats] = useState(null);
+
+    const toggleStats = () => {
+        if (pop === 'stats') { setPop(null); return; }
+        setPop('stats');
+        setStats(null);
+        loadStats().then(setStats).catch(() => setStats({ error: true }));
+    };
 
     const numInput = (key) => (e) => {
         const v = parseFloat(e.target.value);
@@ -93,18 +118,44 @@ export default function Toolbar({
                 </button>
             </div>
             <div className="group help-group">
-                <a className="tool-btn" href="/stats" target="_blank" rel="noreferrer">
+                <button className={`tool-btn ${pop === 'stats' ? 'active' : ''}`} onClick={toggleStats}>
                     <StatsIcon />
                     Stats
-                </a>
-                <button className="tool-btn" onClick={() => setHelpOpen((o) => !o)}>
+                </button>
+                <button className={`tool-btn ${pop === 'help' ? 'active' : ''}`} onClick={() => setPop((p) => (p === 'help' ? null : 'help'))}>
                     <HelpIcon />
                     Help
                 </button>
             </div>
-            {helpOpen && (
+            {pop === 'stats' && (
                 <>
-                    <div className="help-backdrop" onClick={() => setHelpOpen(false)} />
+                    <div className="help-backdrop" onClick={() => setPop(null)} />
+                    <div className="help-pop">
+                        <h3>Stats</h3>
+                        {!stats ? (
+                            <div className="stats-note">Loading...</div>
+                        ) : stats.error ? (
+                            <div className="stats-note">Could not load stats</div>
+                        ) : (
+                            <div className="stats-grid">
+                                {STAT_LABELS.map(([key, label]) => (
+                                    <div className="stat-card" key={key}>
+                                        <div className="value">{(stats[key] ?? 0).toLocaleString()}</div>
+                                        <div className="label">{label}</div>
+                                    </div>
+                                ))}
+                                <div className="stat-card">
+                                    <div className="value">{ago(stats.last_save)}</div>
+                                    <div className="label">Last save</div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </>
+            )}
+            {pop === 'help' && (
+                <>
+                    <div className="help-backdrop" onClick={() => setPop(null)} />
                     <div className="help-pop">
                         <h3>Quick help</h3>
                         <h4>Camera</h4>

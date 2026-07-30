@@ -19,3 +19,9 @@ export async function saveMap(name, parts) {
     if (!r.ok) throw new Error(`failed to save ${name}`);
     return r.json();
 }
+
+export async function loadStats() {
+    const r = await fetch('/api/stats');
+    if (!r.ok) throw new Error('failed to load stats');
+    return r.json();
+}
