@@ -32,7 +32,7 @@ body {
     flex: none;
 }
 
-.plugin-group { flex: 1 1 auto; min-width: 0; }
+.toolbar .plugin-group { flex: 1 1 auto; min-width: 0; }
 .plugin-scroll {
     display: flex;
     align-items: center;
