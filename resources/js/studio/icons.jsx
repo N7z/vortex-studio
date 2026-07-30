@@ -152,3 +152,26 @@ export const TrashIcon = () => (
         <path d="M10 10v7M14 10v7" />
     </svg>
 );
+
+export const TeamIcon = () => (
+    <svg viewBox="0 0 24 24" {...S}>
+        <circle cx="9" cy="8" r="3.2" />
+        <path d="M3 20v-1.5c0-2.2 2.7-3.5 6-3.5s6 1.3 6 3.5V20" />
+        <path d="M16.5 5.5a3 3 0 0 1 0 5.6M18 15.2c2 .5 3 1.6 3 3.3V20" />
+    </svg>
+);
+
+export const LinkIcon = () => (
+    <svg viewBox="0 0 24 24" {...S}>
+        <path d="M10 13.5a3.5 3.5 0 0 0 5 0l3-3a3.5 3.5 0 0 0-5-5l-1 1" />
+        <path d="M14 10.5a3.5 3.5 0 0 0-5 0l-3 3a3.5 3.5 0 0 0 5 5l1-1" />
+    </svg>
+);
+
+export const KickIcon = () => (
+    <svg viewBox="0 0 24 24" {...S}>
+        <circle cx="10" cy="8" r="3.2" />
+        <path d="M4 20v-1.5c0-2.2 2.7-3.5 6-3.5 1 0 2 .1 2.8.4" />
+        <path d="M16 15.5l5 5M21 15.5l-5 5" />
+    </svg>
+);

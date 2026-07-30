@@ -10,7 +10,9 @@ const ago = (ms) => {
     return hours < 48 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`;
 };
 
-export default function StartScreen({ onOpen, onCreate, onUpload, onRestore }) {
+export default function StartScreen({
+    onOpen, onCreate, onUpload, onRestore, joining, liveStatus,
+}) {
     const [mine, setMine] = useState([]);
     const [examples, setExamples] = useState([]);
     const [ttl, setTtl] = useState(24);
@@ -84,6 +86,12 @@ export default function StartScreen({ onOpen, onCreate, onUpload, onRestore }) {
                     style={{ display: 'none' }}
                     onChange={onFile}
                 />
+                {joining && (
+                    <div className="join-row joining">
+                        Joining session <b>{joining}</b>
+                        {liveStatus === 'reconnecting' ? ' — reconnecting...' : '...'}
+                    </div>
+                )}
                 {error && <div style={{ color: '#e05252' }}>{error}</div>}
                 {mine.length > 0 && (
                     <>

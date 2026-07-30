@@ -72,7 +72,7 @@ const readTransform = (m) => ({
 
 export default function Viewport({
     parts, selectedIds, setSelectedId, tool, snap, onTransform, onTransformMany,
-    mapName, studs, preview, spawnRef, busyRef,
+    mapName, studs, preview, spawnRef, busyRef, canEdit = true, peers,
 }) {
     const mountRef = useRef(null);
     const ctx = useRef(null);
@@ -133,6 +133,29 @@ export default function Viewport({
             b.renderOrder = 999;
             scene.add(b);
             selBoxes.push(b);
+            return b;
+        };
+
+        // The same outline in someone else's colour: one material per colour, reused,
+        // and a pool of boxes whose material is reassigned each frame.
+        const peerMats = new Map();
+        const peerMat = (color) => {
+            let m = peerMats.get(color);
+            if (!m) {
+                m = new THREE.LineBasicMaterial({
+                    color: new THREE.Color(color), depthTest: false, depthWrite: false,
+                });
+                peerMats.set(color, m);
+            }
+            return m;
+        };
+        const peerBoxes = [];
+        const peerBox = () => {
+            const b = new THREE.LineSegments(selEdges, selMat);
+            b.matrixAutoUpdate = false;
+            b.renderOrder = 998;
+            scene.add(b);
+            peerBoxes.push(b);
             return b;
         };
 
@@ -250,7 +273,7 @@ export default function Viewport({
             const c = ctx.current;
             const mesh = pending.mesh;
             pending = null;
-            if (!c) return;
+            if (!c || !c.canEdit) return;
 
             const inSelection = c.selectedMeshes.includes(mesh);
             const meshes = inSelection ? c.selectedMeshes.slice() : [mesh];
@@ -439,6 +462,23 @@ export default function Viewport({
                 b.visible = true;
             }
             for (let i = sel.length; i < selBoxes.length; i++) selBoxes[i].visible = false;
+
+            let n = 0;
+            for (const peer of c?.peers ?? []) {
+                const mat = peerMat(peer.color);
+                for (const id of peer.selection) {
+                    const mesh = c.meshes.get(id);
+                    if (!mesh) continue;
+                    const b = peerBoxes[n] ?? peerBox();
+                    n++;
+                    mesh.updateWorldMatrix(true, false);
+                    b.matrix.copy(mesh.matrixWorld);
+                    b.material = mat;
+                    b.visible = true;
+                }
+            }
+            for (let i = n; i < peerBoxes.length; i++) peerBoxes[i].visible = false;
+
             renderer.render(scene, camera);
         };
         tick();
@@ -452,7 +492,10 @@ export default function Viewport({
         ctx.current = {
             scene, camera, renderer, orbit, gizmo, studTex, inletTex, pivot, spawnPoint,
             isDragging: () => drag !== null,
+            isDraggingMesh: (m) => !!drag?.meshes.includes(m),
             snapMove: 0,
+            canEdit: true,
+            peers: [],
             meshes: new Map(),
             geometry: new THREE.BoxGeometry(1, 1, 1),
             selectedMeshes: [],
@@ -475,6 +518,8 @@ export default function Viewport({
             gizmo.dispose();
             orbit.dispose();
             for (const b of selBoxes) scene.remove(b);
+            for (const b of peerBoxes) scene.remove(b);
+            for (const m of peerMats.values()) m.dispose();
             selEdges.dispose();
             selMat.dispose();
             studTex.dispose();
@@ -493,6 +538,8 @@ export default function Viewport({
         c.onTransformMany = onTransformMany;
         c.setSelectedId = setSelectedId;
         c.snapMove = snap.moveOn ? snap.move : 0;
+        c.canEdit = canEdit;
+        c.peers = peers ?? [];
         if (spawnRef) spawnRef.current = c.spawnPoint;
     });
 
@@ -521,9 +568,11 @@ export default function Viewport({
                 c.scene.add(mesh);
                 c.meshes.set(part._id, mesh);
             }
+            // Only the meshes this user is actually moving are left alone: everything
+            // else must follow the state, including a part someone else just moved.
             const held = c.gizmo.dragging
                 ? (c.gizmo.object === mesh || mesh.parent === c.pivot)
-                : c.isDragging();
+                : c.isDraggingMesh(mesh);
             if (!held) {
                 mesh.position.set(part.P[0], part.P[1], part.P[2]);
                 mesh.scale.set(part.S[0], part.S[1], part.S[2]);
@@ -594,7 +643,7 @@ export default function Viewport({
         if (c.gizmo.dragging) return;
         const meshes = selectedIds.map((id) => c.meshes.get(id)).filter(Boolean);
         c.selectedMeshes = meshes;
-        const mode = TOOL_MODE[tool];
+        const mode = canEdit ? TOOL_MODE[tool] : null;
         if (!meshes.length || !mode) {
             c.gizmo.detach();
         } else if (meshes.length === 1) {
@@ -611,7 +660,7 @@ export default function Viewport({
             c.gizmo.setMode(mode);
             c.gizmo.attach(c.pivot);
         }
-    }, [selectedIds, tool, parts]);
+    }, [selectedIds, tool, parts, canEdit]);
 
     useEffect(() => {
         const c = ctx.current;

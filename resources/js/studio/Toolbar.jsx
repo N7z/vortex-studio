@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
     SelectIcon, MoveIcon, RotateIcon, ScaleIcon, PartIcon, SpawnIcon,
     CopyIcon, PasteIcon, DuplicateIcon, SaveIcon, DownloadIcon, HelpIcon, StatsIcon, StudsIcon, PlusIcon,
+    TeamIcon,
 } from './icons';
 import { loadStats } from './api';
 import { PluginIcon } from './pluginIcons';
@@ -31,11 +32,12 @@ const TOOLS = [
 
 export default function Toolbar({
     tool, setTool, snap, setSnap,
-    hasSelection, hasClipboard,
+    hasSelection, hasClipboard, canEdit,
     onAddPart, onAddSpawn, onCopy, onPaste, onDuplicate,
-    onSave, onDownload, canSave,
+    onSave, onDownload, canSave, canDownload,
     studs, onToggleStuds,
     plugins, activePluginId, onTogglePlugin, onNewPlugin,
+    live, teamOpen, onToggleTeam, hasMap,
 }) {
     const [pop, setPop] = useState(null); // null | 'help' | 'stats'
     const [stats, setStats] = useState(null);
@@ -87,11 +89,11 @@ export default function Toolbar({
                 </div>
             </div>
             <div className="group">
-                <button className="tool-btn" onClick={onAddPart}>
+                <button className="tool-btn" onClick={onAddPart} disabled={!canEdit}>
                     <PartIcon />
                     Part
                 </button>
-                <button className="tool-btn" onClick={onAddSpawn}>
+                <button className="tool-btn" onClick={onAddSpawn} disabled={!canEdit}>
                     <SpawnIcon />
                     Spawn
                 </button>
@@ -105,23 +107,37 @@ export default function Toolbar({
                     <CopyIcon />
                     Copy
                 </button>
-                <button className="tool-btn" onClick={onPaste} disabled={!hasClipboard}>
+                <button className="tool-btn" onClick={onPaste} disabled={!hasClipboard || !canEdit}>
                     <PasteIcon />
                     Paste
                 </button>
-                <button className="tool-btn" onClick={onDuplicate} disabled={!hasSelection}>
+                <button className="tool-btn" onClick={onDuplicate} disabled={!hasSelection || !canEdit}>
                     <DuplicateIcon />
                     Duplicate
                 </button>
             </div>
             <div className="group">
-                <button className="tool-btn" onClick={onSave} disabled={!canSave} title="Ctrl+S">
+                <button
+                    className="tool-btn"
+                    onClick={onSave}
+                    disabled={!canSave}
+                    title={live?.live && !live.isOwner ? 'The session owner saves this map' : 'Ctrl+S'}
+                >
                     <SaveIcon />
                     Save
                 </button>
-                <button className="tool-btn" onClick={onDownload} disabled={!canSave} title="Download this map as .json">
+                <button className="tool-btn" onClick={onDownload} disabled={!canDownload} title="Download this map as .json">
                     <DownloadIcon />
                     Download
+                </button>
+                <button
+                    className={`tool-btn wide ${teamOpen ? 'active' : ''} ${live?.live ? 'is-live' : ''}`}
+                    onClick={onToggleTeam}
+                    disabled={!hasMap}
+                    title={live?.live ? `Live session ${live.code}` : 'Edit this map together'}
+                >
+                    <TeamIcon />
+                    {live?.live ? `Team ${live.members.length}` : 'Team'}
                 </button>
             </div>
             <div className="group">
@@ -131,7 +147,7 @@ export default function Toolbar({
                             key={p.id}
                             className={`tool-btn wide ${activePluginId === p.id ? 'active' : ''}`}
                             onClick={() => onTogglePlugin(p.id)}
-                            disabled={!canSave}
+                            disabled={!hasMap || !canEdit}
                             title={p.name}
                         >
                             <PluginIcon name={p.icon} size={22} strokeWidth={1.6} />
@@ -139,7 +155,7 @@ export default function Toolbar({
                         </button>
                     );
                 })}
-                <button className="tool-btn" onClick={onNewPlugin} disabled={!canSave} title="Create or edit a Lua plugin">
+                <button className="tool-btn" onClick={onNewPlugin} disabled={!hasMap} title="Create or edit a Lua plugin">
                     <PlusIcon />
                     New
                 </button>
@@ -201,6 +217,13 @@ export default function Toolbar({
                             <li><b>Ctrl+C / Ctrl+V</b> copy and paste, <b>Ctrl+D</b> duplicates in place, <b>Delete</b> removes. All of them work on the whole selection</li>
                             <li><b>Ctrl+Z</b> undoes the last action, <b>Ctrl+Y</b> redoes it</li>
                             <li><b>Ctrl+S</b> saves</li>
+                        </ul>
+                        <h4>Building together</h4>
+                        <ul>
+                            <li><b>Team</b> starts a session and gives you a link to share</li>
+                            <li>Guests arrive as spectators, switch them to <b>Developer</b> to let them build</li>
+                            <li>Everyone gets a colour, and you see what they have selected</li>
+                            <li><b>Ctrl+Z</b> undoes your own last change, never someone else's</li>
                         </ul>
                         <h4>Your maps</h4>
                         <ul>

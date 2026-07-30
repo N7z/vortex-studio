@@ -6,6 +6,7 @@ import Properties from './Properties';
 import Viewport from './Viewport';
 import PluginPanel from './PluginPanel';
 import TabBar from './TabBar';
+import TeamPanel from './TeamPanel';
 import ScriptTab, { TEMPLATE } from './ScriptTab';
 import {
     loadPlugins, stripId, compilePlugin, saveUserPlugin, deleteUserPlugin,
@@ -13,9 +14,13 @@ import {
 } from './plugins';
 import { loadMap, saveMap } from './api';
 import { writeBackup } from './backup';
+import {
+    addOp, applyOp, invertOp, patchOp, removeOp, stripIds, transformOp, withNewId,
+} from './ops';
+import { roomFromUrl } from './live';
+import useLive from './useLive';
 
-let nextId = 1;
-const withId = (part) => ({ ...part, _id: nextId++ });
+const HISTORY_LIMIT = 100;
 
 const NEW_PART = {
     Tr: 0, P: [0, 4, 0], S: [4, 2, 4], R: [0, 0, 0],
@@ -40,6 +45,8 @@ export default function App() {
     const [pluginPreview, setPluginPreview] = useState(null);
     const [tabs, setTabs] = useState([]);
     const [activeTab, setActiveTab] = useState('game');
+    const [teamOpen, setTeamOpen] = useState(false);
+    const [joining, setJoining] = useState(() => roomFromUrl());
     const tabSeq = useRef(0);
     const previewSeq = useRef(0);
     const [status, setStatus] = useState('');
@@ -52,6 +59,59 @@ export default function App() {
     const partsRef = useRef(parts);
     partsRef.current = parts;
 
+    const flash = useCallback((msg) => {
+        setStatus(msg);
+        setTimeout(() => setStatus((s) => (s === msg ? '' : s)), 2500);
+    }, []);
+
+    const resetDocument = (name, data, isDirty) => {
+        setParts(data);
+        setMapName(name);
+        setSelectedIds([]);
+        history.current = [];
+        future.current = [];
+        dirty.current = isDirty;
+    };
+
+    const live = useLive({
+        onWelcome: (msg) => {
+            setJoining(null);
+            setTeamOpen(true);
+            resetDocument(msg.mapName, msg.parts, false);
+            flash(msg.resumed
+                ? `Back in session ${msg.code}`
+                : `Live session ${msg.code} as ${msg.you.name}`);
+        },
+        // Own ops are applied again when they echo back, not skipped: the room's order
+        // is the authoritative one, and re-running an op that was already applied
+        // optimistically is what makes two people editing the same part agree on who won.
+        onOp: (msg) => {
+            setParts((ps) => applyOp(ps, msg.op));
+            // Only the owner has anything to persist, so only the owner's copy goes
+            // dirty. Marking a spectator's would warn them about losing work on close.
+            if (liveRef.current?.isOwner) dirty.current = true;
+        },
+        onSnapshot: (msg) => {
+            setParts(msg.parts);
+            history.current = [];
+            future.current = [];
+        },
+        onError: (message) => {
+            setJoining(null);
+            flash(message);
+        },
+        onNotice: (message) => {
+            flash(message);
+            setTeamOpen(false);
+        },
+    });
+
+    const liveRef = useRef(live);
+    liveRef.current = live;
+    const canEdit = !live.live || live.canEdit;
+    const canEditRef = useRef(canEdit);
+    canEditRef.current = canEdit;
+
     // The last id added is the "primary" selection: what Properties and plugins act on.
     const selectedId = selectedIds.length ? selectedIds[selectedIds.length - 1] : null;
     const selected = parts.find((p) => p._id === selectedId) ?? null;
@@ -61,7 +121,6 @@ export default function App() {
     const activePlugin = plugins.find((p) => p.id === activePluginId) ?? null;
     const activeValues = activePlugin ? pluginValues[activePlugin.id] ?? activePlugin.defaults : null;
 
-    // `additive` is Ctrl-click: toggle one part in/out of the selection.
     const select = useCallback((id, additive) => {
         setSelectedIds((cur) => {
             if (id == null) return additive ? cur : [];
@@ -71,8 +130,59 @@ export default function App() {
     }, []);
     const setSelectedId = select;
 
+    const edit = useCallback((op) => {
+        if (!canEditRef.current) {
+            flash('You are a spectator in this session');
+            return;
+        }
+        const before = partsRef.current;
+        const next = applyOp(before, op);
+        if (next === before) return;
+
+        const inverse = invertOp(before, op);
+        if (inverse) {
+            history.current.push(inverse);
+            if (history.current.length > HISTORY_LIMIT) history.current.shift();
+            future.current = [];
+        }
+        dirty.current = true;
+        setParts(next);
+        liveRef.current.sendOp(op);
+    }, [flash]);
+
+    const step = useCallback((from, to) => {
+        const op = from.current.pop();
+        if (!op) return;
+        const before = partsRef.current;
+        const next = applyOp(before, op);
+        if (next === before) return;
+
+        const inverse = invertOp(before, op);
+        if (inverse) {
+            to.current.push(inverse);
+            if (to.current.length > HISTORY_LIMIT) to.current.shift();
+        }
+        dirty.current = true;
+        setParts(next);
+        liveRef.current.sendOp(op);
+    }, []);
+
+    const undo = useCallback(() => {
+        if (!canEditRef.current) return;
+        step(history, future);
+    }, [step]);
+
+    const redo = useCallback(() => {
+        if (!canEditRef.current) return;
+        step(future, history);
+    }, [step]);
+
     useEffect(() => {
         loadPlugins().then(setPlugins);
+    }, []);
+
+    useEffect(() => {
+        if (joining) live.join(joining);
     }, []);
 
     useEffect(() => {
@@ -85,6 +195,10 @@ export default function App() {
             .then((p) => { if (previewSeq.current === seq) setPluginPreview(p); })
             .catch(() => { if (previewSeq.current === seq) setPluginPreview(null); });
     }, [activePlugin, selected, activeValues]);
+
+    useEffect(() => {
+        if (live.live && live.canEdit) live.sendSelection(selectedIds);
+    }, [selectedIds, live.live, live.canEdit, live.sendSelection]);
 
     const togglePlugin = (id) => {
         setActivePluginId((cur) => (cur === id ? null : id));
@@ -184,8 +298,8 @@ export default function App() {
         try {
             const part = await activePlugin.click(btnId, stripId(selected), activeValues);
             if (!part) return;
-            const placed = withId(part);
-            mutate((ps) => [...ps, placed]);
+            const placed = withNewId(part);
+            edit(addOp([placed]));
             setSelectedId(placed._id);
         } catch (e) {
             flash(String(e.message ?? e));
@@ -199,46 +313,10 @@ export default function App() {
         });
     };
 
-    const flash = (msg) => {
-        setStatus(msg);
-        setTimeout(() => setStatus((s) => (s === msg ? '' : s)), 2500);
-    };
-
-    const mutate = (fn) => {
-        history.current.push(partsRef.current);
-        if (history.current.length > 100) history.current.shift();
-        future.current = [];
-        dirty.current = true;
-        setParts(fn);
-    };
-
-    const undo = useCallback(() => {
-        const prev = history.current.pop();
-        if (!prev) return;
-        future.current.push(partsRef.current);
-        if (future.current.length > 100) future.current.shift();
-        dirty.current = true;
-        setParts(prev);
-    }, []);
-
-    const redo = useCallback(() => {
-        const next = future.current.pop();
-        if (!next) return;
-        history.current.push(partsRef.current);
-        if (history.current.length > 100) history.current.shift();
-        dirty.current = true;
-        setParts(next);
-    }, []);
-
     const open = async (name) => {
         try {
             const data = await loadMap(name);
-            setParts(data.map(withId));
-            setMapName(name);
-            setSelectedId(null);
-            history.current = [];
-            future.current = [];
-            dirty.current = false;
+            resetDocument(name, data.map(withNewId), false);
         } catch (e) {
             flash(String(e.message ?? e));
         }
@@ -247,29 +325,18 @@ export default function App() {
     // A local backup goes straight back into the editor, dirty, so the next save
     // (manual or auto) puts it on the server again.
     const restore = (name, data) => {
-        setParts(data.map(withId));
-        setMapName(name);
-        setSelectedIds([]);
-        history.current = [];
-        future.current = [];
-        dirty.current = true;
+        resetDocument(name, data.map(withNewId), true);
         flash(`Restored ${name}.json from this device`);
     };
 
     const openUploaded = (name, data) => {
-        setParts(data.map(withId));
-        setMapName(name);
-        setSelectedId(null);
-        history.current = [];
-        future.current = [];
-        dirty.current = true;
+        resetDocument(name, data.map(withNewId), true);
         flash(`Loaded upload as ${name}.json, Save to keep it`);
     };
 
     const download = () => {
         if (!mapName) return;
-        const clean = parts.map(({ _id, ...rest }) => rest);
-        const blob = new Blob([JSON.stringify(clean)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify(stripIds(parts))], { type: 'application/json' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = `${mapName}.json`;
@@ -278,21 +345,22 @@ export default function App() {
     };
 
     const createNew = (name) => {
-        setParts([
-            withId({ Tr: 0, P: [0, 0, 0], S: [200, 2, 200], R: [0, 0, 0], T: 'Part', Shape: 'Block', C: '7d7d85' }),
-            withId(NEW_SPAWN),
-        ]);
-        setMapName(name);
-        setSelectedId(null);
-        history.current = [];
-        future.current = [];
-        dirty.current = true;
+        resetDocument(name, [
+            withNewId({ Tr: 0, P: [0, 0, 0], S: [200, 2, 200], R: [0, 0, 0], T: 'Part', Shape: 'Block', C: '7d7d85' }),
+            withNewId(NEW_SPAWN),
+        ], true);
     };
+
+    const canSaveToServer = !!mapName && (!live.live || live.isOwner);
 
     const save = useCallback(async (auto) => {
         if (!mapName) return;
+        if (liveRef.current.live && !liveRef.current.isOwner) {
+            if (auto !== true) flash('The session owner saves this map');
+            return;
+        }
         const snapshot = partsRef.current;
-        const clean = snapshot.map(({ _id, ...rest }) => rest);
+        const clean = stripIds(snapshot);
         // Mirror locally first: the copy that matters most is the one for a save that
         // is about to fail. A save also restarts the server-side 24h TTL for this map.
         const backed = writeBackup(mapName, clean);
@@ -300,13 +368,14 @@ export default function App() {
             await saveMap(mapName, clean);
             // Edits made while the request was in flight must stay dirty.
             if (partsRef.current === snapshot) dirty.current = false;
+            liveRef.current.notifySaved();
             flash(auto === true ? 'Auto-saved' : `Saved ${mapName}.json`);
         } catch (e) {
             flash(backed
                 ? `Server save failed (${e.message ?? e}), kept a copy on this device`
                 : String(e.message ?? e));
         }
-    }, [mapName]);
+    }, [mapName, flash]);
 
     // Auto-save: every 20 s, but only when there are unsaved changes.
     useEffect(() => {
@@ -317,33 +386,45 @@ export default function App() {
         return () => clearInterval(t);
     }, [mapName, save]);
 
+    const goLive = () => {
+        if (!mapName) return;
+        live.host(mapName, partsRef.current);
+        setTeamOpen(true);
+    };
+
+    const leaveSession = () => {
+        live.leave();
+        setTeamOpen(false);
+        dirty.current = true;
+        flash('Left the live session, this map is yours again');
+    };
+
     // A property edit applies to every selected part, not just the primary one.
     const updateSelected = (patch) => {
         if (!selectedIds.length) return;
-        mutate((ps) => ps.map((p) => (selectedIds.includes(p._id) ? { ...p, ...patch } : p)));
+        edit(patchOp(selectedIds, patch));
     };
 
     // The gizmo moved several parts at once: each one gets its own transform.
     const transformMany = (updates) => {
-        const byId = new Map(updates.map(({ id, ...t }) => [id, t]));
-        mutate((ps) => ps.map((p) => (byId.has(p._id) ? { ...p, ...byId.get(p._id) } : p)));
+        edit(transformOp(updates));
     };
 
     const addPart = (template) => {
         const P = spawnRef.current?.(template.S[1]) ?? [...template.P];
-        const part = withId({ ...template, P, S: [...template.S], R: [...template.R] });
-        mutate((ps) => [...ps, part]);
+        const part = withNewId({ ...template, P, S: [...template.S], R: [...template.R] });
+        edit(addOp([part]));
         setSelectedId(part._id);
     };
 
     const copy = () => {
         if (!selectedParts.length) return;
-        clipboard.current = selectedParts.map(({ _id, ...rest }) => JSON.parse(JSON.stringify(rest)));
+        clipboard.current = stripIds(selectedParts).map((p) => JSON.parse(JSON.stringify(p)));
     };
 
     const addMany = (templates) => {
-        const added = templates.map((t) => withId(JSON.parse(JSON.stringify(t))));
-        mutate((ps) => [...ps, ...added]);
+        const added = templates.map((t) => withNewId(JSON.parse(JSON.stringify(t))));
+        edit(addOp(added));
         setSelectedIds(added.map((p) => p._id));
     };
 
@@ -354,14 +435,14 @@ export default function App() {
 
     const duplicate = () => {
         if (!selectedParts.length) return;
-        addMany(selectedParts.map(({ _id, ...rest }) => rest));
+        addMany(stripIds(selectedParts));
     };
 
     const removeSelected = useCallback(() => {
         if (!selectedIds.length) return;
-        mutate((ps) => ps.filter((p) => !selectedIds.includes(p._id)));
+        edit(removeOp(selectedIds));
         setSelectedIds([]);
-    }, [selectedIds]);
+    }, [selectedIds, edit]);
 
     useEffect(() => {
         const onBeforeUnload = (e) => {
@@ -407,7 +488,7 @@ export default function App() {
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [save, removeSelected, undo, selected, selectedIds, parts, activeTab, tabs]);
+    }, [save, removeSelected, undo, redo, selected, selectedIds, parts, activeTab, tabs]);
 
     return (
         <div className="studio">
@@ -415,13 +496,18 @@ export default function App() {
                 tool={tool} setTool={setTool}
                 snap={snap} setSnap={setSnap}
                 hasSelection={!!selected} hasClipboard={!!clipboard.current}
+                canEdit={canEdit}
                 onAddPart={() => addPart(NEW_PART)}
                 onAddSpawn={() => addPart(NEW_SPAWN)}
                 onCopy={copy} onPaste={paste} onDuplicate={duplicate}
-                onSave={save} onDownload={download} canSave={!!mapName}
+                onSave={save} onDownload={download}
+                canSave={canSaveToServer} canDownload={!!mapName}
                 studs={studs} onToggleStuds={toggleStuds}
                 plugins={plugins} activePluginId={activePluginId} onTogglePlugin={togglePlugin}
                 onNewPlugin={openNewPluginTab}
+                live={live} teamOpen={teamOpen}
+                onToggleTeam={() => setTeamOpen((o) => !o)}
+                hasMap={!!mapName}
             />
             <TabBar
                 tabs={[
@@ -451,6 +537,8 @@ export default function App() {
                         setSelectedId={setSelectedId}
                         tool={tool}
                         snap={snap}
+                        canEdit={canEdit}
+                        peers={live.peers}
                         onTransform={updateSelected}
                         onTransformMany={transformMany}
                         mapName={mapName}
@@ -470,11 +558,20 @@ export default function App() {
                             onClose={() => setActivePluginId(null)}
                         />
                     )}
+                    {teamOpen && mapName && (
+                        <TeamPanel
+                            live={live}
+                            onGoLive={goLive}
+                            onLeave={leaveSession}
+                            onClose={() => setTeamOpen(false)}
+                        />
+                    )}
                     {mapName && <span className="credit">Developed by zPaulinBRz</span>}
                     {!mapName && (
                         <StartScreen
                             onOpen={open} onCreate={createNew}
                             onUpload={openUploaded} onRestore={restore}
+                            joining={joining} liveStatus={live.status}
                         />
                     )}
                     {status && <div className="statusbar">{status}</div>}
@@ -486,7 +583,12 @@ export default function App() {
                         setSelectedId={setSelectedId}
                         mapName={mapName}
                     />
-                    <Properties part={selected} count={selectedIds.length} onChange={updateSelected} />
+                    <Properties
+                        part={selected}
+                        count={selectedIds.length}
+                        onChange={updateSelected}
+                        readOnly={!canEdit}
+                    />
                 </div>
             </div>
         </div>

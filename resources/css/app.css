@@ -601,3 +601,202 @@ a.tool-btn { text-decoration: none; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(120, 120, 135, 0.5); }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-corner { background: transparent; }
+
+/* ---------- team create ---------- */
+
+.tool-btn.is-live { color: #6fcf72; }
+.tool-btn.is-live.active { color: #fff; }
+
+.team-panel {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 30;
+    width: 268px;
+    background: #14141a;
+    border: 1px solid #26262e;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    font-size: 12px;
+    color: #b9b9c0;
+    overflow: hidden;
+}
+
+.team-head {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 8px 7px 10px;
+    background: #101015;
+    border-bottom: 1px solid #22222a;
+}
+.team-title { flex: 1; font-size: 12px; font-weight: 600; color: #e5e5ea; }
+
+.team-live {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: #8f8f98;
+}
+.team-live::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #4db84b;
+}
+.team-live.busy { color: #d9a441; }
+.team-live.busy::before { background: #d9a441; animation: team-blink 1s steps(2, end) infinite; }
+@keyframes team-blink { 50% { opacity: 0.25; } }
+
+.team-x {
+    background: none;
+    border: none;
+    color: #5c5c66;
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 3px;
+    border-radius: 3px;
+}
+.team-x:hover { color: #fff; background: #26262e; }
+
+.team-body { padding: 9px 10px 10px; display: flex; flex-direction: column; gap: 8px; }
+.team-hint { font-size: 11px; color: #74747e; }
+
+.team-primary {
+    background: #2563eb;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.team-primary:hover { background: #2f6ff0; }
+.team-primary:disabled { background: #2a2a33; color: #6a6a74; cursor: default; }
+
+.team-code-row { display: flex; align-items: center; gap: 6px; }
+.team-code {
+    flex: 1;
+    font-family: 'Consolas', monospace;
+    font-size: 17px;
+    letter-spacing: 3px;
+    color: #e5e5ea;
+    background: #0e0e12;
+    border: 1px solid #26262e;
+    border-radius: 4px;
+    padding: 6px 8px;
+    text-align: center;
+    cursor: pointer;
+}
+.team-code:hover { border-color: #3a3a46; }
+.team-copy {
+    display: flex;
+    background: #1d1d24;
+    color: #a8a8b2;
+    border: 1px solid #2c2c35;
+    border-radius: 4px;
+    padding: 7px;
+    cursor: pointer;
+}
+.team-copy:hover { background: #26262e; color: #dcdce2; }
+.team-copy svg { width: 15px; height: 15px; }
+.team-copied { font-size: 11px; color: #6fcf72; }
+
+.team-list {
+    display: flex;
+    flex-direction: column;
+    max-height: 232px;
+    overflow-y: auto;
+    margin: 1px -4px;
+}
+.team-member {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px;
+    border-radius: 4px;
+    min-height: 28px;
+}
+.team-member:hover { background: #191920; }
+.team-member .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.team-name {
+    flex: 1;
+    color: #dcdce2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.team-you {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #74747e;
+    border: 1px solid #2e2e38;
+    border-radius: 3px;
+    padding: 0 3px;
+    flex: none;
+}
+.team-role { font-size: 11px; color: #74747e; flex: none; }
+.team-role.owner { color: #c9973c; }
+.team-select {
+    background: #0e0e12;
+    color: #c8c8ce;
+    border: 1px solid #2c2c35;
+    border-radius: 3px;
+    font-size: 11px;
+    padding: 2px 1px 2px 3px;
+    cursor: pointer;
+}
+.team-select:hover { border-color: #3a3a46; }
+.team-kick {
+    background: none;
+    border: none;
+    color: #55555e;
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 3px;
+    display: flex;
+    flex: none;
+}
+.team-kick svg { width: 15px; height: 15px; }
+.team-kick:hover { color: #e05252; background: #26262e; }
+
+.team-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    border-top: 1px solid #22222a;
+    margin-top: 1px;
+    padding-top: 8px;
+}
+.team-leave {
+    background: #1d1d24;
+    color: #a8a8b2;
+    border: 1px solid #2c2c35;
+    border-radius: 4px;
+    padding: 5px 12px;
+    font-size: 11px;
+    cursor: pointer;
+}
+.team-leave:hover { background: #3a2323; color: #e8a0a0; border-color: #503030; }
+
+.props-ro {
+    margin-left: 6px;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #d9a441;
+    border: 1px solid #4a3c1c;
+    border-radius: 3px;
+    padding: 0 3px;
+}
+
+.join-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.join-row.joining { color: #aaa; font-size: 15px; }
+.join-row.joining b { color: #dcdce2; font-family: 'Consolas', monospace; letter-spacing: 2px; }
