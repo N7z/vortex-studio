@@ -2,6 +2,7 @@ import { LuaFactory } from 'wasmoon';
 import preludeSrc from './prelude.lua?raw';
 import archimedesSrc from './archimedes.lua?raw';
 import arraySrc from './array.lua?raw';
+import gapFillSrc from './gapfill.lua?raw';
 import imageMakerSrc from './imagemaker.lua?raw';
 import mirrorSrc from './mirror.lua?raw';
 import textSrc from './text.lua?raw';
@@ -10,6 +11,7 @@ import voxelSrc from './voxel.lua?raw';
 const BUNDLED = [
     { id: 'archimedes', src: archimedesSrc },
     { id: 'array', src: arraySrc },
+    { id: 'gapfill', src: gapFillSrc },
     { id: 'imagemaker', src: imageMakerSrc },
     { id: 'mirror', src: mirrorSrc },
     { id: 'text', src: textSrc },
