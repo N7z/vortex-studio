@@ -22,7 +22,7 @@ import { roomFromUrl } from './live';
 import useLive from './useLive';
 import { decodeImage, imageMeta } from './image';
 import {
-    addGroup, forgetGroups, loadGroups, pruneGroups, removeGroups, saveGroups, ungroupIds,
+    addGroup, forgetGroups, loadGroups, newGroup, pruneGroups, removeGroups, saveGroups, ungroupIds,
 } from './groups';
 
 const HISTORY_LIMIT = 100;
@@ -509,6 +509,7 @@ export default function App() {
         const added = templates.map((t) => withNewId(JSON.parse(JSON.stringify(t))));
         edit(addOp(added));
         setSelectedIds(added.map((p) => p._id));
+        return added;
     };
 
     const paste = () => {
@@ -518,7 +519,14 @@ export default function App() {
 
     const duplicate = () => {
         if (!selectedParts.length) return;
-        addMany(stripIds(selectedParts));
+        const added = addMany(stripIds(selectedParts));
+        const fresh = new Map(selectedParts.map((p, i) => [p._id, added[i]._id]));
+        setGroups((gs) => {
+            const copies = gs
+                .filter((g) => g.ids.every((id) => fresh.has(id)))
+                .map((g) => newGroup(`${g.name} copy`, g.ids.map((id) => fresh.get(id))));
+            return copies.length ? [...gs, ...copies] : gs;
+        });
     };
 
     const removeSelected = useCallback(() => {
