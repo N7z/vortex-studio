@@ -118,6 +118,7 @@ export default function Toolbar({
                             <li><b>Left click</b> selects a part, tools on keys <b>1-4</b></li>
                             <li>The checkboxes and values in the top bar snap moving and scaling (studs) and rotating (degrees)</li>
                             <li><b>Ctrl+C / Ctrl+V</b> copy and paste, <b>Ctrl+D</b> duplicates in place, <b>Delete</b> removes</li>
+                            <li><b>Ctrl+Z</b> undoes the last action</li>
                             <li><b>Ctrl+S</b> saves</li>
                         </ul>
                         <h4>Your maps</h4>

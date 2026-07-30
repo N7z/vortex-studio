@@ -55,6 +55,9 @@ export default function Viewport({ parts, selectedId, setSelectedId, tool, snap,
 
         const selBox = new THREE.Box3Helper(new THREE.Box3(), 0x2f7fd9);
         selBox.visible = false;
+        selBox.material.depthTest = false;
+        selBox.material.depthWrite = false;
+        selBox.renderOrder = 999;
         scene.add(selBox);
 
         gizmo.addEventListener('dragging-changed', (e) => {

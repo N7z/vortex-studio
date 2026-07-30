@@ -28,6 +28,9 @@ export default function App() {
     const [status, setStatus] = useState('');
     const clipboard = useRef(null);
     const dirty = useRef(false);
+    const history = useRef([]);
+    const partsRef = useRef(parts);
+    partsRef.current = parts;
 
     const selected = parts.find((p) => p._id === selectedId) ?? null;
 
@@ -37,9 +40,18 @@ export default function App() {
     };
 
     const mutate = (fn) => {
+        history.current.push(partsRef.current);
+        if (history.current.length > 100) history.current.shift();
         dirty.current = true;
         setParts(fn);
     };
+
+    const undo = useCallback(() => {
+        const prev = history.current.pop();
+        if (!prev) return;
+        dirty.current = true;
+        setParts(prev);
+    }, []);
 
     const open = async (name) => {
         try {
@@ -47,6 +59,7 @@ export default function App() {
             setParts(data.map(withId));
             setMapName(name);
             setSelectedId(null);
+            history.current = [];
             dirty.current = false;
         } catch (e) {
             flash(String(e.message ?? e));
@@ -57,6 +70,7 @@ export default function App() {
         setParts(data.map(withId));
         setMapName(name);
         setSelectedId(null);
+        history.current = [];
         dirty.current = true;
         flash(`Loaded upload as ${name}.json, Save to keep it`);
     };
@@ -79,6 +93,7 @@ export default function App() {
         ]);
         setMapName(name);
         setSelectedId(null);
+        history.current = [];
         dirty.current = true;
     };
 
@@ -149,6 +164,7 @@ export default function App() {
         const onKey = (e) => {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
             if (e.ctrlKey && e.key.toLowerCase() === 's') { e.preventDefault(); save(); return; }
+            if (e.ctrlKey && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
             if (e.key === 'Delete' || e.key === 'Backspace') removeSelected();
             else if (e.ctrlKey && e.key.toLowerCase() === 'c') copy();
             else if (e.ctrlKey && e.key.toLowerCase() === 'v') paste();
@@ -160,7 +176,7 @@ export default function App() {
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [save, removeSelected, selected]);
+    }, [save, removeSelected, undo, selected]);
 
     return (
         <div className="studio">
