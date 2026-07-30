@@ -15,7 +15,7 @@ class MapApiTest extends TestCase
     /**
      * Pin the anonymous identity, since queued cookies don't persist between
      * test requests. The value must be encrypted with the CookieValuePrefix
-     * ourselves — withCookie() alone doesn't produce what EncryptCookies
+     * ourselves, since withCookie() alone doesn't produce what EncryptCookies
      * accepts, and the middleware silently drops the cookie.
      */
     private function asToken(): static

@@ -1,9 +1,8 @@
 import React from 'react';
+import NumberInput from './NumberInput';
 
 function Vec3({ value, onChange }) {
-    const set = (i) => (e) => {
-        const v = parseFloat(e.target.value);
-        if (Number.isNaN(v)) return;
+    const set = (i) => (v) => {
         const next = [...value];
         next[i] = v;
         onChange(next);
@@ -11,7 +10,7 @@ function Vec3({ value, onChange }) {
     return (
         <div className="vec3">
             {[0, 1, 2].map((i) => (
-                <input key={i} type="number" step="0.5" value={value[i]} onChange={set(i)} />
+                <NumberInput key={i} value={value[i]} onChange={set(i)} />
             ))}
         </div>
     );
@@ -68,13 +67,10 @@ export default function Properties({ part, onChange }) {
                     </div>
                     <div className="prop-row">
                         <label>Transparency</label>
-                        <input
-                            type="number" min="0" max="1" step="0.05"
+                        <NumberInput
                             value={part.Tr ?? 0}
-                            onChange={(e) => {
-                                const v = parseFloat(e.target.value);
-                                if (!Number.isNaN(v)) onChange({ Tr: Math.min(1, Math.max(0, v)) });
-                            }}
+                            clamp={(v) => Math.min(1, Math.max(0, v))}
+                            onChange={(Tr) => onChange({ Tr })}
                         />
                     </div>
                     {'ItemId' in part && (

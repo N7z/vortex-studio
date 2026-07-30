@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import {
     SelectIcon, MoveIcon, RotateIcon, ScaleIcon, PartIcon, SpawnIcon,
-    CopyIcon, PasteIcon, DuplicateIcon, SaveIcon, DownloadIcon, HelpIcon, StatsIcon, StudsIcon, CompassIcon,
+    CopyIcon, PasteIcon, DuplicateIcon, SaveIcon, DownloadIcon, HelpIcon, StatsIcon, StudsIcon, PlusIcon,
 } from './icons';
 import { loadStats } from './api';
-
-const PLUGIN_ICONS = { compass: CompassIcon };
+import { PluginIcon } from './pluginIcons';
 
 function ago(ts) {
     if (!ts) return 'never';
@@ -36,7 +35,7 @@ export default function Toolbar({
     onAddPart, onAddSpawn, onCopy, onPaste, onDuplicate,
     onSave, onDownload, canSave,
     studs, onToggleStuds,
-    plugins, activePluginId, onTogglePlugin,
+    plugins, activePluginId, onTogglePlugin, onNewPlugin,
 }) {
     const [pop, setPop] = useState(null); // null | 'help' | 'stats'
     const [stats, setStats] = useState(null);
@@ -125,25 +124,26 @@ export default function Toolbar({
                     Download
                 </button>
             </div>
-            {plugins.length > 0 && (
-                <div className="group">
-                    {plugins.map((p) => {
-                        const Icon = PLUGIN_ICONS[p.icon] ?? PartIcon;
-                        return (
-                            <button
-                                key={p.id}
-                                className={`tool-btn wide ${activePluginId === p.id ? 'active' : ''}`}
-                                onClick={() => onTogglePlugin(p.id)}
-                                disabled={!canSave}
-                                title={p.name}
-                            >
-                                <Icon />
-                                {p.name}
-                            </button>
-                        );
-                    })}
-                </div>
-            )}
+            <div className="group">
+                {plugins.map((p) => {
+                    return (
+                        <button
+                            key={p.id}
+                            className={`tool-btn wide ${activePluginId === p.id ? 'active' : ''}`}
+                            onClick={() => onTogglePlugin(p.id)}
+                            disabled={!canSave}
+                            title={p.name}
+                        >
+                            <PluginIcon name={p.icon} size={22} strokeWidth={1.6} />
+                            {p.name}
+                        </button>
+                    );
+                })}
+                <button className="tool-btn" onClick={onNewPlugin} disabled={!canSave} title="Create or edit a Lua plugin">
+                    <PlusIcon />
+                    New
+                </button>
+            </div>
             <div className="group help-group">
                 <button className={`tool-btn ${pop === 'stats' ? 'active' : ''}`} onClick={toggleStats}>
                     <StatsIcon />

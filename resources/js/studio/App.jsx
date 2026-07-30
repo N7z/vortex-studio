@@ -5,7 +5,12 @@ import Explorer from './Explorer';
 import Properties from './Properties';
 import Viewport from './Viewport';
 import PluginPanel from './PluginPanel';
-import { loadPlugins, stripId } from './plugins';
+import TabBar from './TabBar';
+import ScriptTab, { TEMPLATE } from './ScriptTab';
+import {
+    loadPlugins, stripId, compilePlugin, saveUserPlugin, deleteUserPlugin,
+    userPluginSource, isBuiltin, resetBuiltin,
+} from './plugins';
 import { loadMap, saveMap } from './api';
 
 let nextId = 1;
@@ -32,6 +37,9 @@ export default function App() {
     const [activePluginId, setActivePluginId] = useState(null);
     const [pluginValues, setPluginValues] = useState({});
     const [pluginPreview, setPluginPreview] = useState(null);
+    const [tabs, setTabs] = useState([]);
+    const [activeTab, setActiveTab] = useState('game');
+    const tabSeq = useRef(0);
     const previewSeq = useRef(0);
     const [status, setStatus] = useState('');
     const clipboard = useRef(null);
@@ -69,6 +77,87 @@ export default function App() {
             ...all,
             [activePlugin.id]: { ...(all[activePlugin.id] ?? activePlugin.defaults), [id]: v },
         }));
+    };
+
+    const savePlugin = async (id, src) => {
+        const pid = id ?? `user-${Date.now()}`;
+        const builtin = isBuiltin(pid);
+        try {
+            const compiled = await compilePlugin(pid, src, builtin);
+            saveUserPlugin(pid, src);
+            const old = plugins.find((p) => p.id === pid);
+            old?.close?.();
+            setPlugins((ps) => ps.some((p) => p.id === pid)
+                ? ps.map((p) => (p.id === pid ? compiled : p))
+                : [...ps, compiled]);
+            flash(`Plugin ${compiled.name} loaded`);
+            return { id: pid, name: compiled.name, icon: compiled.icon };
+        } catch (e) {
+            return { error: String(e.message ?? e) };
+        }
+    };
+
+    const removePlugin = (id) => {
+        deleteUserPlugin(id);
+        plugins.find((p) => p.id === id)?.close?.();
+        setPlugins((ps) => ps.filter((p) => p.id !== id));
+        setActivePluginId((cur) => (cur === id ? null : cur));
+    };
+
+    const openNewPluginTab = () => {
+        const id = `tab-${++tabSeq.current}`;
+        setTabs((ts) => [...ts, { id, pluginId: null, title: 'New plugin', icon: 'script', src: TEMPLATE }]);
+        setActiveTab(id);
+    };
+
+    const openEditTab = (pluginId) => {
+        const existing = tabs.find((t) => t.pluginId === pluginId);
+        if (existing) {
+            setActiveTab(existing.id);
+            return;
+        }
+        const plugin = plugins.find((p) => p.id === pluginId);
+        const id = `tab-${++tabSeq.current}`;
+        setTabs((ts) => [...ts, {
+            id,
+            pluginId,
+            title: plugin?.name ?? 'Plugin',
+            icon: plugin?.icon,
+            builtin: isBuiltin(pluginId),
+            src: userPluginSource(pluginId) ?? TEMPLATE,
+        }]);
+        setActiveTab(id);
+    };
+
+    const closeTab = (id) => {
+        setTabs((ts) => ts.filter((t) => t.id !== id));
+        setActiveTab((cur) => (cur === id ? 'game' : cur));
+    };
+
+    const updateTabSrc = (id, src) => {
+        setTabs((ts) => ts.map((t) => (t.id === id ? { ...t, src } : t)));
+    };
+
+    const saveTab = async (tab) => {
+        const res = await savePlugin(tab.pluginId, tab.src);
+        if (res.error) return res.error;
+        setTabs((ts) => ts.map((t) => (
+            t.id === tab.id ? { ...t, pluginId: res.id, title: res.name, icon: res.icon } : t
+        )));
+        return null;
+    };
+
+    const deleteTab = (tab) => {
+        if (tab.pluginId) removePlugin(tab.pluginId);
+        closeTab(tab.id);
+    };
+
+    const resetTab = async (tab) => {
+        const src = resetBuiltin(tab.pluginId);
+        updateTabSrc(tab.id, src);
+        const res = await savePlugin(tab.pluginId, src);
+        deleteUserPlugin(tab.pluginId);
+        return res.error ?? null;
     };
 
     const pluginButton = async (btnId) => {
@@ -230,7 +319,13 @@ export default function App() {
 
     useEffect(() => {
         const onKey = (e) => {
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+            if (e.ctrlKey && e.key.toLowerCase() === 's' && activeTab !== 'game') {
+                e.preventDefault();
+                const tab = tabs.find((t) => t.id === activeTab);
+                if (tab) saveTab(tab);
+                return;
+            }
+            if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable) return;
             if (e.ctrlKey && e.key.toLowerCase() === 's') { e.preventDefault(); save(); return; }
             if (e.ctrlKey && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
             if (e.key === 'Delete' || e.key === 'Backspace') removeSelected();
@@ -244,7 +339,7 @@ export default function App() {
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [save, removeSelected, undo, selected]);
+    }, [save, removeSelected, undo, selected, activeTab, tabs]);
 
     return (
         <div className="studio">
@@ -258,8 +353,29 @@ export default function App() {
                 onSave={save} onDownload={download} canSave={!!mapName}
                 studs={studs} onToggleStuds={toggleStuds}
                 plugins={plugins} activePluginId={activePluginId} onTogglePlugin={togglePlugin}
+                onNewPlugin={openNewPluginTab}
             />
-            <div className="main">
+            <TabBar
+                tabs={[
+                    { id: 'game', title: mapName ? 'Workspace' : 'Welcome', icon: 'globe', closable: false },
+                    ...tabs.map((t) => ({ id: t.id, title: t.title, icon: t.icon, closable: true })),
+                ]}
+                active={activeTab}
+                onSelect={setActiveTab}
+                onClose={closeTab}
+            />
+            {tabs.map((t) => (
+                <ScriptTab
+                    key={t.id}
+                    tab={t}
+                    visible={activeTab === t.id}
+                    onChange={(src) => updateTabSrc(t.id, src)}
+                    onSave={() => saveTab(t)}
+                    onDelete={() => deleteTab(t)}
+                    onReset={() => resetTab(t)}
+                />
+            ))}
+            <div className="main" style={activeTab === 'game' ? undefined : { display: 'none' }}>
                 <div className="viewport-wrap">
                     <Viewport
                         parts={parts}
@@ -279,14 +395,11 @@ export default function App() {
                             setValue={setPluginValue}
                             hasSelection={!!selected}
                             onButton={pluginButton}
+                            onEdit={() => openEditTab(activePlugin.id)}
                             onClose={() => setActivePluginId(null)}
                         />
                     )}
-                    {mapName && (
-                        <a className="credit" href="https://github.com/N7z/vortex-studio" target="_blank" rel="noreferrer">
-                            Developed by zPaulinBRz
-                        </a>
-                    )}
+                    {mapName && <span className="credit">Developed by zPaulinBRz</span>}
                     {!mapName && <StartScreen onOpen={open} onCreate={createNew} onUpload={openUploaded} />}
                     {status && <div className="statusbar">{status}</div>}
                 </div>

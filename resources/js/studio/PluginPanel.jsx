@@ -1,6 +1,8 @@
 import React from 'react';
+import { PencilIcon } from './icons';
+import NumberInput from './NumberInput';
 
-export default function PluginPanel({ plugin, values, setValue, hasSelection, onButton, onClose }) {
+export default function PluginPanel({ plugin, values, setValue, hasSelection, onButton, onEdit, onClose }) {
     const numbers = plugin.ui.filter((c) => c.type === 'number');
     const checks = plugin.ui.filter((c) => c.type === 'checkbox');
     const buttons = plugin.ui.filter((c) => c.type === 'button');
@@ -9,6 +11,9 @@ export default function PluginPanel({ plugin, values, setValue, hasSelection, on
         <div className="arch-pop">
             <div className="arch-head">
                 <h3>{plugin.name}</h3>
+                <button className="arch-edit" onClick={onEdit} title="Edit plugin script">
+                    <PencilIcon />
+                </button>
                 <button className="arch-close" onClick={onClose} title="Close">×</button>
             </div>
             {numbers.length > 0 && (
@@ -16,14 +21,9 @@ export default function PluginPanel({ plugin, values, setValue, hasSelection, on
                     {numbers.map((c) => (
                         <label key={c.id}>
                             {c.label}
-                            <input
-                                type="number"
-                                step="1"
+                            <NumberInput
                                 value={values[c.id] ?? 0}
-                                onChange={(e) => {
-                                    const v = parseFloat(e.target.value);
-                                    if (!Number.isNaN(v)) setValue(c.id, v);
-                                }}
+                                onChange={(v) => setValue(c.id, v)}
                             />
                         </label>
                     ))}

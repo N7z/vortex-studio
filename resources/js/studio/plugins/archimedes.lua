@@ -1,10 +1,10 @@
 plugin = {
     name = "Archimedes",
-    icon = "compass",
+    icon = Icons.DraftingCompass,
     ui = {
-        { id = "x", type = "number", label = "X\u{00B0}", default = 0 },
-        { id = "y", type = "number", label = "Y\u{00B0}", default = 10 },
-        { id = "z", type = "number", label = "Z\u{00B0}", default = 0 },
+        { id = "x", type = "number", label = "X", default = 0 },
+        { id = "y", type = "number", label = "Y", default = 10 },
+        { id = "z", type = "number", label = "Z", default = 0 },
         { id = "reverse", type = "checkbox", label = "Reverse direction", default = false },
         { id = "stamp", type = "button", label = "Stamp next part" },
     },

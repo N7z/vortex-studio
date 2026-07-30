@@ -2,9 +2,14 @@ import { LuaFactory } from 'wasmoon';
 import preludeSrc from './prelude.lua?raw';
 import archimedesSrc from './archimedes.lua?raw';
 
-const SOURCES = [
+const BUNDLED = [
     { id: 'archimedes', src: archimedesSrc },
 ];
+
+const STORE_KEY = 'studio_user_plugins';
+
+let factory;
+const getFactory = () => (factory ??= new LuaFactory());
 
 const toArray = (t) => {
     if (t == null) return [];
@@ -30,34 +35,98 @@ export function stripId(part) {
     return rest;
 }
 
+export async function compilePlugin(id, src, builtin = false) {
+    const lua = await getFactory().createEngine();
+    try {
+        await lua.doString(preludeSrc);
+        await lua.doString(src);
+        const p = lua.global.get('plugin');
+        if (!p || typeof p !== 'object') throw new Error('script must define a global "plugin" table');
+        if (!p.name) throw new Error('plugin.name is required');
+        const luaPreview = lua.global.get('__preview');
+        const luaClick = lua.global.get('__click');
+        const ui = toArray(p.ui).map((c) => ({ ...c }));
+        return {
+            id,
+            builtin,
+            name: String(p.name),
+            icon: p.icon,
+            ui,
+            defaults: Object.fromEntries(
+                ui.filter((c) => c.type !== 'button').map((c) => [c.id, c.default]),
+            ),
+            preview: async (part, values) =>
+                normPart(await luaPreview(JSON.stringify(part), JSON.stringify(values))),
+            click: async (btnId, part, values) =>
+                normPart(await luaClick(btnId, JSON.stringify(part), JSON.stringify(values))),
+            close: () => lua.global.close(),
+        };
+    } catch (e) {
+        lua.global.close();
+        throw e;
+    }
+}
+
+export function userPlugins() {
+    try {
+        return JSON.parse(localStorage.getItem(STORE_KEY)) ?? [];
+    } catch {
+        return [];
+    }
+}
+
+export function isBuiltin(id) {
+    return BUNDLED.some((b) => b.id === id);
+}
+
+export function builtinSource(id) {
+    return BUNDLED.find((b) => b.id === id)?.src ?? null;
+}
+
+export function userPluginSource(id) {
+    return userPlugins().find((p) => p.id === id)?.src ?? builtinSource(id);
+}
+
+export function resetBuiltin(id) {
+    deleteUserPlugin(id);
+    return builtinSource(id);
+}
+
+export function saveUserPlugin(id, src) {
+    const list = userPlugins().filter((p) => p.id !== id);
+    list.push({ id, src });
+    localStorage.setItem(STORE_KEY, JSON.stringify(list));
+}
+
+export function deleteUserPlugin(id) {
+    localStorage.setItem(STORE_KEY, JSON.stringify(userPlugins().filter((p) => p.id !== id)));
+}
+
 export async function loadPlugins() {
-    const factory = new LuaFactory();
-    const plugins = [];
-    for (const { id, src } of SOURCES) {
+    const out = [];
+    const stored = userPlugins();
+    for (const { id, src } of BUNDLED) {
+        const override = stored.find((s) => s.id === id);
         try {
-            const lua = await factory.createEngine();
-            await lua.doString(preludeSrc);
-            await lua.doString(src);
-            const p = lua.global.get('plugin');
-            const luaPreview = lua.global.get('__preview');
-            const luaClick = lua.global.get('__click');
-            const ui = toArray(p.ui).map((c) => ({ ...c }));
-            plugins.push({
-                id,
-                name: String(p.name ?? id),
-                icon: p.icon,
-                ui,
-                defaults: Object.fromEntries(
-                    ui.filter((c) => c.type !== 'button').map((c) => [c.id, c.default]),
-                ),
-                preview: async (part, values) =>
-                    normPart(await luaPreview(JSON.stringify(part), JSON.stringify(values))),
-                click: async (btnId, part, values) =>
-                    normPart(await luaClick(btnId, JSON.stringify(part), JSON.stringify(values))),
-            });
+            out.push(await compilePlugin(id, override?.src ?? src, true));
+        } catch (e) {
+            console.error(`plugin ${id} failed to load`, e);
+            if (override) {
+                try {
+                    out.push(await compilePlugin(id, src, true));
+                } catch (e2) {
+                    console.error(`builtin ${id} failed to load`, e2);
+                }
+            }
+        }
+    }
+    for (const { id, src } of stored) {
+        if (isBuiltin(id)) continue;
+        try {
+            out.push(await compilePlugin(id, src));
         } catch (e) {
             console.error(`plugin ${id} failed to load`, e);
         }
     }
-    return plugins;
+    return out;
 }

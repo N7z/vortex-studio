@@ -87,6 +87,8 @@ function json.decode(s)
     return v
 end
 
+Icons = setmetatable({}, { __index = function(_, key) return key end })
+
 function __preview(part_json, values_json)
     if plugin == nil or plugin.preview == nil then return nil end
     return plugin.preview(json.decode(part_json), json.decode(values_json))

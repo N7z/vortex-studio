@@ -132,7 +132,7 @@ export default function Viewport({ parts, selectedId, setSelectedId, tool, snap,
         const keys = new Set();
         let flying = false;
         const onKeyDown = (e) => {
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+            if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable) return;
             keys.add(e.code);
         };
         const onKeyUp = (e) => keys.delete(e.code);

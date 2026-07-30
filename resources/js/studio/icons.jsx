@@ -132,11 +132,23 @@ export const StudsIcon = () => (
     </svg>
 );
 
-export const CompassIcon = () => (
+
+export const PlusIcon = () => (
     <svg viewBox="0 0 24 24" {...S}>
-        <circle cx="12" cy="4" r="1.6" />
-        <path d="M11.3 5.6L6.2 19.5M12.7 5.6l5.1 13.9" />
-        <path d="M6.2 19.5L5 21.5M17.8 19.5L19 21.5" />
-        <path d="M8.5 14.5a9.5 9.5 0 0 0 7 0" />
+        <path d="M12 5v14M5 12h14" />
+    </svg>
+);
+
+export const PencilIcon = () => (
+    <svg viewBox="0 0 24 24" {...S}>
+        <path d="M17 3l4 4L8 20l-5 1 1-5z" />
+        <path d="M14.5 5.5l4 4" />
+    </svg>
+);
+
+export const TrashIcon = () => (
+    <svg viewBox="0 0 24 24" {...S}>
+        <path d="M4 6h16M9 6V4h6v2M6 6l1 14h10l1-14" />
+        <path d="M10 10v7M14 10v7" />
     </svg>
 );
