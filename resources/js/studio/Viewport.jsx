@@ -75,7 +75,7 @@ const readTransform = (m) => ({
 });
 
 export default function Viewport({
-    parts, selectedIds, setSelectedId, tool, snap, onTransform, onTransformMany,
+    parts, selectedIds, setSelectedId, selectMany, tool, snap, onTransform, onTransformMany,
     mapName, graphics, preview, spawnRef, busyRef, canEdit = true, peers,
 }) {
     const mountRef = useRef(null);
@@ -204,7 +204,7 @@ export default function Viewport({
         const keys = new Set();
         let flying = false;
         const syncBusy = () => {
-            if (busyRef) busyRef.current = flying || drag !== null;
+            if (busyRef) busyRef.current = flying || drag !== null || !!marquee?.active;
         };
         const setFlying = (v) => {
             flying = v;
@@ -219,7 +219,7 @@ export default function Viewport({
             }
         };
         const onKeyUp = (e) => keys.delete(e.code);
-        const onBlur = () => { keys.clear(); setFlying(false); pending = null; };
+        const onBlur = () => { keys.clear(); setFlying(false); pending = null; hideBand(); };
         const onWindowUp = (e) => { if (e.button === 2) setFlying(false); };
         window.addEventListener('keydown', onKeyDown);
         window.addEventListener('keyup', onKeyUp);
@@ -249,6 +249,57 @@ export default function Viewport({
         const planeHit = new THREE.Vector3();
         let pending = null;
         let drag = null;
+        let marquee = null;
+
+        const band = document.createElement('div');
+        band.style.cssText = 'position:absolute;display:none;pointer-events:none;'
+            + 'border:1px solid #2f7fd9;background:rgba(47,127,217,0.15);';
+        mount.appendChild(band);
+
+        const bandRect = (e) => {
+            const rect = renderer.domElement.getBoundingClientRect();
+            return {
+                rect,
+                x0: Math.min(marquee.x, e.clientX),
+                y0: Math.min(marquee.y, e.clientY),
+                x1: Math.max(marquee.x, e.clientX),
+                y1: Math.max(marquee.y, e.clientY),
+            };
+        };
+
+        const drawBand = (e) => {
+            const r = bandRect(e);
+            band.style.left = `${r.x0 - r.rect.left}px`;
+            band.style.top = `${r.y0 - r.rect.top}px`;
+            band.style.width = `${r.x1 - r.x0}px`;
+            band.style.height = `${r.y1 - r.y0}px`;
+            band.style.display = 'block';
+        };
+
+        const hideBand = () => {
+            band.style.display = 'none';
+            marquee = null;
+            syncBusy();
+        };
+
+        const bandPoint = new THREE.Vector3();
+        const endBand = (e) => {
+            const r = bandRect(e);
+            const additive = marquee.additive;
+            hideBand();
+            const c = ctx.current;
+            if (!c) return;
+            const ids = [];
+            for (const m of c.meshList) {
+                m.updateWorldMatrix(true, false);
+                bandPoint.setFromMatrixPosition(m.matrixWorld).project(camera);
+                if (bandPoint.z < -1 || bandPoint.z > 1) continue;
+                const sx = r.rect.left + ((bandPoint.x + 1) / 2) * r.rect.width;
+                const sy = r.rect.top + ((1 - bandPoint.y) / 2) * r.rect.height;
+                if (sx >= r.x0 && sx <= r.x1 && sy >= r.y0 && sy <= r.y1) ids.push(m.userData.id);
+            }
+            c.selectMany(ids, additive);
+        };
 
         const castPointer = (e) => {
             const rect = renderer.domElement.getBoundingClientRect();
@@ -371,15 +422,40 @@ export default function Viewport({
             if (e.button === 2) setFlying(true);
             if (e.button !== 0 || gizmo.dragging || gizmo.axis) return;
             const mesh = pickMesh(e);
-            if (mesh) pending = { mesh };
+            if (mesh) {
+                pending = { mesh };
+                return;
+            }
+            if (ctx.current?.tool === 'select') {
+                marquee = { x: e.clientX, y: e.clientY, active: false, additive: e.ctrlKey || e.metaKey };
+            }
         };
 
         const onMove = (e) => {
             if (pending && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) startDrag(e);
             if (drag) moveDrag(e);
+            if (marquee) {
+                if (!marquee.active && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) {
+                    marquee.active = true;
+                    syncBusy();
+                    renderer.domElement.setPointerCapture(e.pointerId);
+                }
+                if (marquee.active) drawBand(e);
+            }
         };
         const onUp = (e) => {
             if (e.button !== 0) return;
+            if (marquee) {
+                const active = marquee.active;
+                if (renderer.domElement.hasPointerCapture(e.pointerId)) {
+                    renderer.domElement.releasePointerCapture(e.pointerId);
+                }
+                if (active) {
+                    endBand(e);
+                    return;
+                }
+                hideBand();
+            }
             endDrag(e);
             if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
             if (gizmo.dragging) return;
@@ -554,9 +630,11 @@ export default function Viewport({
             mats: makeMaterialPool(),
             studsOn: gfxRef.current.studs,
             selectedMeshes: [],
+            tool: 'select',
             onTransform: () => {},
             onTransformMany: () => {},
             setSelectedId: () => {},
+            selectMany: () => {},
         };
 
         return () => {
@@ -583,6 +661,7 @@ export default function Viewport({
             ctx.current.geometry.dispose();
             ctx.current.previewMesh?.material.dispose();
             renderer.dispose();
+            band.remove();
             mount.removeChild(renderer.domElement);
             ctx.current = null;
         };
@@ -594,6 +673,8 @@ export default function Viewport({
         c.onTransform = onTransform;
         c.onTransformMany = onTransformMany;
         c.setSelectedId = setSelectedId;
+        c.selectMany = selectMany ?? (() => {});
+        c.tool = tool;
         c.snapMove = snap.moveOn ? snap.move : 0;
         c.canEdit = canEdit;
         c.peers = peers ?? [];

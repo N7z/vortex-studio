@@ -632,6 +632,7 @@ export default function App() {
                         parts={parts}
                         selectedIds={selectedIds}
                         setSelectedId={setSelectedId}
+                        selectMany={selectMany}
                         tool={tool}
                         snap={snap}
                         canEdit={canEdit}
