@@ -19,18 +19,31 @@ body {
     align-items: stretch;
     background: #0a0a0d;
     border-bottom: 1px solid #000;
-    height: 68px;
+    height: 84px;
     flex: none;
 }
 
 .toolbar .group {
     display: flex;
-    align-items: center;
-    padding: 0 8px;
-    border-right: 1px solid #1c1c22;
+    flex-direction: column;
+    justify-content: center;
     gap: 4px;
+    padding: 5px 8px 3px;
+    border-right: 1px solid #1c1c22;
     flex: none;
 }
+
+.group-label {
+    flex: none;
+    text-align: center;
+    font-size: 9px;
+    line-height: 1;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    color: #55555e;
+}
+
+.group-items { display: flex; align-items: center; gap: 4px; }
 
 .tool-btn {
     width: 60px;
@@ -57,7 +70,8 @@ a.tool-btn { text-decoration: none; }
 .tool-btn.wide { width: auto; min-width: 60px; padding: 0 10px; }
 .tool-btn { flex: none; }
 
-.snap-group { display: flex; flex-direction: column; gap: 6px; padding: 0 10px; justify-content: center; }
+.snap-group { padding-left: 10px; padding-right: 10px; }
+.snap-group .group-items { flex-direction: column; gap: 6px; }
 .snap-row { display: flex; align-items: center; gap: 6px; }
 .snap-row input[type="text"] {
     width: 52px;
@@ -104,7 +118,7 @@ a.tool-btn { text-decoration: none; }
 
 .help-pop {
     position: absolute;
-    top: 98px;
+    top: 114px;
     right: 8px;
     z-index: 50;
     width: 340px;
@@ -116,7 +130,7 @@ a.tool-btn { text-decoration: none; }
     font-size: 12px;
     line-height: 1.55;
     color: #b9b9c0;
-    max-height: calc(100vh - 118px);
+    max-height: calc(100vh - 134px);
     overflow-y: auto;
     overscroll-behavior: contain;
 }

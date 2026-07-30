@@ -12,6 +12,15 @@ const TOOLS = [
     ['scale', 'Scale', ScaleIcon],
 ];
 
+function Group({ label, className = '', children }) {
+    return (
+        <div className={`group ${className}`.trim()}>
+            <span className="group-label">{label}</span>
+            <div className="group-items">{children}</div>
+        </div>
+    );
+}
+
 export default function Toolbar({
     tool, setTool, snap, setSnap,
     hasSelection, hasClipboard, canEdit,
@@ -27,7 +36,7 @@ export default function Toolbar({
 
     return (
         <div className="toolbar">
-            <div className="group">
+            <Group label="Tools">
                 {TOOLS.map(([id, label, Icon]) => (
                     <button
                         key={id}
@@ -38,8 +47,8 @@ export default function Toolbar({
                         {label}
                     </button>
                 ))}
-            </div>
-            <div className="group snap-group">
+            </Group>
+            <Group label="Snap" className="snap-group">
                 <div className="snap-row">
                     <input
                         type="checkbox"
@@ -58,8 +67,8 @@ export default function Toolbar({
                     <input type="text" defaultValue={snap.rotate} onBlur={numInput('rotate')} title="Rotate snap (degrees)" />
                     <span className="snap-icon" title="Rotate snap (degrees)"><RotateIcon /></span>
                 </div>
-            </div>
-            <div className="group">
+            </Group>
+            <Group label="History">
                 <button className="tool-btn" onClick={onUndo} disabled={!hasMap || !canEdit} title="Ctrl+Z">
                     <UndoIcon />
                     Undo
@@ -68,8 +77,8 @@ export default function Toolbar({
                     <RedoIcon />
                     Redo
                 </button>
-            </div>
-            <div className="group">
+            </Group>
+            <Group label="Insert">
                 <button className="tool-btn" onClick={onAddPart} disabled={!hasMap || !canEdit}>
                     <PartIcon />
                     Part
@@ -78,8 +87,8 @@ export default function Toolbar({
                     <SpawnIcon />
                     Spawn
                 </button>
-            </div>
-            <div className="group">
+            </Group>
+            <Group label="Edit">
                 <button className="tool-btn" onClick={onCopy} disabled={!hasSelection} title="Ctrl+C">
                     <CopyIcon />
                     Copy
@@ -96,12 +105,8 @@ export default function Toolbar({
                     <DeleteIcon />
                     Delete
                 </button>
-            </div>
-            <div className="group">
-                <button className="tool-btn" onClick={onSave} disabled={!canSave} title="Ctrl+S">
-                    <SaveIcon />
-                    Save
-                </button>
+            </Group>
+            <Group label="View">
                 <button
                     className={`tool-btn ${graphics.studs ? 'active' : ''}`}
                     onClick={() => onGraphics({ studs: !graphics.studs })}
@@ -109,6 +114,12 @@ export default function Toolbar({
                 >
                     <StudsIcon />
                     Studs
+                </button>
+            </Group>
+            <Group label="Map">
+                <button className="tool-btn" onClick={onSave} disabled={!canSave} title="Ctrl+S">
+                    <SaveIcon />
+                    Save
                 </button>
                 <button
                     className={`tool-btn wide ${teamOpen ? 'active' : ''} ${live?.live ? 'is-live' : ''}`}
@@ -119,7 +130,7 @@ export default function Toolbar({
                     <TeamIcon />
                     {live?.live ? `Team ${live.members.length}` : 'Team'}
                 </button>
-            </div>
+            </Group>
         </div>
     );
 }
