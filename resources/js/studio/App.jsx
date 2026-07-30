@@ -523,7 +523,13 @@ export default function App() {
 
     const copy = () => {
         if (!selectedParts.length) return;
-        clipboard.current = stripIds(selectedParts).map((p) => JSON.parse(JSON.stringify(p)));
+        const slot = new Map(selectedParts.map((p, i) => [p._id, i]));
+        clipboard.current = {
+            parts: stripIds(selectedParts).map((p) => JSON.parse(JSON.stringify(p))),
+            groups: groups
+                .filter((g) => g.ids.every((id) => slot.has(id)))
+                .map((g) => ({ name: g.name, slots: g.ids.map((id) => slot.get(id)) })),
+        };
     };
 
     const addMany = (templates) => {
@@ -534,8 +540,14 @@ export default function App() {
     };
 
     const paste = () => {
-        if (!clipboard.current?.length) return;
-        addMany(clipboard.current.map((p) => ({ ...p, P: [p.P[0] + 2, p.P[1], p.P[2] + 2] })));
+        const clip = clipboard.current;
+        if (!clip?.parts.length) return;
+        const added = addMany(clip.parts.map((p) => ({ ...p, P: [p.P[0] + 2, p.P[1], p.P[2] + 2] })));
+        if (!clip.groups.length) return;
+        setGroups((gs) => [
+            ...gs,
+            ...clip.groups.map((g) => newGroup(g.name, g.slots.map((i) => added[i]._id))),
+        ]);
     };
 
     const duplicate = () => {
