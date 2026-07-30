@@ -121,3 +121,13 @@ export const cubeIcon = (color) => (
         <path d="M4 7.5l8 4.5 8-4.5M12 21v-9" />
     </svg>
 );
+
+export const StudsIcon = () => (
+    <svg viewBox="0 0 24 24" {...S}>
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <circle cx="8.5" cy="8.5" r="1.8" />
+        <circle cx="15.5" cy="8.5" r="1.8" />
+        <circle cx="8.5" cy="15.5" r="1.8" />
+        <circle cx="15.5" cy="15.5" r="1.8" />
+    </svg>
+);

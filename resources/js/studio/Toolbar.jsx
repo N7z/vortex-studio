@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
     SelectIcon, MoveIcon, RotateIcon, ScaleIcon, PartIcon, SpawnIcon,
-    CopyIcon, PasteIcon, DuplicateIcon, SaveIcon, DownloadIcon, HelpIcon, StatsIcon,
+    CopyIcon, PasteIcon, DuplicateIcon, SaveIcon, DownloadIcon, HelpIcon, StatsIcon, StudsIcon,
 } from './icons';
 import { loadStats } from './api';
 
@@ -33,6 +33,7 @@ export default function Toolbar({
     hasSelection, hasClipboard,
     onAddPart, onAddSpawn, onCopy, onPaste, onDuplicate,
     onSave, onDownload, canSave,
+    studs, onToggleStuds,
 }) {
     const [pop, setPop] = useState(null); // null | 'help' | 'stats'
     const [stats, setStats] = useState(null);
@@ -91,6 +92,10 @@ export default function Toolbar({
                 <button className="tool-btn" onClick={onAddSpawn}>
                     <SpawnIcon />
                     Spawn
+                </button>
+                <button className={`tool-btn ${studs ? 'active' : ''}`} onClick={onToggleStuds} title="Show stud textures on top faces">
+                    <StudsIcon />
+                    Studs
                 </button>
             </div>
             <div className="group">

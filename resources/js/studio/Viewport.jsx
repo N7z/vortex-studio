@@ -8,7 +8,59 @@ const DEG = Math.PI / 180;
 
 const round = (v) => Math.round(v * 100) / 100;
 
-export default function Viewport({ parts, selectedId, setSelectedId, tool, snap, onTransform, mapName }) {
+function makeFaceTexture(draw) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d');
+    g.fillStyle = '#ffffff';
+    g.fillRect(0, 0, 64, 64);
+    draw(g);
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+}
+
+function makeStudTexture() {
+    return makeFaceTexture((g) => {
+        g.fillStyle = 'rgba(0,0,0,0.18)';
+        g.beginPath();
+        g.arc(33, 35, 15, 0, Math.PI * 2);
+        g.fill();
+        const grad = g.createLinearGradient(0, 17, 0, 47);
+        grad.addColorStop(0, '#ffffff');
+        grad.addColorStop(1, '#c9c9c9');
+        g.fillStyle = grad;
+        g.beginPath();
+        g.arc(32, 32, 14, 0, Math.PI * 2);
+        g.fill();
+        g.strokeStyle = 'rgba(0,0,0,0.15)';
+        g.lineWidth = 1.5;
+        g.stroke();
+    });
+}
+
+function makeInletTexture() {
+    return makeFaceTexture((g) => {
+        g.strokeStyle = 'rgba(0,0,0,0.13)';
+        g.lineWidth = 6;
+        g.beginPath();
+        g.arc(32, 32, 13, 0, Math.PI * 2);
+        g.stroke();
+        g.strokeStyle = 'rgba(0,0,0,0.22)';
+        g.lineWidth = 2;
+        g.beginPath();
+        g.arc(32, 32, 16, 0, Math.PI * 2);
+        g.stroke();
+        g.strokeStyle = 'rgba(0,0,0,0.10)';
+        g.lineWidth = 1.5;
+        g.beginPath();
+        g.arc(32, 32, 10, 0, Math.PI * 2);
+        g.stroke();
+    });
+}
+
+export default function Viewport({ parts, selectedId, setSelectedId, tool, snap, onTransform, mapName, studs }) {
     const mountRef = useRef(null);
     const ctx = useRef(null);
     const partsRef = useRef(parts);
@@ -184,8 +236,14 @@ export default function Viewport({ parts, selectedId, setSelectedId, tool, snap,
         };
         tick();
 
+        const studTex = makeStudTexture();
+        const inletTex = makeInletTexture();
+        const aniso = renderer.capabilities.getMaxAnisotropy();
+        studTex.anisotropy = aniso;
+        inletTex.anisotropy = aniso;
+
         ctx.current = {
-            scene, camera, renderer, orbit, gizmo,
+            scene, camera, renderer, orbit, gizmo, studTex, inletTex,
             meshes: new Map(),
             geometry: new THREE.BoxGeometry(1, 1, 1),
             selectedMesh: null,
@@ -205,6 +263,8 @@ export default function Viewport({ parts, selectedId, setSelectedId, tool, snap,
             window.removeEventListener('pointermove', onLook);
             gizmo.dispose();
             orbit.dispose();
+            studTex.dispose();
+            inletTex.dispose();
             renderer.dispose();
             mount.removeChild(renderer.domElement);
             ctx.current = null;
@@ -226,10 +286,20 @@ export default function Viewport({ parts, selectedId, setSelectedId, tool, snap,
             alive.add(part._id);
             let mesh = c.meshes.get(part._id);
             if (!mesh) {
-                mesh = new THREE.Mesh(c.geometry, new THREE.MeshStandardMaterial());
+                const base = new THREE.MeshStandardMaterial();
+                const studMap = c.studTex.clone();
+                const inletMap = c.inletTex.clone();
+                const top = new THREE.MeshStandardMaterial({ map: studMap });
+                const bottom = new THREE.MeshStandardMaterial({ map: inletMap });
+                mesh = new THREE.Mesh(c.geometry, [base, base, top, bottom, base, base]);
                 mesh.castShadow = true;
                 mesh.receiveShadow = true;
                 mesh.userData.id = part._id;
+                mesh.userData.base = base;
+                mesh.userData.top = top;
+                mesh.userData.bottom = bottom;
+                mesh.userData.studMap = studMap;
+                mesh.userData.inletMap = inletMap;
                 c.scene.add(mesh);
                 c.meshes.set(part._id, mesh);
             }
@@ -238,24 +308,42 @@ export default function Viewport({ parts, selectedId, setSelectedId, tool, snap,
                 mesh.scale.set(part.S[0], part.S[1], part.S[2]);
                 mesh.rotation.set(part.R[0] * DEG, part.R[1] * DEG, part.R[2] * DEG);
             }
-            mesh.material.color.set(`#${part.C ?? 'a3a2a5'}`);
+            const { base, top, bottom, studMap, inletMap } = mesh.userData;
             const tr = part.Tr ?? 0;
             const wantTransparent = tr > 0;
-            if (mesh.material.transparent !== wantTransparent) {
-                mesh.material.transparent = wantTransparent;
-                mesh.material.needsUpdate = true;
+            for (const m of [base, top, bottom]) {
+                m.color.set(`#${part.C ?? 'a3a2a5'}`);
+                if (m.transparent !== wantTransparent) {
+                    m.transparent = wantTransparent;
+                    m.needsUpdate = true;
+                }
+                m.opacity = 1 - tr;
             }
-            mesh.material.opacity = 1 - tr;
+            const rx = Math.max(1, Math.round(part.S[0]));
+            const rz = Math.max(1, Math.round(part.S[2]));
+            studMap.repeat.set(rx, rz);
+            inletMap.repeat.set(rx, rz);
+            for (const [m, map] of [[top, studMap], [bottom, inletMap]]) {
+                const wantMap = studs ? map : null;
+                if (m.map !== wantMap) {
+                    m.map = wantMap;
+                    m.needsUpdate = true;
+                }
+            }
         }
         for (const [id, mesh] of c.meshes) {
             if (!alive.has(id)) {
                 if (c.gizmo.object === mesh) c.gizmo.detach();
                 c.scene.remove(mesh);
-                mesh.material.dispose();
+                mesh.userData.studMap.dispose();
+                mesh.userData.inletMap.dispose();
+                mesh.userData.top.dispose();
+                mesh.userData.bottom.dispose();
+                mesh.userData.base.dispose();
                 c.meshes.delete(id);
             }
         }
-    }, [parts]);
+    }, [parts, studs]);
 
     useEffect(() => {
         const c = ctx.current;

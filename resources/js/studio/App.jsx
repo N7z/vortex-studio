@@ -25,6 +25,7 @@ export default function App() {
     const [selectedId, setSelectedId] = useState(null);
     const [tool, setTool] = useState('select');
     const [snap, setSnap] = useState({ moveOn: true, move: 1, rotateOn: true, rotate: 15 });
+    const [studs, setStuds] = useState(() => localStorage.getItem('studio_studs') !== '0');
     const [status, setStatus] = useState('');
     const clipboard = useRef(null);
     const dirty = useRef(false);
@@ -33,6 +34,13 @@ export default function App() {
     partsRef.current = parts;
 
     const selected = parts.find((p) => p._id === selectedId) ?? null;
+
+    const toggleStuds = () => {
+        setStuds((s) => {
+            localStorage.setItem('studio_studs', s ? '0' : '1');
+            return !s;
+        });
+    };
 
     const flash = (msg) => {
         setStatus(msg);
@@ -199,6 +207,7 @@ export default function App() {
                 onAddSpawn={() => addPart(NEW_SPAWN)}
                 onCopy={copy} onPaste={paste} onDuplicate={duplicate}
                 onSave={save} onDownload={download} canSave={!!mapName}
+                studs={studs} onToggleStuds={toggleStuds}
             />
             <div className="main">
                 <div className="viewport-wrap">
@@ -210,6 +219,7 @@ export default function App() {
                         snap={snap}
                         onTransform={updateSelected}
                         mapName={mapName}
+                        studs={studs}
                     />
                     {mapName && (
                         <a className="credit" href="https://github.com/N7z/vortex-studio" target="_blank" rel="noreferrer">
