@@ -3,7 +3,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import {
-    PLACEHOLDER, makeMaterialPool, makePartGeometry, makeStudMaterial, releaseStuds,
+    PART_TYPES, PLACEHOLDER, faceMarks, makeFaceMaterial, makeMaterialPool,
+    makePartGeometry, makeTrussGeometry, releaseFaces,
 } from './parts3d';
 
 const TOOL_MODE = { move: 'translate', rotate: 'rotate', scale: 'scale' };
@@ -63,6 +64,46 @@ function makeInletTexture() {
         g.stroke();
     });
 }
+
+function makeSpawnTexture() {
+    return makeFaceTexture((g) => {
+        g.strokeStyle = 'rgba(0,0,0,0.32)';
+        g.lineWidth = 4;
+        g.beginPath();
+        g.arc(32, 32, 22, 0, Math.PI * 2);
+        g.stroke();
+        g.fillStyle = 'rgba(0,0,0,0.32)';
+        g.beginPath();
+        g.moveTo(32, 14);
+        g.lineTo(46, 40);
+        g.lineTo(32, 33);
+        g.lineTo(18, 40);
+        g.closePath();
+        g.fill();
+    });
+}
+
+function makeShirtTexture() {
+    return makeFaceTexture((g) => {
+        g.fillStyle = 'rgba(0,0,0,0.28)';
+        g.beginPath();
+        g.moveTo(21, 13);
+        g.lineTo(26, 13);
+        g.lineTo(32, 19);
+        g.lineTo(38, 13);
+        g.lineTo(43, 13);
+        g.lineTo(53, 24);
+        g.lineTo(45, 32);
+        g.lineTo(45, 52);
+        g.lineTo(19, 52);
+        g.lineTo(19, 32);
+        g.lineTo(11, 24);
+        g.closePath();
+        g.fill();
+    });
+}
+
+const REPEATING = new Set(['stud', 'inlet']);
 
 const MAX_OUTLINES = 192;
 const MAX_PREVIEWS = 256;
@@ -700,14 +741,17 @@ export default function Viewport({
         };
         tick();
 
-        const studTex = makeStudTexture();
-        const inletTex = makeInletTexture();
+        const tex = {
+            stud: makeStudTexture(),
+            inlet: makeInletTexture(),
+            spawn: makeSpawnTexture(),
+            shirt: makeShirtTexture(),
+        };
         const aniso = renderer.capabilities.getMaxAnisotropy();
-        studTex.anisotropy = aniso;
-        inletTex.anisotropy = aniso;
+        for (const t of Object.values(tex)) t.anisotropy = aniso;
 
         ctx.current = {
-            scene, camera, renderer, orbit, gizmo, studTex, inletTex, pivot, spawnPoint,
+            scene, camera, renderer, orbit, gizmo, tex, pivot, spawnPoint,
             sun, grid, applyScale,
             isDragging: () => drag !== null,
             isDraggingMesh: (m) => !!drag?.meshes.includes(m),
@@ -718,6 +762,7 @@ export default function Viewport({
             meshes: new Map(),
             meshList: [],
             geometry: makePartGeometry(),
+            trussGeometry: makeTrussGeometry(),
             mats: makeMaterialPool(),
             previewMeshes: [],
             previewMat: new THREE.MeshStandardMaterial({
@@ -762,10 +807,10 @@ export default function Viewport({
             for (const m of peerMats.values()) m.dispose();
             selEdges.dispose();
             selMat.dispose();
-            studTex.dispose();
-            inletTex.dispose();
+            for (const t of Object.values(tex)) t.dispose();
             ctx.current.mats.dispose();
             ctx.current.geometry.dispose();
+            ctx.current.trussGeometry.dispose();
             for (const m of ctx.current.previewMeshes) scene.remove(m);
             ctx.current.previewMat.dispose();
             renderer.dispose();
@@ -823,7 +868,7 @@ export default function Viewport({
     useEffect(() => {
         const c = ctx.current;
         if (!c) return;
-        const useStuds = studs && (mode === 'lit' || mode === 'unlit');
+        const plain = mode === 'wireframe' || mode === 'normals';
         const rebuild = c.studsOn !== studs || c.mode !== mode;
         const alive = new Set();
 
@@ -866,35 +911,54 @@ export default function Viewport({
             mesh.rotation.set(part.R[0] * DEG, part.R[1] * DEG, part.R[2] * DEG);
 
             const base = setBase(mesh, part);
+            const type = PART_TYPES.includes(part.T) ? part.T : 'Part';
 
-            if (!useStuds) {
-                if (mesh.material !== base) mesh.material = base;
-                releaseStuds(mesh);
-                continue;
-            }
+            const geometry = type === 'Truss' ? c.trussGeometry : c.geometry;
+            if (mesh.geometry !== geometry) mesh.geometry = geometry;
 
-            if (mesh.userData.studMode !== mode) releaseStuds(mesh);
-            if (!mesh.userData.top) {
-                mesh.userData.studMap = c.studTex.clone();
-                mesh.userData.inletMap = c.inletTex.clone();
-                mesh.userData.top = makeStudMaterial(mode, mesh.userData.studMap);
-                mesh.userData.bottom = makeStudMaterial(mode, mesh.userData.inletMap);
-                mesh.userData.slots = [base, mesh.userData.top, mesh.userData.bottom];
-                mesh.userData.studMode = mode;
-            }
-            const { top, bottom, studMap, inletMap, slots } = mesh.userData;
-            slots[0] = base;
-            if (mesh.material !== slots) mesh.material = slots;
-            for (const m of [top, bottom]) {
-                m.color.copy(base.color);
-                if (m.transparent !== base.transparent) {
-                    m.transparent = base.transparent;
-                    m.needsUpdate = true;
+            const marks = plain ? {} : faceMarks(type, studs);
+            const key = `${type}|${mode}|${Object.entries(marks).join()}`;
+            if (mesh.userData.faceKey !== key) releaseFaces(mesh);
+
+            if (!mesh.userData.faceKey) {
+                if (!Object.keys(marks).length) {
+                    if (mesh.material !== base) mesh.material = base;
+                    continue;
                 }
-                m.opacity = base.opacity;
+                const mats = [];
+                const maps = [];
+                const slot = (mark) => {
+                    if (!mark) return null;
+                    const shared = c.tex[mark];
+                    const map = REPEATING.has(mark) ? shared.clone() : shared;
+                    if (map !== shared) maps.push(map);
+                    const m = makeFaceMaterial(mode, map);
+                    mats.push(m);
+                    return { m, mark, map };
+                };
+                mesh.userData.faceSlots = [slot(marks.sides), slot(marks.top), slot(marks.bottom)];
+                mesh.userData.faces = mats;
+                mesh.userData.faceMaps = maps;
+                mesh.userData.slots = [base, base, base];
+                mesh.userData.faceKey = key;
             }
-            studMap.repeat.set(Math.max(1, Math.round(part.S[0])), Math.max(1, Math.round(part.S[2])));
-            inletMap.repeat.copy(studMap.repeat);
+
+            const { faceSlots, slots } = mesh.userData;
+            for (let i = 0; i < 3; i++) slots[i] = faceSlots[i]?.m ?? base;
+            if (mesh.material !== slots) mesh.material = slots;
+
+            const rx = Math.max(1, Math.round(part.S[0]));
+            const rz = Math.max(1, Math.round(part.S[2]));
+            for (const s of faceSlots) {
+                if (!s) continue;
+                s.m.color.copy(base.color);
+                if (s.m.transparent !== base.transparent) {
+                    s.m.transparent = base.transparent;
+                    s.m.needsUpdate = true;
+                }
+                s.m.opacity = base.opacity;
+                if (REPEATING.has(s.mark)) s.map.repeat.set(rx, rz);
+            }
         }
         c.studsOn = studs;
         c.mode = mode;
@@ -904,7 +968,7 @@ export default function Viewport({
             if (!alive.has(id)) {
                 if (c.gizmo.object === mesh) c.gizmo.detach();
                 mesh.removeFromParent();
-                releaseStuds(mesh);
+                releaseFaces(mesh);
                 c.mats.release(mesh.userData.base);
                 mesh.userData.base = null;
                 c.meshes.delete(id);
