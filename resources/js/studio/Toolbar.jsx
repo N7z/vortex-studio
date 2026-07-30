@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import {
     SelectIcon, MoveIcon, RotateIcon, ScaleIcon, PartIcon, SpawnIcon,
-    CopyIcon, PasteIcon, DuplicateIcon, SaveIcon, DownloadIcon, HelpIcon, StatsIcon, StudsIcon,
+    CopyIcon, PasteIcon, DuplicateIcon, SaveIcon, DownloadIcon, HelpIcon, StatsIcon, StudsIcon, CompassIcon,
 } from './icons';
 import { loadStats } from './api';
+
+const PLUGIN_ICONS = { compass: CompassIcon };
 
 function ago(ts) {
     if (!ts) return 'never';
@@ -34,6 +36,7 @@ export default function Toolbar({
     onAddPart, onAddSpawn, onCopy, onPaste, onDuplicate,
     onSave, onDownload, canSave,
     studs, onToggleStuds,
+    plugins, activePluginId, onTogglePlugin,
 }) {
     const [pop, setPop] = useState(null); // null | 'help' | 'stats'
     const [stats, setStats] = useState(null);
@@ -122,6 +125,25 @@ export default function Toolbar({
                     Download
                 </button>
             </div>
+            {plugins.length > 0 && (
+                <div className="group">
+                    {plugins.map((p) => {
+                        const Icon = PLUGIN_ICONS[p.icon] ?? PartIcon;
+                        return (
+                            <button
+                                key={p.id}
+                                className={`tool-btn wide ${activePluginId === p.id ? 'active' : ''}`}
+                                onClick={() => onTogglePlugin(p.id)}
+                                disabled={!canSave}
+                                title={p.name}
+                            >
+                                <Icon />
+                                {p.name}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
             <div className="group help-group">
                 <button className={`tool-btn ${pop === 'stats' ? 'active' : ''}`} onClick={toggleStats}>
                     <StatsIcon />

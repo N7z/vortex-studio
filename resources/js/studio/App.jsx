@@ -4,6 +4,8 @@ import StartScreen from './StartScreen';
 import Explorer from './Explorer';
 import Properties from './Properties';
 import Viewport from './Viewport';
+import PluginPanel from './PluginPanel';
+import { loadPlugins, stripId } from './plugins';
 import { loadMap, saveMap } from './api';
 
 let nextId = 1;
@@ -26,6 +28,11 @@ export default function App() {
     const [tool, setTool] = useState('select');
     const [snap, setSnap] = useState({ moveOn: true, move: 1, rotateOn: true, rotate: 15 });
     const [studs, setStuds] = useState(() => localStorage.getItem('studio_studs') !== '0');
+    const [plugins, setPlugins] = useState([]);
+    const [activePluginId, setActivePluginId] = useState(null);
+    const [pluginValues, setPluginValues] = useState({});
+    const [pluginPreview, setPluginPreview] = useState(null);
+    const previewSeq = useRef(0);
     const [status, setStatus] = useState('');
     const clipboard = useRef(null);
     const dirty = useRef(false);
@@ -34,6 +41,48 @@ export default function App() {
     partsRef.current = parts;
 
     const selected = parts.find((p) => p._id === selectedId) ?? null;
+    const activePlugin = plugins.find((p) => p.id === activePluginId) ?? null;
+    const activeValues = activePlugin ? pluginValues[activePlugin.id] ?? activePlugin.defaults : null;
+
+    useEffect(() => {
+        loadPlugins().then(setPlugins);
+    }, []);
+
+    useEffect(() => {
+        const seq = ++previewSeq.current;
+        if (!activePlugin || !selected) {
+            setPluginPreview(null);
+            return;
+        }
+        activePlugin.preview(stripId(selected), activeValues)
+            .then((p) => { if (previewSeq.current === seq) setPluginPreview(p); })
+            .catch(() => { if (previewSeq.current === seq) setPluginPreview(null); });
+    }, [activePlugin, selected, activeValues]);
+
+    const togglePlugin = (id) => {
+        setActivePluginId((cur) => (cur === id ? null : id));
+    };
+
+    const setPluginValue = (id, v) => {
+        if (!activePlugin) return;
+        setPluginValues((all) => ({
+            ...all,
+            [activePlugin.id]: { ...(all[activePlugin.id] ?? activePlugin.defaults), [id]: v },
+        }));
+    };
+
+    const pluginButton = async (btnId) => {
+        if (!activePlugin || !selected) return;
+        try {
+            const part = await activePlugin.click(btnId, stripId(selected), activeValues);
+            if (!part) return;
+            const placed = withId(part);
+            mutate((ps) => [...ps, placed]);
+            setSelectedId(placed._id);
+        } catch (e) {
+            flash(String(e.message ?? e));
+        }
+    };
 
     const toggleStuds = () => {
         setStuds((s) => {
@@ -208,6 +257,7 @@ export default function App() {
                 onCopy={copy} onPaste={paste} onDuplicate={duplicate}
                 onSave={save} onDownload={download} canSave={!!mapName}
                 studs={studs} onToggleStuds={toggleStuds}
+                plugins={plugins} activePluginId={activePluginId} onTogglePlugin={togglePlugin}
             />
             <div className="main">
                 <div className="viewport-wrap">
@@ -220,7 +270,18 @@ export default function App() {
                         onTransform={updateSelected}
                         mapName={mapName}
                         studs={studs}
+                        preview={pluginPreview}
                     />
+                    {activePlugin && mapName && (
+                        <PluginPanel
+                            plugin={activePlugin}
+                            values={activeValues}
+                            setValue={setPluginValue}
+                            hasSelection={!!selected}
+                            onButton={pluginButton}
+                            onClose={() => setActivePluginId(null)}
+                        />
+                    )}
                     {mapName && (
                         <a className="credit" href="https://github.com/N7z/vortex-studio" target="_blank" rel="noreferrer">
                             Developed by zPaulinBRz

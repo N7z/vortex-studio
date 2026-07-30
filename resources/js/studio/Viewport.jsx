@@ -60,7 +60,7 @@ function makeInletTexture() {
     });
 }
 
-export default function Viewport({ parts, selectedId, setSelectedId, tool, snap, onTransform, mapName, studs }) {
+export default function Viewport({ parts, selectedId, setSelectedId, tool, snap, onTransform, mapName, studs, preview }) {
     const mountRef = useRef(null);
     const ctx = useRef(null);
     const partsRef = useRef(parts);
@@ -265,6 +265,7 @@ export default function Viewport({ parts, selectedId, setSelectedId, tool, snap,
             orbit.dispose();
             studTex.dispose();
             inletTex.dispose();
+            ctx.current.previewMesh?.material.dispose();
             renderer.dispose();
             mount.removeChild(renderer.domElement);
             ctx.current = null;
@@ -344,6 +345,28 @@ export default function Viewport({ parts, selectedId, setSelectedId, tool, snap,
             }
         }
     }, [parts, studs]);
+
+    useEffect(() => {
+        const c = ctx.current;
+        if (!c) return;
+        if (preview) {
+            if (!c.previewMesh) {
+                c.previewMesh = new THREE.Mesh(c.geometry, new THREE.MeshStandardMaterial({
+                    color: 0x2f7fd9,
+                    transparent: true,
+                    opacity: 0.45,
+                    depthWrite: false,
+                }));
+                c.scene.add(c.previewMesh);
+            }
+            c.previewMesh.visible = true;
+            c.previewMesh.position.set(preview.P[0], preview.P[1], preview.P[2]);
+            c.previewMesh.scale.set(preview.S[0], preview.S[1], preview.S[2]);
+            c.previewMesh.rotation.set(preview.R[0] * DEG, preview.R[1] * DEG, preview.R[2] * DEG);
+        } else if (c.previewMesh) {
+            c.previewMesh.visible = false;
+        }
+    }, [preview]);
 
     useEffect(() => {
         const c = ctx.current;

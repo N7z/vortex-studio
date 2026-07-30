@@ -53,6 +53,7 @@ a.tool-btn { text-decoration: none; }
 .tool-btn.active { background: #2563eb; color: #fff; }
 .tool-btn:disabled { color: #4a4a52; cursor: default; }
 .tool-btn:disabled:hover { background: transparent; }
+.tool-btn.wide { width: auto; min-width: 60px; padding: 0 10px; }
 
 .snap-group { display: flex; flex-direction: column; gap: 6px; padding: 0 10px; justify-content: center; }
 .snap-row { display: flex; align-items: center; gap: 6px; }
@@ -65,7 +66,35 @@ a.tool-btn { text-decoration: none; }
     border-radius: 3px;
     font-size: 12px;
 }
-.snap-row input[type="checkbox"] { accent-color: #2563eb; }
+.snap-row input[type="checkbox"], .arch-check input[type="checkbox"] {
+    appearance: none;
+    width: 15px;
+    height: 15px;
+    flex: none;
+    margin: 0;
+    background: #101015;
+    border: 1px solid #26262e;
+    border-radius: 3px;
+    cursor: pointer;
+    position: relative;
+    transition: border-color 0.1s, background 0.1s;
+}
+.snap-row input[type="checkbox"]:hover, .arch-check input[type="checkbox"]:hover { border-color: #3a3a44; }
+.snap-row input[type="checkbox"]:checked, .arch-check input[type="checkbox"]:checked {
+    background: #2563eb;
+    border-color: #2563eb;
+}
+.snap-row input[type="checkbox"]:checked::after, .arch-check input[type="checkbox"]:checked::after {
+    content: '';
+    position: absolute;
+    left: 4.5px;
+    top: 1.5px;
+    width: 3.5px;
+    height: 7.5px;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
 .snap-icon { display: flex; align-items: center; color: #8a8a94; }
 .snap-icon svg { width: 14px; height: 14px; }
 
@@ -202,7 +231,7 @@ a.tool-btn { text-decoration: none; }
     font-size: 12px;
 }
 .prop-row input:focus, .prop-row select:focus { outline: none; border-color: #2563eb; }
-.prop-row input[type="number"] {
+.prop-row input[type="number"], .arch-axes input[type="number"] {
     appearance: textfield;
     -moz-appearance: textfield;
     background: #101015;
@@ -211,15 +240,74 @@ a.tool-btn { text-decoration: none; }
     transition: border-color 0.1s, background 0.1s;
 }
 .prop-row input[type="number"]::-webkit-outer-spin-button,
-.prop-row input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.prop-row input[type="number"]:hover { border-color: #3a3a44; }
-.prop-row input[type="number"]:focus { background: #000; }
+.prop-row input[type="number"]::-webkit-inner-spin-button,
+.arch-axes input[type="number"]::-webkit-outer-spin-button,
+.arch-axes input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.prop-row input[type="number"]:hover, .arch-axes input[type="number"]:hover { border-color: #3a3a44; }
+.prop-row input[type="number"]:focus, .arch-axes input[type="number"]:focus { background: #000; }
 .prop-row input[type="color"] {
     width: 40px; height: 24px; padding: 0;
     background: none; border: 1px solid #26262e; border-radius: 3px;
 }
 .vec3 { display: flex; gap: 4px; flex: 1; }
 .vec3 input { width: 100%; min-width: 0; }
+
+/* ---------- archimedes ---------- */
+
+.arch-pop {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 30;
+    width: 216px;
+    background: #14141a;
+    border: 1px solid #26262e;
+    border-radius: 6px;
+    padding: 12px 14px;
+    font-size: 12px;
+    color: #b9b9c0;
+}
+.arch-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.arch-head h3 { font-size: 14px; font-weight: 600; color: #e5e5ea; }
+.arch-close {
+    background: none;
+    border: none;
+    color: #777;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 2px 4px;
+}
+.arch-close:hover { color: #ddd; }
+.arch-axes { display: flex; gap: 6px; margin-bottom: 10px; }
+.arch-axes label { flex: 1; display: flex; flex-direction: column; gap: 3px; color: #8f8f98; font-size: 11px; }
+.arch-axes input {
+    width: 100%;
+    min-width: 0;
+    background: #101015;
+    border: 1px solid #26262e;
+    color: #ddd;
+    padding: 3px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+.arch-axes input:focus { outline: none; border-color: #2563eb; }
+.arch-check { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; cursor: pointer; }
+.arch-stamp {
+    width: 100%;
+    background: #2563eb;
+    border: none;
+    border-radius: 4px;
+    color: #fff;
+    padding: 7px 0;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.arch-stamp:hover { background: #3373f5; }
+.arch-stamp:disabled { background: #1d1d24; color: #4a4a52; cursor: default; }
 
 /* ---------- start screen ---------- */
 

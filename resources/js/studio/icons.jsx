@@ -16,8 +16,8 @@ export const MoveIcon = () => (
 
 export const RotateIcon = () => (
     <svg viewBox="0 0 24 24" {...S}>
-        <path d="M20 12a8 8 0 1 1-3-6.2" />
-        <path d="M17 2l.4 4L21 6" />
+        <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+        <path d="M21 3v5h-5" />
     </svg>
 );
 
@@ -129,5 +129,14 @@ export const StudsIcon = () => (
         <circle cx="15.5" cy="8.5" r="1.8" />
         <circle cx="8.5" cy="15.5" r="1.8" />
         <circle cx="15.5" cy="15.5" r="1.8" />
+    </svg>
+);
+
+export const CompassIcon = () => (
+    <svg viewBox="0 0 24 24" {...S}>
+        <circle cx="12" cy="4" r="1.6" />
+        <path d="M11.3 5.6L6.2 19.5M12.7 5.6l5.1 13.9" />
+        <path d="M6.2 19.5L5 21.5M17.8 19.5L19 21.5" />
+        <path d="M8.5 14.5a9.5 9.5 0 0 0 7 0" />
     </svg>
 );

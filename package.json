@@ -17,7 +17,8 @@
         "@vitejs/plugin-react": "^6.0.4",
         "react": "^19.2.8",
         "react-dom": "^19.2.8",
-        "three": "^0.185.1"
+        "three": "^0.185.1",
+        "wasmoon": "^1.16.0"
     },
     "name": "studio",
     "version": "1.0.0",
