@@ -16,7 +16,7 @@ function Vec3({ value, onChange }) {
     );
 }
 
-export default function Properties({ part, onChange }) {
+export default function Properties({ part, count = 0, onChange }) {
     if (!part) {
         return (
             <div className="panel properties">
@@ -28,7 +28,9 @@ export default function Properties({ part, onChange }) {
 
     return (
         <div className="panel properties">
-            <div className="panel-title">Properties: {part.T}</div>
+            <div className="panel-title">
+                {count > 1 ? `Properties: ${count} selected` : `Properties: ${part.T}`}
+            </div>
             <div className="panel-body">
                 <div className="props">
                     <div className="prop-row">

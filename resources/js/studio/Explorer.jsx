@@ -8,14 +8,15 @@ const ICON_COLOR = {
     Truss: '#c8a951',
 };
 
-export default function Explorer({ parts, selectedId, setSelectedId, mapName }) {
+export default function Explorer({ parts, selectedIds, setSelectedId, mapName }) {
     const listRef = useRef(null);
     const [query, setQuery] = useState('');
+    const primary = selectedIds.length ? selectedIds[selectedIds.length - 1] : null;
 
     useEffect(() => {
-        const el = listRef.current?.querySelector('.tree-item.selected');
-        el?.scrollIntoView({ block: 'nearest' });
-    }, [selectedId]);
+        const els = listRef.current?.querySelectorAll('.tree-item.selected');
+        els?.[els.length - 1]?.scrollIntoView({ block: 'nearest' });
+    }, [primary]);
 
     const q = query.trim().toLowerCase();
     const rows = parts
@@ -46,8 +47,8 @@ export default function Explorer({ parts, selectedId, setSelectedId, mapName }) 
                 {rows.map(({ p, i }) => (
                     <div
                         key={p._id}
-                        className={`tree-item child ${p._id === selectedId ? 'selected' : ''}`}
-                        onClick={() => setSelectedId(p._id)}
+                        className={`tree-item child ${selectedIds.includes(p._id) ? 'selected' : ''}`}
+                        onClick={(e) => setSelectedId(p._id, e.ctrlKey || e.metaKey)}
                     >
                         <span className="icon">{cubeIcon(ICON_COLOR[p.T] ?? '#b9b9c0')}</span>
                         {p.T}

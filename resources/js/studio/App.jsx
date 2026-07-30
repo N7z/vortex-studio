@@ -29,7 +29,7 @@ const NEW_SPAWN = {
 export default function App() {
     const [mapName, setMapName] = useState(null);
     const [parts, setParts] = useState([]);
-    const [selectedId, setSelectedId] = useState(null);
+    const [selectedIds, setSelectedIds] = useState([]);
     const [tool, setTool] = useState('select');
     const [snap, setSnap] = useState({ moveOn: true, move: 1, rotateOn: true, rotate: 15 });
     const [studs, setStuds] = useState(() => localStorage.getItem('studio_studs') !== '0');
@@ -48,9 +48,24 @@ export default function App() {
     const partsRef = useRef(parts);
     partsRef.current = parts;
 
+    // The last id added is the "primary" selection: what Properties and plugins act on.
+    const selectedId = selectedIds.length ? selectedIds[selectedIds.length - 1] : null;
     const selected = parts.find((p) => p._id === selectedId) ?? null;
+    const selectedParts = selectedIds.length > 1
+        ? parts.filter((p) => selectedIds.includes(p._id))
+        : (selected ? [selected] : []);
     const activePlugin = plugins.find((p) => p.id === activePluginId) ?? null;
     const activeValues = activePlugin ? pluginValues[activePlugin.id] ?? activePlugin.defaults : null;
+
+    // `additive` is Ctrl-click: toggle one part in/out of the selection.
+    const select = useCallback((id, additive) => {
+        setSelectedIds((cur) => {
+            if (id == null) return additive ? cur : [];
+            if (!additive) return [id];
+            return cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+        });
+    }, []);
+    const setSelectedId = select;
 
     useEffect(() => {
         loadPlugins().then(setPlugins);
@@ -266,9 +281,16 @@ export default function App() {
         return () => clearInterval(t);
     }, [mapName, save]);
 
+    // A property edit applies to every selected part, not just the primary one.
     const updateSelected = (patch) => {
-        if (selectedId == null) return;
-        mutate((ps) => ps.map((p) => (p._id === selectedId ? { ...p, ...patch } : p)));
+        if (!selectedIds.length) return;
+        mutate((ps) => ps.map((p) => (selectedIds.includes(p._id) ? { ...p, ...patch } : p)));
+    };
+
+    // The gizmo moved several parts at once: each one gets its own transform.
+    const transformMany = (updates) => {
+        const byId = new Map(updates.map(({ id, ...t }) => [id, t]));
+        mutate((ps) => ps.map((p) => (byId.has(p._id) ? { ...p, ...byId.get(p._id) } : p)));
     };
 
     const addPart = (template) => {
@@ -278,33 +300,31 @@ export default function App() {
     };
 
     const copy = () => {
-        if (selected) {
-            const { _id, ...rest } = selected;
-            clipboard.current = JSON.parse(JSON.stringify(rest));
-        }
+        if (!selectedParts.length) return;
+        clipboard.current = selectedParts.map(({ _id, ...rest }) => JSON.parse(JSON.stringify(rest)));
+    };
+
+    const addMany = (templates) => {
+        const added = templates.map((t) => withId(JSON.parse(JSON.stringify(t))));
+        mutate((ps) => [...ps, ...added]);
+        setSelectedIds(added.map((p) => p._id));
     };
 
     const paste = () => {
-        if (!clipboard.current) return;
-        const part = withId(JSON.parse(JSON.stringify(clipboard.current)));
-        part.P = [part.P[0] + 2, part.P[1], part.P[2] + 2];
-        mutate((ps) => [...ps, part]);
-        setSelectedId(part._id);
+        if (!clipboard.current?.length) return;
+        addMany(clipboard.current.map((p) => ({ ...p, P: [p.P[0] + 2, p.P[1], p.P[2] + 2] })));
     };
 
     const duplicate = () => {
-        if (!selected) return;
-        const { _id, ...rest } = selected;
-        const part = withId(JSON.parse(JSON.stringify(rest)));
-        mutate((ps) => [...ps, part]);
-        setSelectedId(part._id);
+        if (!selectedParts.length) return;
+        addMany(selectedParts.map(({ _id, ...rest }) => rest));
     };
 
     const removeSelected = useCallback(() => {
-        if (selectedId == null) return;
-        mutate((ps) => ps.filter((p) => p._id !== selectedId));
-        setSelectedId(null);
-    }, [selectedId]);
+        if (!selectedIds.length) return;
+        mutate((ps) => ps.filter((p) => !selectedIds.includes(p._id)));
+        setSelectedIds([]);
+    }, [selectedIds]);
 
     useEffect(() => {
         const onBeforeUnload = (e) => {
@@ -332,6 +352,10 @@ export default function App() {
             else if (e.ctrlKey && e.key.toLowerCase() === 'c') copy();
             else if (e.ctrlKey && e.key.toLowerCase() === 'v') paste();
             else if (e.ctrlKey && e.key.toLowerCase() === 'd') { e.preventDefault(); duplicate(); }
+            else if (e.ctrlKey && e.key.toLowerCase() === 'a') {
+                e.preventDefault();
+                setSelectedIds(partsRef.current.map((p) => p._id));
+            }
             else if (e.key === '1') setTool('select');
             else if (e.key === '2') setTool('move');
             else if (e.key === '3') setTool('rotate');
@@ -339,7 +363,7 @@ export default function App() {
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [save, removeSelected, undo, selected, activeTab, tabs]);
+    }, [save, removeSelected, undo, selected, selectedIds, parts, activeTab, tabs]);
 
     return (
         <div className="studio">
@@ -379,11 +403,12 @@ export default function App() {
                 <div className="viewport-wrap">
                     <Viewport
                         parts={parts}
-                        selectedId={selectedId}
+                        selectedIds={selectedIds}
                         setSelectedId={setSelectedId}
                         tool={tool}
                         snap={snap}
                         onTransform={updateSelected}
+                        onTransformMany={transformMany}
                         mapName={mapName}
                         studs={studs}
                         preview={pluginPreview}
@@ -406,11 +431,11 @@ export default function App() {
                 <div className="sidebar">
                     <Explorer
                         parts={parts}
-                        selectedId={selectedId}
+                        selectedIds={selectedIds}
                         setSelectedId={setSelectedId}
                         mapName={mapName}
                     />
-                    <Properties part={selected} onChange={updateSelected} />
+                    <Properties part={selected} count={selectedIds.length} onChange={updateSelected} />
                 </div>
             </div>
         </div>

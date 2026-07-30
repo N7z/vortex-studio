@@ -60,7 +60,19 @@ function makeInletTexture() {
     });
 }
 
-export default function Viewport({ parts, selectedId, setSelectedId, tool, snap, onTransform, mapName, studs, preview }) {
+const readTransform = (m) => ({
+    P: [round(m.position.x), round(m.position.y), round(m.position.z)],
+    R: [round(m.rotation.x / DEG), round(m.rotation.y / DEG), round(m.rotation.z / DEG)],
+    S: [
+        Math.max(round(m.scale.x), 0.05),
+        Math.max(round(m.scale.y), 0.05),
+        Math.max(round(m.scale.z), 0.05),
+    ],
+});
+
+export default function Viewport({
+    parts, selectedIds, setSelectedId, tool, snap, onTransform, onTransformMany, mapName, studs, preview,
+}) {
     const mountRef = useRef(null);
     const ctx = useRef(null);
     const partsRef = useRef(parts);
@@ -105,27 +117,52 @@ export default function Viewport({ parts, selectedId, setSelectedId, tool, snap,
         const gizmo = new TransformControls(camera, renderer.domElement);
         scene.add(gizmo.getHelper());
 
-        const selBox = new THREE.Box3Helper(new THREE.Box3(), 0x2f7fd9);
-        selBox.visible = false;
-        selBox.material.depthTest = false;
-        selBox.material.depthWrite = false;
-        selBox.renderOrder = 999;
-        scene.add(selBox);
+        // One outline per selected part, created on demand and reused. Every part is a
+        // unit cube scaled by its size, so an outline is that cube's edges wearing the
+        // part's world matrix — which keeps it tight around rotated parts, unlike an
+        // axis-aligned Box3Helper.
+        const selEdges = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
+        const selMat = new THREE.LineBasicMaterial({
+            color: 0x2f7fd9, depthTest: false, depthWrite: false,
+        });
+        const selBoxes = [];
+        const selBox = () => {
+            const b = new THREE.LineSegments(selEdges, selMat);
+            b.matrixAutoUpdate = false;
+            b.renderOrder = 999;
+            scene.add(b);
+            selBoxes.push(b);
+            return b;
+        };
+
+        // With more than one part selected the gizmo drives this empty pivot, and
+        // the parts ride along as its children (attach keeps their world transform).
+        const pivot = new THREE.Group();
+        scene.add(pivot);
+        const resetPivot = () => {
+            pivot.position.set(0, 0, 0);
+            pivot.rotation.set(0, 0, 0);
+            pivot.scale.set(1, 1, 1);
+        };
 
         gizmo.addEventListener('dragging-changed', (e) => {
             orbit.enabled = !e.value;
             const c = ctx.current;
-            if (!e.value && gizmo.object && c) {
-                const m = gizmo.object;
-                c.onTransform({
-                    P: [round(m.position.x), round(m.position.y), round(m.position.z)],
-                    R: [round(m.rotation.x / DEG), round(m.rotation.y / DEG), round(m.rotation.z / DEG)],
-                    S: [
-                        Math.max(round(m.scale.x), 0.05),
-                        Math.max(round(m.scale.y), 0.05),
-                        Math.max(round(m.scale.z), 0.05),
-                    ],
+            if (!c || !gizmo.object) return;
+            const group = gizmo.object === pivot;
+            if (e.value) {
+                if (group) for (const m of c.selectedMeshes) pivot.attach(m);
+                return;
+            }
+            if (group) {
+                const updates = c.selectedMeshes.map((m) => {
+                    scene.attach(m);
+                    return { id: m.userData.id, ...readTransform(m) };
                 });
+                resetPivot();
+                c.onTransformMany(updates);
+            } else {
+                c.onTransform(readTransform(gizmo.object));
             }
         });
 
@@ -178,7 +215,7 @@ export default function Viewport({ parts, selectedId, setSelectedId, tool, snap,
             );
             raycaster.setFromCamera(ndc, camera);
             const hits = raycaster.intersectObjects(c.meshes ? [...c.meshes.values()] : [], false);
-            c.setSelectedId(hits.length ? hits[0].object.userData.id : null);
+            c.setSelectedId(hits.length ? hits[0].object.userData.id : null, e.ctrlKey || e.metaKey);
         };
         renderer.domElement.addEventListener('pointerdown', onDown);
         renderer.domElement.addEventListener('pointerup', onUp);
@@ -225,13 +262,14 @@ export default function Viewport({ parts, selectedId, setSelectedId, tool, snap,
             last = now;
             orbit.update();
             const c = ctx.current;
-            const sel = c?.selectedMesh;
-            if (sel) {
-                selBox.box.setFromObject(sel);
-                selBox.visible = true;
-            } else {
-                selBox.visible = false;
+            const sel = c?.selectedMeshes ?? [];
+            for (let i = 0; i < sel.length; i++) {
+                const b = selBoxes[i] ?? selBox();
+                sel[i].updateWorldMatrix(true, false);
+                b.matrix.copy(sel[i].matrixWorld);
+                b.visible = true;
             }
+            for (let i = sel.length; i < selBoxes.length; i++) selBoxes[i].visible = false;
             renderer.render(scene, camera);
         };
         tick();
@@ -243,11 +281,12 @@ export default function Viewport({ parts, selectedId, setSelectedId, tool, snap,
         inletTex.anisotropy = aniso;
 
         ctx.current = {
-            scene, camera, renderer, orbit, gizmo, studTex, inletTex,
+            scene, camera, renderer, orbit, gizmo, studTex, inletTex, pivot,
             meshes: new Map(),
             geometry: new THREE.BoxGeometry(1, 1, 1),
-            selectedMesh: null,
+            selectedMeshes: [],
             onTransform: () => {},
+            onTransformMany: () => {},
             setSelectedId: () => {},
         };
 
@@ -263,6 +302,9 @@ export default function Viewport({ parts, selectedId, setSelectedId, tool, snap,
             window.removeEventListener('pointermove', onLook);
             gizmo.dispose();
             orbit.dispose();
+            for (const b of selBoxes) scene.remove(b);
+            selEdges.dispose();
+            selMat.dispose();
             studTex.dispose();
             inletTex.dispose();
             ctx.current.previewMesh?.material.dispose();
@@ -276,6 +318,7 @@ export default function Viewport({ parts, selectedId, setSelectedId, tool, snap,
         const c = ctx.current;
         if (!c) return;
         c.onTransform = onTransform;
+        c.onTransformMany = onTransformMany;
         c.setSelectedId = setSelectedId;
     });
 
@@ -304,7 +347,8 @@ export default function Viewport({ parts, selectedId, setSelectedId, tool, snap,
                 c.scene.add(mesh);
                 c.meshes.set(part._id, mesh);
             }
-            if (!c.gizmo.dragging || c.gizmo.object !== mesh) {
+            // Never fight the gizmo: mid-drag the part is either it or a child of the pivot.
+            if (!c.gizmo.dragging || (c.gizmo.object !== mesh && mesh.parent !== c.pivot)) {
                 mesh.position.set(part.P[0], part.P[1], part.P[2]);
                 mesh.scale.set(part.S[0], part.S[1], part.S[2]);
                 mesh.rotation.set(part.R[0] * DEG, part.R[1] * DEG, part.R[2] * DEG);
@@ -335,7 +379,7 @@ export default function Viewport({ parts, selectedId, setSelectedId, tool, snap,
         for (const [id, mesh] of c.meshes) {
             if (!alive.has(id)) {
                 if (c.gizmo.object === mesh) c.gizmo.detach();
-                c.scene.remove(mesh);
+                mesh.removeFromParent();
                 mesh.userData.studMap.dispose();
                 mesh.userData.inletMap.dispose();
                 mesh.userData.top.dispose();
@@ -371,16 +415,27 @@ export default function Viewport({ parts, selectedId, setSelectedId, tool, snap,
     useEffect(() => {
         const c = ctx.current;
         if (!c) return;
-        const mesh = selectedId != null ? c.meshes.get(selectedId) : null;
-        c.selectedMesh = mesh ?? null;
+        if (c.gizmo.dragging) return;
+        const meshes = selectedIds.map((id) => c.meshes.get(id)).filter(Boolean);
+        c.selectedMeshes = meshes;
         const mode = TOOL_MODE[tool];
-        if (mesh && mode) {
-            c.gizmo.setMode(mode);
-            c.gizmo.attach(mesh);
-        } else {
+        if (!meshes.length || !mode) {
             c.gizmo.detach();
+        } else if (meshes.length === 1) {
+            c.gizmo.setMode(mode);
+            c.gizmo.attach(meshes[0]);
+        } else {
+            // Park the pivot at the centre of the selection so the gizmo sits there.
+            const center = new THREE.Vector3();
+            for (const m of meshes) center.add(m.position);
+            center.divideScalar(meshes.length);
+            c.pivot.position.copy(center);
+            c.pivot.rotation.set(0, 0, 0);
+            c.pivot.scale.set(1, 1, 1);
+            c.gizmo.setMode(mode);
+            c.gizmo.attach(c.pivot);
         }
-    }, [selectedId, tool, parts]);
+    }, [selectedIds, tool, parts]);
 
     useEffect(() => {
         const c = ctx.current;
