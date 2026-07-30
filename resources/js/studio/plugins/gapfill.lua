@@ -96,10 +96,57 @@ local function aim(dir)
     return { round(math.deg(ex)), round(math.deg(ey)), round(math.deg(ez)) }
 end
 
-local function support(part, dir)
-    return math.abs(dir[1]) * part.S[1] * 0.5
-        + math.abs(dir[2]) * part.S[2] * 0.5
-        + math.abs(dir[3]) * part.S[3] * 0.5
+local function euler_to_mat(x, y, z)
+    local a, b = math.cos(x), math.sin(x)
+    local c, d = math.cos(y), math.sin(y)
+    local e, f = math.cos(z), math.sin(z)
+    local ae, af, be, bf = a * e, a * f, b * e, b * f
+    return {
+        { c * e, -c * f, d },
+        { af + be * d, ae - bf * d, -b * c },
+        { bf - ae * d, be + af * d, a * c },
+    }
+end
+
+local function mat_of(part)
+    return euler_to_mat(math.rad(part.R[1]), math.rad(part.R[2]), math.rad(part.R[3]))
+end
+
+local function col(m, k)
+    return { m[1][k], m[2][k], m[3][k] }
+end
+
+local function dot(u, v)
+    return u[1] * v[1] + u[2] * v[2] + u[3] * v[3]
+end
+
+local function face(part, m, dir)
+    local best, sign = 1, 1
+    local score = -1
+    for k = 1, 3 do
+        local d = dot(col(m, k), dir)
+        if math.abs(d) > score then
+            score = math.abs(d)
+            best = k
+            sign = d < 0 and -1 or 1
+        end
+    end
+    local axis = col(m, best)
+    local half = part.S[best] * 0.5 * sign
+    local p = {
+        part.P[1] + axis[1] * half,
+        part.P[2] + axis[2] * half,
+        part.P[3] + axis[3] * half,
+    }
+    local rest = {}
+    for k = 1, 3 do
+        if k ~= best then rest[#rest + 1] = k end
+    end
+    local up, side = rest[1], rest[2]
+    if math.abs(col(m, side)[2]) > math.abs(col(m, up)[2]) then
+        up, side = side, up
+    end
+    return p, up, side
 end
 
 local function same_part(a, b)
@@ -134,36 +181,38 @@ local function bridge(values)
     if dist < 0.001 then return nil end
     local dir = { d[1] / dist, d[2] / dist, d[3] / dist }
 
-    local start_t, span_t
-    local gap = dist - support(a, dir) - support(b, dir)
-    if gap > 0.001 then
-        start_t = support(a, dir) / dist
-        span_t = gap / dist
-    else
-        start_t = 0
-        span_t = 1
-    end
+    local ma, mb = mat_of(a), mat_of(b)
+    local pa, ua, wa = face(a, ma, dir)
+    local pb, ub, wb = face(b, mb, { -dir[1], -dir[2], -dir[3] })
 
-    local seg = span_t * dist / steps
-    local upright = math.abs(dir[2]) > 0.9
-    local wide = 3
-    if math.abs(dir[3]) > math.abs(dir[1]) then wide = 1 end
-    local ramp = not upright and aim(dir) or nil
+    local g = { pb[1] - pa[1], pb[2] - pa[2], pb[3] - pa[3] }
+    local glen = math.sqrt(g[1] * g[1] + g[2] * g[2] + g[3] * g[3])
+    if glen < 0.001 or dot(g, dir) <= 0 then
+        pa = { a.P[1], a.P[2], a.P[3] }
+        g = { d[1], d[2], d[3] }
+        glen = dist
+    end
+    local run = { g[1] / glen, g[2] / glen, g[3] / glen }
+
+    local seg = glen / steps
+    local upright = math.abs(run[2]) > 0.9
+    local ramp = not upright and aim(run) or nil
 
     local out = {}
     for i = 1, steps do
         local u = (i - 0.5) / steps
-        local t = start_t + span_t * u
+        local v = steps > 1 and (i - 1) / (steps - 1) or 0.5
+        local w = 4 * v * (1 - v)
 
         local s = {}
         if ramp ~= nil then
             s[1] = seg
-            s[2] = lerp(a.S[2], b.S[2], u)
-            s[3] = lerp(a.S[wide], b.S[wide], u)
+            s[2] = lerp(a.S[ua], b.S[ub], v)
+            s[3] = lerp(a.S[wa], b.S[wb], v)
         else
             for k = 1, 3 do
-                local along = math.abs(dir[k])
-                local cross = lerp(a.S[k], b.S[k], u)
+                local along = math.abs(run[k])
+                local cross = lerp(a.S[k], b.S[k], v)
                 s[k] = cross * (1 - along) + seg * along
             end
         end
@@ -171,19 +220,17 @@ local function bridge(values)
             s[k] = math.max(0.001, s[k] + overlap)
         end
 
-        local r
-        if ramp ~= nil then
-            r = ramp
-        else
-            r = {}
-            for k = 1, 3 do
-                r[k] = a.R[k] + wrap180(b.R[k] - a.R[k]) * u
+        local r = {}
+        for k = 1, 3 do
+            r[k] = a.R[k] + wrap180(b.R[k] - a.R[k]) * v
+            if ramp ~= nil then
+                r[k] = r[k] + wrap180(ramp[k] - r[k]) * w
             end
         end
 
         local p = {}
         for k = 1, 3 do
-            p[k] = lerp(a.P[k], b.P[k], t)
+            p[k] = pa[k] + run[k] * seg * (i - 0.5)
         end
 
         local o = {
