@@ -16,7 +16,7 @@ import {
 import { loadMap, saveMap } from './api';
 import { writeBackup } from './backup';
 import {
-    addOp, applyOp, invertOp, patchOp, removeOp, stripIds, transformOp, withNewId,
+    addOp, applyOp, invertOp, patchOp, removeOp, repairParts, stripIds, transformOp, withNewId,
 } from './ops';
 import { loadGraphics, saveGraphics } from './graphics';
 import { roomFromUrl } from './live';
@@ -85,7 +85,9 @@ export default function App() {
         setTimeout(() => setStatus((s) => (s === msg ? '' : s)), 2500);
     }, []);
 
-    const resetDocument = (name, data, isDirty, remoteGroups) => {
+    const resetDocument = (name, raw, isDirty, remoteGroups) => {
+        const { parts: data, fixed } = repairParts(raw);
+        if (fixed) flash(`Repaired ${fixed} part${fixed === 1 ? '' : 's'} the server would reject`);
         setParts(data);
         setMapName(name);
         setSelectedIds([]);
@@ -95,7 +97,7 @@ export default function App() {
         setGroups(next);
         history.current = [];
         future.current = [];
-        dirty.current = isDirty;
+        dirty.current = isDirty || fixed > 0;
     };
 
     const live = useLive({
