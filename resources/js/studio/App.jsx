@@ -89,8 +89,16 @@ export default function App() {
     const live = useLive({
         onWelcome: (msg) => {
             setJoining(null);
-            setTeamOpen(true);
-            resetDocument(msg.mapName, msg.parts, false, msg.groups ?? []);
+            if (msg.resumed) {
+                const alive = new Set(msg.parts.map((p) => p._id));
+                setParts(msg.parts);
+                syncedGroups.current = groupKey(msg.groups ?? []);
+                setGroups(msg.groups ?? []);
+                setSelectedIds((cur) => cur.filter((id) => alive.has(id)));
+            } else {
+                setTeamOpen(true);
+                resetDocument(msg.mapName, msg.parts, false, msg.groups ?? []);
+            }
             flash(msg.resumed
                 ? `Back in session ${msg.code}`
                 : `Live session ${msg.code} as ${msg.you.name}`);
@@ -124,6 +132,7 @@ export default function App() {
         onNotice: (message) => {
             flash(message);
             setTeamOpen(false);
+            resetDocument(null, [], false);
         },
     });
 
@@ -497,10 +506,17 @@ export default function App() {
     };
 
     const leaveSession = () => {
+        const wasOwner = live.isOwner;
         live.leave();
         setTeamOpen(false);
-        dirty.current = true;
-        flash('Left the live session, this map is yours again');
+        if (wasOwner) {
+            dirty.current = true;
+            flash('Left the live session, this map is yours again');
+
+            return;
+        }
+        resetDocument(null, [], false);
+        flash('Left the live session');
     };
 
     // A property edit applies to every selected part, not just the primary one.
@@ -631,7 +647,7 @@ export default function App() {
                 onAddSpawn={() => addPart(NEW_SPAWN)}
                 onCopy={copy} onPaste={paste} onDuplicate={duplicate}
                 onSave={save} onDownload={download}
-                canSave={canSaveToServer} canDownload={!!mapName}
+                canSave={canSaveToServer} canDownload={!!mapName && canEdit}
                 graphics={graphics} onGraphics={changeGraphics}
                 plugins={plugins} activePluginId={activePluginId} onTogglePlugin={togglePlugin}
                 onNewPlugin={openNewPluginTab}

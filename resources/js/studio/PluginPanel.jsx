@@ -1,19 +1,21 @@
 import React, { useRef } from 'react';
 import { PencilIcon } from './icons';
 import NumberInput from './NumberInput';
+import useDraggable from './useDraggable';
 
 export default function PluginPanel({
     plugin, values, setValue, images, onImage, hasSelection, targetNote, onButton, onEdit, onClose,
 }) {
     const pickers = useRef({});
+    const { style, onPointerDown } = useDraggable('plugin');
     const numbers = plugin.ui.filter((c) => c.type === 'number');
     const checks = plugin.ui.filter((c) => c.type === 'checkbox');
     const buttons = plugin.ui.filter((c) => c.type === 'button');
     const pictures = plugin.ui.filter((c) => c.type === 'image');
 
     return (
-        <div className="arch-pop">
-            <div className="arch-head">
+        <div className="arch-pop" style={style}>
+            <div className="arch-head" onPointerDown={onPointerDown}>
                 <h3>{plugin.name}</h3>
                 <button className="arch-edit" onClick={onEdit} title="Edit plugin script">
                     <PencilIcon />

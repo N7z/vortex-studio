@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { KickIcon, LinkIcon } from './icons';
+import React, { useEffect, useState } from 'react';
+import { KickIcon, LeaveIcon, LinkIcon } from './icons';
 import { shareLink } from './live';
+import useDraggable from './useDraggable';
 
 const ago = (ts) => {
     if (!ts) return null;
@@ -14,9 +15,8 @@ const ago = (ts) => {
 function Member({ member, isMe, canManage, onRole, onKick }) {
     return (
         <div className="team-member">
-            <span className="dot" style={{ background: member.color }} />
+            <span className="dot" style={{ background: isMe ? '#2f7fd9' : member.color }} />
             <span className="team-name">{member.name}</span>
-            {isMe && <span className="team-you">you</span>}
             {member.owner ? (
                 <span className="team-role owner">Owner</span>
             ) : canManage ? (
@@ -42,40 +42,52 @@ function Member({ member, isMe, canManage, onRole, onKick }) {
 
 export default function TeamPanel({ live, onGoLive, onLeave, onClose }) {
     const [copied, setCopied] = useState(false);
+    const [link, setLink] = useState(null);
+    const [ask, setAsk] = useState(null);
+    const [, tick] = useState(0);
+    const { style, onPointerDown } = useDraggable('team');
     const busy = live.status === 'connecting' || live.status === 'reconnecting';
 
+    useEffect(() => {
+        if (!live.lastSavedAt) return undefined;
+        const t = setInterval(() => tick((n) => n + 1), 30000);
+
+        return () => clearInterval(t);
+    }, [live.lastSavedAt]);
+
     const copy = async () => {
-        const link = shareLink(live.code);
+        const url = shareLink(live.code);
         try {
-            await navigator.clipboard.writeText(link);
+            await navigator.clipboard.writeText(url);
             setCopied(true);
             setTimeout(() => setCopied(false), 1400);
         } catch {
-            window.prompt('Copy this link:', link);
+            setLink(url);
         }
     };
 
     const leave = () => {
-        if (live.isOwner && live.members.length > 1
-            && !window.confirm('Leave and hand this session to someone else?')) return;
+        if (live.isOwner && live.members.length > 1) {
+            setAsk({ what: 'leave' });
+
+            return;
+        }
         onLeave();
     };
 
-    const kick = (member) => {
-        if (window.confirm(`Remove ${member.name}?`)) live.kick(member.id);
+    const confirm = () => {
+        const pending = ask;
+        setAsk(null);
+        if (pending.what === 'leave') onLeave();
+        else live.kick(pending.member.id);
     };
 
     const saved = ago(live.lastSavedAt);
 
     return (
-        <div className="team-panel">
-            <div className="team-head">
+        <div className="team-panel" style={style}>
+            <div className="team-head" onPointerDown={onPointerDown}>
                 <span className="team-title">Team Create</span>
-                {live.live && (
-                    <span className={`team-live ${busy ? 'busy' : ''}`} title={`Session ${live.code}`}>
-                        {live.members.length}
-                    </span>
-                )}
                 <button className="team-x" onClick={onClose} title="Hide">×</button>
             </div>
 
@@ -88,16 +100,6 @@ export default function TeamPanel({ live, onGoLive, onLeave, onClose }) {
                 </div>
             ) : (
                 <div className="team-body">
-                    <div className="team-code-row">
-                        <button className="team-code" onClick={copy} title="Copy the invite link">
-                            {live.code}
-                        </button>
-                        <button className="team-copy" onClick={copy} title="Copy the invite link">
-                            <LinkIcon />
-                        </button>
-                        {copied && <span className="team-copied">Copied</span>}
-                    </div>
-
                     <div className="team-list">
                         {live.members.map((m) => (
                             <Member
@@ -106,15 +108,54 @@ export default function TeamPanel({ live, onGoLive, onLeave, onClose }) {
                                 isMe={m.id === live.me?.id}
                                 canManage={live.isOwner}
                                 onRole={live.setRole}
-                                onKick={kick}
+                                onKick={(member) => setAsk({ what: 'kick', member })}
                             />
                         ))}
                     </div>
 
-                    <div className="team-foot">
-                        <span className="team-hint">{saved}</span>
-                        <button className="team-leave" onClick={leave}>Leave</button>
-                    </div>
+                    {link && (
+                        <input
+                            className="team-link"
+                            value={link}
+                            readOnly
+                            autoFocus
+                            onFocus={(e) => e.target.select()}
+                            onBlur={() => setLink(null)}
+                        />
+                    )}
+
+                    {ask ? (
+                        <div className="team-ask">
+                            <span className="team-hint">
+                                {ask.what === 'leave'
+                                    ? 'Leave and hand this session over?'
+                                    : `Remove ${ask.member.name}?`}
+                            </span>
+                            <div className="team-foot">
+                                <button className="team-foot-btn" onClick={() => setAsk(null)}>
+                                    Cancel
+                                </button>
+                                <button className="team-foot-btn danger" onClick={confirm}>
+                                    {ask.what === 'leave' ? 'Leave' : 'Remove'}
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        <>
+                            {saved && <span className="team-hint">{saved}</span>}
+
+                            <div className="team-foot">
+                                <button className="team-foot-btn" onClick={copy} title="Copy the invite link">
+                                    <LinkIcon />
+                                    {copied ? 'Copied' : 'Copy link'}
+                                </button>
+                                <button className="team-foot-btn danger" onClick={leave}>
+                                    <LeaveIcon />
+                                    Leave
+                                </button>
+                            </div>
+                        </>
+                    )}
                 </div>
             )}
         </div>
