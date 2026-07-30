@@ -370,7 +370,7 @@ a.tool-btn { text-decoration: none; }
     top: 10px;
     right: 10px;
     z-index: 30;
-    width: 216px;
+    width: 252px;
     background: #14141a;
     border: 1px solid #26262e;
     border-radius: 6px;
@@ -436,8 +436,17 @@ a.tool-btn { text-decoration: none; }
 }
 .arch-image-info .dim { color: #777; font-size: 10px; }
 
-.arch-axes { display: flex; gap: 6px; margin-bottom: 10px; }
-.arch-axes label { flex: 1; display: flex; flex-direction: column; gap: 3px; color: #8f8f98; font-size: 11px; }
+.arch-axes { display: flex; flex-wrap: wrap; gap: 8px 6px; margin-bottom: 10px; }
+.arch-axes label {
+    flex: 1 1 60px;
+    min-width: 60px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    color: #8f8f98;
+    font-size: 11px;
+    white-space: nowrap;
+}
 .arch-axes input, .arch-axes .num {
     width: 100%;
     min-width: 0;

@@ -63,6 +63,7 @@ function makeInletTexture() {
 }
 
 const MAX_OUTLINES = 192;
+const MAX_PREVIEWS = 256;
 
 const readTransform = (m) => ({
     P: [round(m.position.x), round(m.position.y), round(m.position.z)],
@@ -715,6 +716,10 @@ export default function Viewport({
             meshList: [],
             geometry: makePartGeometry(),
             mats: makeMaterialPool(),
+            previewMeshes: [],
+            previewMat: new THREE.MeshStandardMaterial({
+                color: 0x2f7fd9, transparent: true, opacity: 0.45, depthWrite: false,
+            }),
             studsOn: gfxRef.current.studs,
             selectedMeshes: [],
             tool: 'select',
@@ -757,7 +762,8 @@ export default function Viewport({
             inletTex.dispose();
             ctx.current.mats.dispose();
             ctx.current.geometry.dispose();
-            ctx.current.previewMesh?.material.dispose();
+            for (const m of ctx.current.previewMeshes) scene.remove(m);
+            ctx.current.previewMat.dispose();
             renderer.dispose();
             band.remove();
             mount.removeChild(renderer.domElement);
@@ -904,23 +910,22 @@ export default function Viewport({
     useEffect(() => {
         const c = ctx.current;
         if (!c) return;
-        if (preview) {
-            if (!c.previewMesh) {
-                c.previewMesh = new THREE.Mesh(c.geometry, new THREE.MeshStandardMaterial({
-                    color: 0x2f7fd9,
-                    transparent: true,
-                    opacity: 0.45,
-                    depthWrite: false,
-                }));
-                c.scene.add(c.previewMesh);
+        const list = Array.isArray(preview) ? preview : (preview ? [preview] : []);
+        const shown = Math.min(list.length, MAX_PREVIEWS);
+        for (let i = 0; i < shown; i++) {
+            let mesh = c.previewMeshes[i];
+            if (!mesh) {
+                mesh = new THREE.Mesh(c.geometry, c.previewMat);
+                c.scene.add(mesh);
+                c.previewMeshes.push(mesh);
             }
-            c.previewMesh.visible = true;
-            c.previewMesh.position.set(preview.P[0], preview.P[1], preview.P[2]);
-            c.previewMesh.scale.set(preview.S[0], preview.S[1], preview.S[2]);
-            c.previewMesh.rotation.set(preview.R[0] * DEG, preview.R[1] * DEG, preview.R[2] * DEG);
-        } else if (c.previewMesh) {
-            c.previewMesh.visible = false;
+            const p = list[i];
+            mesh.visible = true;
+            mesh.position.set(p.P[0], p.P[1], p.P[2]);
+            mesh.scale.set(p.S[0], p.S[1], p.S[2]);
+            mesh.rotation.set(p.R[0] * DEG, p.R[1] * DEG, p.R[2] * DEG);
         }
+        for (let i = shown; i < c.previewMeshes.length; i++) c.previewMeshes[i].visible = false;
     }, [preview]);
 
     useEffect(() => {

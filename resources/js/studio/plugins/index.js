@@ -41,6 +41,12 @@ export function stripId(part) {
     return rest;
 }
 
+const toParts = (res) => {
+    if (res == null || typeof res !== 'object') return [];
+    const list = res.P !== undefined ? [res] : toArray(res);
+    return list.map(normPart).filter(Boolean);
+};
+
 export async function compilePlugin(id, src, builtin = false) {
     const lua = await getFactory().createEngine();
     try {
@@ -64,13 +70,9 @@ export async function compilePlugin(id, src, builtin = false) {
                     .map((c) => [c.id, c.default]),
             ),
             preview: async (part, values) =>
-                normPart(await luaPreview(JSON.stringify(part), JSON.stringify(values))),
-            click: async (btnId, part, values) => {
-                const res = await luaClick(btnId, JSON.stringify(part), JSON.stringify(values));
-                if (res == null || typeof res !== 'object') return [];
-                const list = res.P !== undefined ? [res] : toArray(res);
-                return list.map(normPart).filter(Boolean);
-            },
+                toParts(await luaPreview(JSON.stringify(part), JSON.stringify(values))),
+            click: async (btnId, part, values) =>
+                toParts(await luaClick(btnId, JSON.stringify(part), JSON.stringify(values))),
             setImage: async (img) => {
                 await luaSetImage(img?.w ?? 0, img?.h ?? 0, img?.data ?? '');
             },

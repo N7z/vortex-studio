@@ -75,18 +75,20 @@ local function nth(part, values, i)
     return out
 end
 
-function plugin.preview(part, values)
-    local copies = clamp(math.floor(tonumber(values.copies) or 0), 0, MAX_COPIES)
-    if copies < 1 then return nil end
-    return nth(part, values, copies)
-end
-
-function plugin.click(id, part, values)
-    if id ~= "build" then return nil end
+local function series(part, values)
     local copies = clamp(math.floor(tonumber(values.copies) or 0), 0, MAX_COPIES)
     local out = {}
     for i = 1, copies do
         out[#out + 1] = nth(part, values, i)
     end
     return out
+end
+
+function plugin.preview(part, values)
+    return series(part, values)
+end
+
+function plugin.click(id, part, values)
+    if id ~= "build" then return nil end
+    return series(part, values)
 end

@@ -51,7 +51,7 @@ export default function App() {
     const [plugins, setPlugins] = useState([]);
     const [activePluginId, setActivePluginId] = useState(null);
     const [pluginValues, setPluginValues] = useState({});
-    const [pluginPreview, setPluginPreview] = useState(null);
+    const [pluginPreview, setPluginPreview] = useState([]);
     const [pluginImages, setPluginImages] = useState({});
     const [groups, setGroups] = useState([]);
     const [tabs, setTabs] = useState([]);
@@ -233,12 +233,12 @@ export default function App() {
     useEffect(() => {
         const seq = ++previewSeq.current;
         if (!activePlugin || !pluginTarget) {
-            setPluginPreview(null);
+            setPluginPreview([]);
             return;
         }
         activePlugin.preview(stripId(pluginTarget), activeValues)
             .then((p) => { if (previewSeq.current === seq) setPluginPreview(p); })
-            .catch(() => { if (previewSeq.current === seq) setPluginPreview(null); });
+            .catch(() => { if (previewSeq.current === seq) setPluginPreview([]); });
     }, [activePlugin, pluginTarget, activeValues, activeImages]);
 
     useEffect(() => {
