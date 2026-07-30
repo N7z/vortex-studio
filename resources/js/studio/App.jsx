@@ -97,17 +97,28 @@ export default function App() {
         dirty.current = true;
     };
 
-    const save = useCallback(async () => {
+    const save = useCallback(async (auto) => {
         if (!mapName) return;
+        const snapshot = partsRef.current;
         try {
-            const clean = parts.map(({ _id, ...rest }) => rest);
+            const clean = snapshot.map(({ _id, ...rest }) => rest);
             await saveMap(mapName, clean);
-            dirty.current = false;
-            flash(`Saved ${mapName}.json`);
+            // Edits made while the request was in flight must stay dirty.
+            if (partsRef.current === snapshot) dirty.current = false;
+            flash(auto === true ? 'Auto-saved' : `Saved ${mapName}.json`);
         } catch (e) {
             flash(String(e.message ?? e));
         }
-    }, [mapName, parts]);
+    }, [mapName]);
+
+    // Auto-save: every 20 s, but only when there are unsaved changes.
+    useEffect(() => {
+        if (!mapName) return;
+        const t = setInterval(() => {
+            if (dirty.current) save(true);
+        }, 20_000);
+        return () => clearInterval(t);
+    }, [mapName, save]);
 
     const updateSelected = (patch) => {
         if (selectedId == null) return;
