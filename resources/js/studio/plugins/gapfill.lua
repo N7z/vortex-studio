@@ -54,6 +54,48 @@ local function blend_hex(ca, cb, t)
     return string.format("%02x%02x%02x", ch(1), ch(2), ch(3))
 end
 
+local function mat_to_euler(m)
+    local m13 = math.max(-1, math.min(1, m[1][3]))
+    local y = math.asin(m13)
+    local x, z
+    if math.abs(m13) < 0.9999999 then
+        x = math.atan(-m[2][3], m[3][3])
+        z = math.atan(-m[1][2], m[1][1])
+    else
+        x = math.atan(m[3][2], m[2][2])
+        z = 0
+    end
+    return x, y, z
+end
+
+local function mat_mul(a, b)
+    local r = { {}, {}, {} }
+    for i = 1, 3 do
+        for j = 1, 3 do
+            r[i][j] = a[i][1] * b[1][j] + a[i][2] * b[2][j] + a[i][3] * b[3][j]
+        end
+    end
+    return r
+end
+
+local function yaw_mat(a)
+    local c, s = math.cos(a), math.sin(a)
+    return { { c, 0, s }, { 0, 1, 0 }, { -s, 0, c } }
+end
+
+local function roll_mat(a)
+    local c, s = math.cos(a), math.sin(a)
+    return { { c, -s, 0 }, { s, c, 0 }, { 0, 0, 1 } }
+end
+
+local function aim(dir)
+    local flat = math.sqrt(dir[1] * dir[1] + dir[3] * dir[3])
+    local theta = math.atan(-dir[3], dir[1])
+    local phi = math.atan(dir[2], flat)
+    local ex, ey, ez = mat_to_euler(mat_mul(yaw_mat(theta), roll_mat(phi)))
+    return { round(math.deg(ex)), round(math.deg(ey)), round(math.deg(ez)) }
+end
+
 local function support(part, dir)
     return math.abs(dir[1]) * part.S[1] * 0.5
         + math.abs(dir[2]) * part.S[2] * 0.5
@@ -103,6 +145,10 @@ local function bridge(values)
     end
 
     local seg = span_t * dist / steps
+    local upright = math.abs(dir[2]) > 0.9
+    local wide = 3
+    if math.abs(dir[3]) > math.abs(dir[1]) then wide = 1 end
+    local ramp = not upright and aim(dir) or nil
 
     local out = {}
     for i = 1, steps do
@@ -110,15 +156,29 @@ local function bridge(values)
         local t = start_t + span_t * u
 
         local s = {}
+        if ramp ~= nil then
+            s[1] = seg
+            s[2] = lerp(a.S[2], b.S[2], u)
+            s[3] = lerp(a.S[wide], b.S[wide], u)
+        else
+            for k = 1, 3 do
+                local along = math.abs(dir[k])
+                local cross = lerp(a.S[k], b.S[k], u)
+                s[k] = cross * (1 - along) + seg * along
+            end
+        end
         for k = 1, 3 do
-            local along = math.abs(dir[k])
-            local cross = lerp(a.S[k], b.S[k], u)
-            s[k] = math.max(0.001, cross * (1 - along) + seg * along + overlap)
+            s[k] = math.max(0.001, s[k] + overlap)
         end
 
-        local r = {}
-        for k = 1, 3 do
-            r[k] = a.R[k] + wrap180(b.R[k] - a.R[k]) * u
+        local r
+        if ramp ~= nil then
+            r = ramp
+        else
+            r = {}
+            for k = 1, 3 do
+                r[k] = a.R[k] + wrap180(b.R[k] - a.R[k]) * u
+            end
         end
 
         local p = {}
