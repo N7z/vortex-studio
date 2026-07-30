@@ -1,11 +1,15 @@
 import { LuaFactory } from 'wasmoon';
 import preludeSrc from './prelude.lua?raw';
 import archimedesSrc from './archimedes.lua?raw';
+import arraySrc from './array.lua?raw';
 import imageMakerSrc from './imagemaker.lua?raw';
+import textSrc from './text.lua?raw';
 
 const BUNDLED = [
     { id: 'archimedes', src: archimedesSrc },
+    { id: 'array', src: arraySrc },
     { id: 'imagemaker', src: imageMakerSrc },
+    { id: 'text', src: textSrc },
 ];
 
 const STORE_KEY = 'studio_user_plugins';

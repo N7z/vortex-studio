@@ -1,5 +1,5 @@
 plugin = {
-    name = "Image Maker",
+    name = "Image",
     icon = Icons.Image,
     ui = {
         { id = "img", type = "image", label = "Image" },

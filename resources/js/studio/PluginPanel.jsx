@@ -8,6 +8,7 @@ export default function PluginPanel({
 }) {
     const pickers = useRef({});
     const { style, onPointerDown } = useDraggable('plugin');
+    const texts = plugin.ui.filter((c) => c.type === 'text');
     const numbers = plugin.ui.filter((c) => c.type === 'number');
     const checks = plugin.ui.filter((c) => c.type === 'checkbox');
     const buttons = plugin.ui.filter((c) => c.type === 'button');
@@ -51,6 +52,17 @@ export default function PluginPanel({
                     </div>
                 );
             })}
+            {texts.map((c) => (
+                <label className="arch-text" key={c.id}>
+                    {c.label}
+                    <input
+                        type="text"
+                        value={values[c.id] ?? ''}
+                        maxLength={c.max ?? 64}
+                        onChange={(e) => setValue(c.id, e.target.value)}
+                    />
+                </label>
+            ))}
             {numbers.length > 0 && (
                 <div className="arch-axes">
                     {numbers.map((c) => (

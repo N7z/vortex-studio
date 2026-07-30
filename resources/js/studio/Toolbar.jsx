@@ -149,9 +149,9 @@ export default function Toolbar({
                     {live?.live ? `Team ${live.members.length}` : 'Team'}
                 </button>
             </div>
-            <div className="group">
-                {plugins.map((p) => {
-                    return (
+            <div className="group plugin-group">
+                <div className="plugin-scroll">
+                    {plugins.map((p) => (
                         <button
                             key={p.id}
                             className={`tool-btn wide ${activePluginId === p.id ? 'active' : ''}`}
@@ -162,8 +162,8 @@ export default function Toolbar({
                             <PluginIcon name={p.icon} size={22} strokeWidth={1.6} />
                             {p.name}
                         </button>
-                    );
-                })}
+                    ))}
+                </div>
                 <button className="tool-btn" onClick={onNewPlugin} disabled={!hasMap} title="Create or edit a Lua plugin">
                     <PlusIcon />
                     New

@@ -29,7 +29,23 @@ body {
     padding: 0 8px;
     border-right: 1px solid #1c1c22;
     gap: 4px;
+    flex: none;
 }
+
+.plugin-group { flex: 1 1 auto; min-width: 0; }
+.plugin-scroll {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: #2c2c35 transparent;
+}
+.plugin-scroll::-webkit-scrollbar { height: 6px; }
+.plugin-scroll::-webkit-scrollbar-thumb { background: #2c2c35; border-radius: 3px; }
+.plugin-scroll::-webkit-scrollbar-track { background: transparent; }
 
 .tool-btn {
     width: 60px;
@@ -54,6 +70,7 @@ a.tool-btn { text-decoration: none; }
 .tool-btn:disabled { color: #4a4a52; cursor: default; }
 .tool-btn:disabled:hover { background: transparent; }
 .tool-btn.wide { width: auto; min-width: 60px; padding: 0 10px; }
+.tool-btn { flex: none; }
 
 .snap-group { display: flex; flex-direction: column; gap: 6px; padding: 0 10px; justify-content: center; }
 .snap-row { display: flex; align-items: center; gap: 6px; }
@@ -362,6 +379,16 @@ a.tool-btn { text-decoration: none; }
     color: #b9b9c0;
 }
 .arch-head { display: flex; align-items: center; gap: 4px; margin-bottom: 10px; cursor: move; user-select: none; }
+.arch-text { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: #8f8f98; margin-bottom: 8px; }
+.arch-text input {
+    background: #0e0e12;
+    border: 1px solid #2c2c35;
+    border-radius: 4px;
+    padding: 5px 7px;
+    font-size: 12px;
+    color: #e5e5ea;
+}
+.arch-text input:focus { outline: none; border-color: #2f7fd9; }
 .arch-head h3 { font-size: 14px; font-weight: 600; color: #e5e5ea; flex: 1; }
 .arch-edit {
     background: none;
