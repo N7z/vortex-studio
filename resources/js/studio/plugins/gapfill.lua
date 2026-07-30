@@ -28,10 +28,6 @@ local function lerp(a, b, t)
     return a + (b - a) * t
 end
 
-local function wrap180(d)
-    return (d + 180) % 360 - 180
-end
-
 local function hex_rgb(c)
     if type(c) ~= "string" then return nil end
     local s = c:gsub("^#", "")
@@ -89,11 +85,15 @@ local function roll_mat(a)
     return { { c, -s, 0 }, { s, c, 0 }, { 0, 0, 1 } }
 end
 
-local function aim(dir)
+local function aim_mat(dir)
     local flat = math.sqrt(dir[1] * dir[1] + dir[3] * dir[3])
     local theta = math.atan(-dir[3], dir[1])
     local phi = math.atan(dir[2], flat)
-    local ex, ey, ez = mat_to_euler(mat_mul(yaw_mat(theta), roll_mat(phi)))
+    return mat_mul(yaw_mat(theta), roll_mat(phi))
+end
+
+local function euler_of(m)
+    local ex, ey, ez = mat_to_euler(m)
     return { round(math.deg(ex)), round(math.deg(ey)), round(math.deg(ez)) }
 end
 
@@ -160,7 +160,34 @@ local function face(part, m, dir)
     if math.abs(col(m, side)[2]) > math.abs(col(m, up)[2]) then
         up, side = side, up
     end
-    return p, up, side
+    local n = { axis[1] * sign, axis[2] * sign, axis[3] * sign }
+    return p, up, side, n
+end
+
+local function exit_dist(part, m, p, v)
+    local o = { p[1] - part.P[1], p[2] - part.P[2], p[3] - part.P[3] }
+    local t = math.huge
+    for k = 1, 3 do
+        local ax = col(m, k)
+        local half = part.S[k] * 0.5
+        local oc = dot(ax, o)
+        local dc = dot(ax, v)
+        if math.abs(dc) > 1e-6 then
+            local tk = ((dc > 0 and half or -half) - oc) / dc
+            if tk < t then t = tk end
+        elseif math.abs(oc) > half then
+            return 0
+        end
+    end
+    if t == math.huge or t < 0 then return 0 end
+    return t
+end
+
+local function bite(part, m, p, v, md, n, run, hu, hw)
+    local c = math.abs(dot(n, run))
+    if c > 0.9999 then return 0 end
+    local deep = hu * math.abs(dot(col(md, 2), n)) + hw * math.abs(dot(col(md, 3), n))
+    return math.min(deep / math.max(c, 0.2), exit_dist(part, m, p, v) * 0.95)
 end
 
 local function same_part(a, b)
@@ -196,8 +223,8 @@ local function bridge(values)
     local dir = { d[1] / dist, d[2] / dist, d[3] / dist }
 
     local ma, mb = mat_of(a), mat_of(b)
-    local pa, ua, wa = face(a, ma, dir)
-    local pb, ub, wb = face(b, mb, { -dir[1], -dir[2], -dir[3] })
+    local pa, ua, wa, na = face(a, ma, dir)
+    local pb, ub, wb, nb = face(b, mb, { -dir[1], -dir[2], -dir[3] })
 
     local g = { pb[1] - pa[1], pb[2] - pa[2], pb[3] - pa[3] }
     local glen = math.sqrt(g[1] * g[1] + g[2] * g[2] + g[3] * g[3])
@@ -205,41 +232,43 @@ local function bridge(values)
         pa = { a.P[1], a.P[2], a.P[3] }
         g = { d[1], d[2], d[3] }
         glen = dist
+        na = { dir[1], dir[2], dir[3] }
+        nb = { -dir[1], -dir[2], -dir[3] }
     end
     local run = { g[1] / glen, g[2] / glen, g[3] / glen }
 
-    local seg = glen / steps
     local upright = math.abs(run[2]) > 0.9
-    local ramp = not upright and aim(run) or nil
+    local md = upright and ma or aim_mat(run)
+    local r = upright and { a.R[1], a.R[2], a.R[3] } or euler_of(md)
+
+    local rev = { -run[1], -run[2], -run[3] }
+    local back = bite(a, ma, pa, rev, md, na, run, a.S[ua] * 0.5, a.S[wa] * 0.5)
+    local fwd = bite(b, mb, pb, run, md, nb, run, b.S[ub] * 0.5, b.S[wb] * 0.5)
+    for k = 1, 3 do
+        pa[k] = pa[k] - run[k] * back
+    end
+    glen = glen + back + fwd
+
+    local seg = glen / steps
 
     local out = {}
     for i = 1, steps do
         local u = (i - 0.5) / steps
-        local v = steps > 1 and (i - 1) / (steps - 1) or 0.5
-        local w = 4 * v * (1 - v)
 
         local s = {}
-        if ramp ~= nil then
-            s[1] = seg
-            s[2] = lerp(a.S[ua], b.S[ub], v)
-            s[3] = lerp(a.S[wa], b.S[wb], v)
-        else
+        if upright then
             for k = 1, 3 do
                 local along = math.abs(run[k])
-                local cross = lerp(a.S[k], b.S[k], v)
+                local cross = lerp(a.S[k], b.S[k], u)
                 s[k] = cross * (1 - along) + seg * along
             end
+        else
+            s[1] = seg
+            s[2] = lerp(a.S[ua], b.S[ub], u)
+            s[3] = lerp(a.S[wa], b.S[wb], u)
         end
         for k = 1, 3 do
             s[k] = math.max(0.001, s[k] + overlap)
-        end
-
-        local r = {}
-        for k = 1, 3 do
-            r[k] = a.R[k] + wrap180(b.R[k] - a.R[k]) * v
-            if ramp ~= nil then
-                r[k] = r[k] + wrap180(ramp[k] - r[k]) * w
-            end
         end
 
         local p = {}
