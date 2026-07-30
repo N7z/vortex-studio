@@ -3,7 +3,7 @@ plugin = {
     icon = Icons.Blend,
     faces = true,
     ui = {
-        { id = "steps", type = "number", label = "Steps", default = 6 },
+        { id = "steps", type = "number", label = "Steps", default = 1 },
         { id = "blend", type = "checkbox", label = "Blend colour", default = true },
         { id = "overlap", type = "number", label = "Overlap", default = 0.05 },
         { id = "build", type = "button", label = "Fill" },
