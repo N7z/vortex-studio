@@ -54,6 +54,8 @@ const COMPLETIONS = [
     prop('Selection.min', 'low corner of the selection bounds {x, y, z}'),
     prop('Selection.max', 'high corner of the selection bounds {x, y, z}'),
     prop('Selection.parts', 'every selected part, or nil past 256 selected'),
+    prop('plugin.faces', 'true to highlight the clicked face and pass it as part.F'),
+    prop('part.F', 'clicked face as a local normal {x,y,z}, or nil'),
     prop('Image', 'the picked image, or nil: Image.w, Image.h, Image.pixel(x, y)'),
     fn('Image.pixel(x, y)', '0-based, top-left origin; returns "rrggbb", alpha 0-255'),
     prop('part.P', 'position {x, y, z}'),

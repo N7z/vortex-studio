@@ -49,6 +49,7 @@ export default function App() {
     const [mapName, setMapName] = useState(null);
     const [parts, setParts] = useState([]);
     const [selectedIds, setSelectedIds] = useState([]);
+    const [faces, setFaces] = useState({});
     const [tool, setTool] = useState('select');
     const [snap, setSnap] = useState({ moveOn: true, move: 1, rotateOn: true, rotate: 15 });
     const [graphics, setGraphics] = useState(loadGraphics);
@@ -86,6 +87,7 @@ export default function App() {
         setParts(data);
         setMapName(name);
         setSelectedIds([]);
+        setFaces({});
         const next = remoteGroups ?? loadGroups(name, data);
         syncedGroups.current = groupKey(next);
         setGroups(next);
@@ -178,20 +180,30 @@ export default function App() {
             max,
             center: [0, 1, 2].map((i) => Math.round((min[i] + max[i]) / 2 * 1000) / 1000),
             parts: selectedParts.length <= MAX_SELECTION_PARTS
-                ? selectedParts.map(stripId)
+                ? selectedParts.map((p) => {
+                    const bare = stripId(p);
+                    return faces[p._id] ? { ...bare, F: faces[p._id] } : bare;
+                })
                 : null,
         };
-    }, [selectedParts]);
+    }, [selectedParts, faces]);
     const activePlugin = plugins.find((p) => p.id === activePluginId) ?? null;
     const activeValues = activePlugin ? pluginValues[activePlugin.id] ?? activePlugin.defaults : null;
     const activeImages = activePlugin ? pluginImages[activePlugin.id] ?? null : null;
     const activeModels = activePlugin ? pluginModels[activePlugin.id] ?? null : null;
 
-    const select = useCallback((id, additive) => {
+    const select = useCallback((id, additive, normal) => {
         setSelectedIds((cur) => {
             if (id == null) return additive ? cur : [];
             if (!additive) return [id];
             return cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+        });
+        setFaces((cur) => {
+            if (id == null) return additive ? cur : {};
+            const next = additive ? { ...cur } : {};
+            if (normal) next[id] = normal;
+            else delete next[id];
+            return next;
         });
     }, []);
     const setSelectedId = select;
@@ -202,6 +214,7 @@ export default function App() {
             const seen = new Set(cur);
             return [...cur, ...ids.filter((id) => !seen.has(id))];
         });
+        if (!additive) setFaces({});
     }, []);
 
     const edit = useCallback((op) => {
@@ -797,6 +810,8 @@ export default function App() {
                         selectedIds={selectedIds}
                         setSelectedId={setSelectedId}
                         selectMany={selectMany}
+                        faces={faces}
+                        showFaces={!!activePlugin?.usesFaces}
                         tool={tool}
                         snap={snap}
                         canEdit={canEdit}

@@ -1,6 +1,7 @@
 plugin = {
     name = "Gap Fill",
     icon = Icons.Blend,
+    faces = true,
     ui = {
         { id = "steps", type = "number", label = "Steps", default = 6 },
         { id = "blend", type = "checkbox", label = "Blend colour", default = true },
@@ -120,15 +121,28 @@ local function dot(u, v)
     return u[1] * v[1] + u[2] * v[2] + u[3] * v[3]
 end
 
-local function face(part, m, dir)
-    local best, sign = 1, 1
-    local score = -1
+local function chosen(part)
+    local f = part.F
+    if type(f) ~= "table" then return nil end
     for k = 1, 3 do
-        local d = dot(col(m, k), dir)
-        if math.abs(d) > score then
-            score = math.abs(d)
-            best = k
-            sign = d < 0 and -1 or 1
+        local v = tonumber(f[k]) or 0
+        if math.abs(v) > 0.5 then return k, (v < 0 and -1 or 1) end
+    end
+    return nil
+end
+
+local function face(part, m, dir)
+    local best, sign = chosen(part)
+    if best == nil then
+        best, sign = 1, 1
+        local score = -1
+        for k = 1, 3 do
+            local d = dot(col(m, k), dir)
+            if math.abs(d) > score then
+                score = math.abs(d)
+                best = k
+                sign = d < 0 and -1 or 1
+            end
         end
     end
     local axis = col(m, best)

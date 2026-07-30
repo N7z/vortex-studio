@@ -87,6 +87,7 @@ export async function compilePlugin(id, src, builtin = false) {
             builtin,
             name: String(p.name),
             icon: p.icon,
+            usesFaces: p.faces === true,
             ui,
             defaults: Object.fromEntries(
                 ui.filter((c) => !['button', 'image', 'model'].includes(c.type))

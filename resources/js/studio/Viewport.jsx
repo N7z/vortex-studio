@@ -104,6 +104,40 @@ function makeShirtTexture() {
 
 const MIN_BATCH = 16;
 
+const FACE_DIRS = [
+    [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
+];
+
+const faceKey = (n) => `${n[0]},${n[1]},${n[2]}`;
+
+const FACE_MATS = (() => {
+    const out = new Map();
+    const from = new THREE.Vector3(0, 0, 1);
+    for (const d of FACE_DIRS) {
+        const n = new THREE.Vector3(d[0], d[1], d[2]);
+        const q = new THREE.Quaternion().setFromUnitVectors(from, n);
+        const m = new THREE.Matrix4().compose(
+            n.clone().multiplyScalar(0.503),
+            q,
+            new THREE.Vector3(0.98, 0.98, 1),
+        );
+        out.set(faceKey(d), m);
+    }
+    return out;
+})();
+
+function snapNormal(n) {
+    if (!n) return null;
+    const a = [Math.abs(n.x), Math.abs(n.y), Math.abs(n.z)];
+    let k = 0;
+    if (a[1] > a[k]) k = 1;
+    if (a[2] > a[k]) k = 2;
+    const sign = [n.x, n.y, n.z][k] < 0 ? -1 : 1;
+    const out = [0, 0, 0];
+    out[k] = sign;
+    return out;
+}
+
 const MAX_OUTLINES = 192;
 const MAX_PREVIEWS = 256;
 
@@ -120,6 +154,7 @@ const readTransform = (m) => ({
 export default function Viewport({
     parts, selectedIds, setSelectedId, selectMany, tool, snap, onTransform, onTransformMany,
     mapName, graphics, preview, spawnRef, busyRef, canEdit = true, peers, onView,
+    faces, showFaces = false,
 }) {
     const mountRef = useRef(null);
     const ctx = useRef(null);
@@ -259,6 +294,25 @@ export default function Viewport({
             const entry = { cone, label };
             marks.push(entry);
             return entry;
+        };
+
+        const faceGeom = new THREE.PlaneGeometry(1, 1);
+        const faceMat = new THREE.MeshBasicMaterial({
+            color: 0xff8c1a,
+            transparent: true,
+            opacity: 0.55,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+        });
+        const faceQuads = [];
+        const faceLocal = new THREE.Matrix4();
+        const faceQuad = () => {
+            const q = new THREE.Mesh(faceGeom, faceMat);
+            q.matrixAutoUpdate = false;
+            q.renderOrder = 996;
+            scene.add(q);
+            faceQuads.push(q);
+            return q;
         };
 
         const peerBoxes = [];
@@ -650,7 +704,11 @@ export default function Viewport({
             );
             raycaster.setFromCamera(ndc, camera);
             const hits = raycaster.intersectObjects(c.meshList, false);
-            c.setSelectedId(hits.length ? hits[0].object.userData.id : null, e.ctrlKey || e.metaKey);
+            c.setSelectedId(
+                hits.length ? hits[0].object.userData.id : null,
+                e.ctrlKey || e.metaKey,
+                hits.length ? snapNormal(hits[0].face?.normal) : null,
+            );
         };
         renderer.domElement.addEventListener('pointerdown', onDown);
         renderer.domElement.addEventListener('pointermove', onMove);
@@ -775,6 +833,22 @@ export default function Viewport({
             }
             for (let i = shown; i < selBoxes.length; i++) selBoxes[i].visible = false;
 
+            let f = 0;
+            if (c?.showFaces) {
+                for (const mesh of sel) {
+                    const dir = c.faces?.[mesh.userData.id];
+                    const local = dir && FACE_MATS.get(faceKey(dir));
+                    if (!local) continue;
+                    const q = faceQuads[f] ?? faceQuad();
+                    f++;
+                    mesh.updateWorldMatrix(true, false);
+                    faceLocal.multiplyMatrices(mesh.matrixWorld, local);
+                    q.matrix.copy(faceLocal);
+                    q.visible = true;
+                }
+            }
+            for (let i = f; i < faceQuads.length; i++) faceQuads[i].visible = false;
+
             let n = 0;
             for (const peer of c?.peers ?? []) {
                 if (n >= MAX_OUTLINES) break;
@@ -890,6 +964,9 @@ export default function Viewport({
                 m.dispose();
             }
             for (const m of peerMats.values()) m.dispose();
+            for (const q of faceQuads) scene.remove(q);
+            faceGeom.dispose();
+            faceMat.dispose();
             selEdges.dispose();
             selMat.dispose();
             for (const inst of batches.values()) dropBatch(inst);
@@ -918,6 +995,8 @@ export default function Viewport({
         c.snapMove = snap.moveOn ? snap.move : 0;
         c.canEdit = canEdit;
         c.peers = peers ?? [];
+        c.faces = faces ?? null;
+        c.showFaces = showFaces;
         c.onView = onView ?? null;
         if (spawnRef) spawnRef.current = c.spawnPoint;
     });
