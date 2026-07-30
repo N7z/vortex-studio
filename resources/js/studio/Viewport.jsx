@@ -421,12 +421,12 @@ export default function Viewport({
             down.y = e.clientY;
             if (e.button === 2) setFlying(true);
             if (e.button !== 0 || gizmo.dragging || gizmo.axis) return;
-            const mesh = pickMesh(e);
+            const mesh = e.altKey ? null : pickMesh(e);
             if (mesh) {
                 pending = { mesh };
                 return;
             }
-            if (ctx.current?.tool === 'select') {
+            if (e.altKey || ctx.current?.tool === 'select') {
                 marquee = { x: e.clientX, y: e.clientY, active: false, additive: e.ctrlKey || e.metaKey };
             }
         };

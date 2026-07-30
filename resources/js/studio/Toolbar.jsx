@@ -308,6 +308,7 @@ export default function Toolbar({
                             <li><b>Left click</b> selects a part, <b>Ctrl+click</b> adds or removes one from the selection, <b>Ctrl+A</b> selects all</li>
                             <li>Tools on keys <b>W</b> move, <b>E</b> rotate, <b>R</b> scale (or <b>1-4</b>), free while you are not flying</li>
                             <li><b>Drag a part</b> to slide it around: it rests on whatever surface is under the pointer, and <b>R</b> while dragging turns it 90°</li>
+                            <li><b>Drag from empty space</b> with the Select tool to box-select, and <b>Alt+drag</b> does the same from anywhere, even starting on a part</li>
                             <li>New parts appear where you are looking, not at the origin</li>
                             <li>The checkboxes and values in the top bar snap moving and scaling (studs) and rotating (degrees)</li>
                             <li><b>Ctrl+C / Ctrl+V</b> copy and paste, <b>Ctrl+D</b> duplicates in place, <b>Delete</b> removes. All of them work on the whole selection</li>
