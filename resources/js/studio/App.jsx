@@ -39,6 +39,8 @@ const NEW_SPAWN = {
 
 const groupKey = (gs) => JSON.stringify(gs.map((g) => [g.id, g.name, g.ids]));
 
+const MAX_PLUGIN_PARTS = 5000;
+
 export default function App() {
     const [mapName, setMapName] = useState(null);
     const [parts, setParts] = useState([]);
@@ -151,14 +153,7 @@ export default function App() {
             ? parts.filter((p) => selectedSet.has(p._id))
             : (selected ? [selected] : [])
     ), [parts, selectedSet, selected]);
-    const groupSelected = useMemo(() => (
-        selectedIds.length > 1 && groups.some((g) => {
-            if (g.ids.length !== selectedIds.length) return false;
-            const ids = new Set(g.ids);
-            return selectedIds.every((id) => ids.has(id));
-        })
-    ), [groups, selectedIds]);
-    const pluginTarget = groupSelected ? null : selected;
+    const pluginTarget = selected;
     const activePlugin = plugins.find((p) => p.id === activePluginId) ?? null;
     const activeValues = activePlugin ? pluginValues[activePlugin.id] ?? activePlugin.defaults : null;
     const activeImages = activePlugin ? pluginImages[activePlugin.id] ?? null : null;
@@ -359,9 +354,22 @@ export default function App() {
     };
 
     const pluginButton = async (btnId) => {
-        if (!activePlugin || !pluginTarget) return;
+        if (!activePlugin || !selectedParts.length) return;
         try {
-            const parts = await activePlugin.click(btnId, stripId(pluginTarget), activeValues);
+            const parts = [];
+            let capped = false;
+            for (const target of selectedParts) {
+                const made = await activePlugin.click(btnId, stripId(target), activeValues);
+                for (const p of made) {
+                    if (parts.length >= MAX_PLUGIN_PARTS) {
+                        capped = true;
+                        break;
+                    }
+                    parts.push(p);
+                }
+                if (capped) break;
+            }
+            if (capped) flash(`Stopped at ${MAX_PLUGIN_PARTS} parts`);
             if (!parts.length) return;
             const placed = parts.map(withNewId);
             edit(addOp(placed));
@@ -702,8 +710,10 @@ export default function App() {
                             setValue={setPluginValue}
                             images={activeImages}
                             onImage={pickImage}
-                            hasSelection={!!pluginTarget}
-                            targetNote={groupSelected ? 'Select a part, not a group' : null}
+                            hasSelection={selectedParts.length > 0}
+                            targetNote={selectedParts.length > 1
+                                ? `Runs on all ${selectedParts.length} selected parts`
+                                : null}
                             onButton={pluginButton}
                             onEdit={() => openEditTab(activePlugin.id)}
                             onClose={() => setActivePluginId(null)}
