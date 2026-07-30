@@ -2,6 +2,7 @@ const DEFAULT_URL = 'ws://localhost:8787';
 const RETRY_MS = [500, 1000, 2000, 4000, 8000];
 const SELECTION_THROTTLE_MS = 80;
 const SELECTION_LIMIT = 256;
+const VIEW_THROTTLE_MS = 120;
 
 // A browser on an https page may not open a ws:// socket, so VITE_LIVE_URL is allowed
 // to be a bare path ("/live"): the host and the scheme then come from the page, which
@@ -76,6 +77,9 @@ export class LiveClient {
         this.selectionTimer = null;
         this.pendingSelection = null;
         this.lastSelection = '';
+        this.viewTimer = null;
+        this.pendingView = null;
+        this.lastView = '';
     }
 
     create(mapName, parts, groups = []) {
@@ -140,6 +144,7 @@ export class LiveClient {
             if (this.ws !== ws) return;
             this.ws = null;
             this.stopSelectionTimer();
+            this.stopViewTimer();
             // 4003 kicked, 4004 the room refused us. Neither is worth retrying, and
             // retrying a room that no longer exists would loop forever.
             if (this.closing || e.code === 4003 || e.code === 4004) {
@@ -177,6 +182,7 @@ export class LiveClient {
                 this.code = msg.code;
                 this.token = msg.you.token;
                 this.lastSelection = '';
+                this.lastView = '';
                 writeToken(msg.code, msg.you.token);
                 showRoomInUrl(msg.code);
                 this.handlers.onWelcome?.(msg);
@@ -192,6 +198,8 @@ export class LiveClient {
                 return this.handlers.onGroups?.(msg);
             case 'selection':
                 return this.handlers.onSelection?.(msg);
+            case 'view':
+                return this.handlers.onView?.(msg);
             case 'you':
                 return this.handlers.onYou?.(msg);
             case 'saved':
@@ -250,6 +258,26 @@ export class LiveClient {
         this.selectionTimer = null;
     }
 
+    stopViewTimer() {
+        if (!this.viewTimer) return;
+        clearTimeout(this.viewTimer);
+        this.viewTimer = null;
+    }
+
+    sendView(view) {
+        const key = `${view.p.join()}|${view.d.join()}`;
+        if (key === this.lastView) return;
+        this.lastView = key;
+        this.pendingView = view;
+        if (this.viewTimer) return;
+        this.viewTimer = setTimeout(() => {
+            this.viewTimer = null;
+            const pending = this.pendingView;
+            this.pendingView = null;
+            if (pending) this.send({ t: 'view', view: pending });
+        }, VIEW_THROTTLE_MS);
+    }
+
     sendSelection(all) {
         const ids = all.length > SELECTION_LIMIT ? all.slice(0, SELECTION_LIMIT) : all;
         const key = ids.join(',');
@@ -272,6 +300,8 @@ export class LiveClient {
         this.code = null;
         this.token = null;
         this.stopSelectionTimer();
+        this.stopViewTimer();
+        this.lastView = '';
         if (this.retryTimer) clearTimeout(this.retryTimer);
         this.ws?.close(1000, 'left');
         this.ws = null;

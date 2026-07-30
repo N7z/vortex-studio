@@ -76,7 +76,7 @@ const readTransform = (m) => ({
 
 export default function Viewport({
     parts, selectedIds, setSelectedId, selectMany, tool, snap, onTransform, onTransformMany,
-    mapName, graphics, preview, spawnRef, busyRef, canEdit = true, peers,
+    mapName, graphics, preview, spawnRef, busyRef, canEdit = true, peers, onView,
 }) {
     const mountRef = useRef(null);
     const ctx = useRef(null);
@@ -160,6 +160,63 @@ export default function Viewport({
             }
             return m;
         };
+        // Where each peer is looking from: a cone at their camera, pointing the way they
+        // face, with their name over it. Drawn without depth testing so a collaborator
+        // behind a wall is still findable, which is the whole point of the marker.
+        const markGeom = new THREE.ConeGeometry(0.5, 1.6, 12);
+        markGeom.rotateX(Math.PI / 2);
+        const markMats = new Map();
+        const markMat = (color) => {
+            let m = markMats.get(color);
+            if (!m) {
+                m = new THREE.MeshBasicMaterial({
+                    color: new THREE.Color(color), depthTest: false, depthWrite: false,
+                });
+                markMats.set(color, m);
+            }
+            return m;
+        };
+
+        const labelMats = new Map();
+        const labelMat = (name, color) => {
+            const key = `${name}|${color}`;
+            let m = labelMats.get(key);
+            if (m) return m;
+            const c = document.createElement('canvas');
+            c.width = 256;
+            c.height = 64;
+            const g = c.getContext('2d');
+            g.font = 'bold 30px system-ui, sans-serif';
+            g.textAlign = 'center';
+            g.textBaseline = 'middle';
+            g.fillStyle = 'rgba(0,0,0,0.55)';
+            g.fillRect(0, 12, 256, 40);
+            g.fillStyle = color;
+            g.fillText(name, 128, 32);
+            const tex = new THREE.CanvasTexture(c);
+            tex.colorSpace = THREE.SRGBColorSpace;
+            m = new THREE.SpriteMaterial({
+                map: tex, depthTest: false, depthWrite: false, transparent: true,
+            });
+            labelMats.set(key, m);
+            return m;
+        };
+
+        const marks = [];
+        const markTarget = new THREE.Vector3();
+        const mark = () => {
+            const cone = new THREE.Mesh(markGeom, markMat('#888888'));
+            cone.renderOrder = 997;
+            const label = new THREE.Sprite(labelMat('', '#888888'));
+            label.scale.set(8, 2, 1);
+            label.renderOrder = 1000;
+            scene.add(cone);
+            scene.add(label);
+            const entry = { cone, label };
+            marks.push(entry);
+            return entry;
+        };
+
         const peerBoxes = [];
         const peerBox = () => {
             const b = new THREE.LineSegments(selEdges, selMat);
@@ -538,6 +595,7 @@ export default function Viewport({
             orbit.target.add(step);
         };
 
+        const viewDir = new THREE.Vector3();
         let raf;
         let last = performance.now();
         const tick = () => {
@@ -591,7 +649,7 @@ export default function Viewport({
             for (const peer of c?.peers ?? []) {
                 if (n >= MAX_OUTLINES) break;
                 const mat = peerMat(peer.color);
-                for (const id of peer.selection) {
+                for (const id of peer.selection ?? []) {
                     if (n >= MAX_OUTLINES) break;
                     const mesh = c.meshes.get(id);
                     if (!mesh) continue;
@@ -604,6 +662,35 @@ export default function Viewport({
                 }
             }
             for (let i = n; i < peerBoxes.length; i++) peerBoxes[i].visible = false;
+
+            let k = 0;
+            for (const peer of c?.peers ?? []) {
+                if (!peer.view) continue;
+                const { cone, label } = marks[k] ?? mark();
+                k++;
+                const [px, py, pz] = peer.view.p;
+                const [dx, dy, dz] = peer.view.d;
+                cone.position.set(px, py, pz);
+                markTarget.set(px + dx, py + dy, pz + dz);
+                cone.lookAt(markTarget);
+                cone.material = markMat(peer.color);
+                cone.visible = true;
+                label.position.set(px, py + 2.2, pz);
+                label.material = labelMat(peer.name, peer.color);
+                label.visible = true;
+            }
+            for (let i = k; i < marks.length; i++) {
+                marks[i].cone.visible = false;
+                marks[i].label.visible = false;
+            }
+
+            if (c?.onView) {
+                camera.getWorldDirection(viewDir);
+                c.onView({
+                    p: [round(camera.position.x), round(camera.position.y), round(camera.position.z)],
+                    d: [round(viewDir.x), round(viewDir.y), round(viewDir.z)],
+                });
+            }
 
             renderer.render(scene, camera);
         };
@@ -635,6 +722,7 @@ export default function Viewport({
             onTransformMany: () => {},
             setSelectedId: () => {},
             selectMany: () => {},
+            onView: null,
         };
 
         return () => {
@@ -652,6 +740,16 @@ export default function Viewport({
             orbit.dispose();
             for (const b of selBoxes) scene.remove(b);
             for (const b of peerBoxes) scene.remove(b);
+            for (const { cone, label } of marks) {
+                scene.remove(cone);
+                scene.remove(label);
+            }
+            markGeom.dispose();
+            for (const m of markMats.values()) m.dispose();
+            for (const m of labelMats.values()) {
+                m.map.dispose();
+                m.dispose();
+            }
             for (const m of peerMats.values()) m.dispose();
             selEdges.dispose();
             selMat.dispose();
@@ -678,6 +776,7 @@ export default function Viewport({
         c.snapMove = snap.moveOn ? snap.move : 0;
         c.canEdit = canEdit;
         c.peers = peers ?? [];
+        c.onView = onView ?? null;
         if (spawnRef) spawnRef.current = c.spawnPoint;
     });
 

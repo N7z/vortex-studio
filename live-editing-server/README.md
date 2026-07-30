@@ -84,14 +84,16 @@ JSON text frames, `t` is the type. Client to server:
 | `join` `{code}` | anyone | join an existing room |
 | `op` `{op}` | developers | one edit, see `src/ops.js` |
 | `selection` `{ids}` | developers | what you have selected, for the others' outlines |
+| `view` `{view}` | anyone | `{p, d}` camera position and facing, for the others' markers |
+| `groups` `{groups}` | developers | the explorer folders, mirrored to the room |
 | `role` `{memberId, role}` | owner | `developer` or `spectator` |
 | `kick` `{memberId}` | owner | remove someone |
 | `saved` | owner | you just persisted the map to Laravel |
 | `resync` | anyone | ask for the authoritative map again |
 | `ping` | anyone | replied to with `pong` |
 
-Server to client: `welcome`, `members`, `op`, `snapshot`, `selection`, `you` (your role
-or ownership changed), `saved`, `kicked`, `error`, `pong`.
+Server to client: `welcome`, `members`, `op`, `snapshot`, `selection`, `view`, `groups`,
+`you` (your role or ownership changed), `saved`, `kicked`, `error`, `pong`.
 
 An accepted op is broadcast to **everyone, the sender included**. The sender already
 applied it optimistically and every op is idempotent, so the echo costs nothing and acts

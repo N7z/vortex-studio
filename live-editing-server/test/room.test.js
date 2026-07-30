@@ -524,6 +524,53 @@ test('bad folder data is refused', async () => {
     owner.ws.close();
 });
 
+test('a view is relayed to the others but not echoed back', async () => {
+    const { c: owner, welcome: hi } = await host();
+    const { c: other } = await guest(hi.code);
+
+    const view = { p: [1, 2, 3], d: [0, 0, -1] };
+    owner.send({ t: 'view', view });
+
+    assert.deepEqual((await other.next('view')).view, view);
+    assert.equal(owner.inbox.some((m) => m.t === 'view'), false);
+
+    owner.ws.close();
+    other.ws.close();
+});
+
+test('a joiner sees where the people already there are looking from', async () => {
+    const { c: owner, welcome: hi } = await host();
+    const view = { p: [10, 5, 0], d: [1, 0, 0] };
+    owner.send({ t: 'view', view });
+
+    const { c: late, welcome } = await guest(hi.code);
+    assert.deepEqual(welcome.members.find((m) => m.id === hi.you.id).view, view);
+
+    owner.ws.close();
+    late.ws.close();
+});
+
+test('a spectator is visible too, and a bad view is ignored', async () => {
+    const { c: owner, welcome: hi } = await host();
+    const { c: other, welcome } = await guest(hi.code);
+
+    const view = { p: [0, 1, 0], d: [0, -1, 0] };
+    other.send({ t: 'view', view });
+    assert.deepEqual((await owner.next('view')).view, view);
+
+    other.send({ t: 'view', view: { p: [0, 1], d: [0, 0, 1] } });
+    other.send({ t: 'view', view: { p: [0, 'x', 0], d: [0, 0, 1] } });
+    other.send({ t: 'ping' });
+    await other.next('pong');
+
+    const { c: late, welcome: seen } = await guest(hi.code);
+    assert.deepEqual(seen.members.find((m) => m.id === welcome.you.id).view, view);
+
+    owner.ws.close();
+    other.ws.close();
+    late.ws.close();
+});
+
 test('garbage and unknown message types are reported, not fatal', async () => {
     const { c: owner } = await host();
     owner.ws.send('{not json');

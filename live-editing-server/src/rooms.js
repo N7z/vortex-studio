@@ -18,8 +18,20 @@ class Member {
         this.role = ROLE_SPECTATOR;
         this.joinedAt = now();
         this.selection = [];
+        this.view = null;
         this.color = '#888888';
     }
+}
+
+const vec3 = (v) => Array.isArray(v)
+    && v.length === 3
+    && v.every((n) => typeof n === 'number' && Number.isFinite(n));
+
+export function cleanView(input) {
+    if (!input || typeof input !== 'object') return null;
+    if (!vec3(input.p) || !vec3(input.d)) return null;
+
+    return { p: input.p, d: input.d };
 }
 
 export function cleanGroups(input) {
@@ -64,6 +76,7 @@ class Room {
                 color: m.color,
                 owner: m.id === this.ownerId,
                 selection: m.selection,
+                view: m.view,
             }));
     }
 
@@ -214,6 +227,14 @@ class Room {
         this.groups = this.groups
             .map((g) => ({ ...g, ids: g.ids.filter((id) => alive.has(id)) }))
             .filter((g) => g.ids.length);
+    }
+
+    setViewFrom(member, view) {
+        const clean = cleanView(view);
+        if (!clean) return;
+
+        member.view = clean;
+        this.broadcast({ t: 'view', id: member.id, view: clean }, member.id);
     }
 
     setGroupsFrom(member, groups) {

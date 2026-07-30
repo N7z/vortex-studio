@@ -194,6 +194,8 @@ export function createLiveServer({ log = () => {} } = {}) {
 
                 return;
             }
+            case 'view':
+                return room.setViewFrom(member, msg.view);
             case 'selection':
                 return handleSelection(ctx, msg);
             case 'role':

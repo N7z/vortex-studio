@@ -3,7 +3,9 @@ import { LiveClient } from './live';
 
 const EMPTY = [];
 
-export default function useLive({ onWelcome, onOp, onSnapshot, onGroups, onError, onNotice }) {
+export default function useLive({
+    onWelcome, onOp, onSnapshot, onGroups, onError, onNotice,
+}) {
     const [status, setStatus] = useState('offline');
     const [code, setCode] = useState(null);
     const [me, setMe] = useState(null);
@@ -38,6 +40,9 @@ export default function useLive({ onWelcome, onOp, onSnapshot, onGroups, onError
             onGroups: (msg) => cbs.current.onGroups?.(msg),
             onSelection: (msg) => setMembers((ms) => ms.map(
                 (m) => (m.id === msg.id ? { ...m, selection: msg.selection } : m),
+            )),
+            onView: (msg) => setMembers((ms) => ms.map(
+                (m) => (m.id === msg.id ? { ...m, view: msg.view } : m),
             )),
             onSaved: (msg) => setLastSavedAt(msg.at),
             onKicked: (msg) => {
@@ -74,6 +79,7 @@ export default function useLive({ onWelcome, onOp, onSnapshot, onGroups, onError
     const sendOp = useCallback((op) => client.current.sendOp(op), []);
     const sendGroups = useCallback((groups) => client.current.sendGroups(groups), []);
     const sendSelection = useCallback((ids) => client.current.sendSelection(ids), []);
+    const sendView = useCallback((view) => client.current.sendView(view), []);
     const setRole = useCallback((id, role) => client.current.setRole(id, role), []);
     const kick = useCallback((id) => client.current.kick(id), []);
     const notifySaved = useCallback(() => client.current.notifySaved(), []);
@@ -85,7 +91,7 @@ export default function useLive({ onWelcome, onOp, onSnapshot, onGroups, onError
     const canEdit = isOwner || me?.role === 'developer';
 
     const peers = useMemo(
-        () => members.filter((m) => m.id !== me?.id && m.selection?.length),
+        () => members.filter((m) => m.id !== me?.id && (m.selection?.length || m.view)),
         [members, me],
     );
 
@@ -105,6 +111,7 @@ export default function useLive({ onWelcome, onOp, onSnapshot, onGroups, onError
         sendOp,
         sendGroups,
         sendSelection,
+        sendView,
         setRole,
         kick,
         notifySaved,

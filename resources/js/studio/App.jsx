@@ -670,6 +670,7 @@ export default function App() {
                         snap={snap}
                         canEdit={canEdit}
                         peers={live.peers}
+                        onView={live.live ? live.sendView : null}
                         onTransform={updateSelected}
                         onTransformMany={transformMany}
                         mapName={mapName}
