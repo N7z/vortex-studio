@@ -103,11 +103,6 @@ local function bridge(values)
     end
 
     local seg = span_t * dist / steps
-    local axis = 1
-    for i = 2, 3 do
-        if math.abs(dir[i]) > math.abs(dir[axis]) then axis = i end
-    end
-    local axis_fill = seg * math.abs(dir[axis])
 
     local out = {}
     for i = 1, steps do
@@ -116,11 +111,9 @@ local function bridge(values)
 
         local s = {}
         for k = 1, 3 do
-            s[k] = lerp(a.S[k], b.S[k], u)
-        end
-        if s[axis] < axis_fill then s[axis] = axis_fill end
-        for k = 1, 3 do
-            s[k] = math.max(0.001, s[k] + overlap)
+            local along = math.abs(dir[k])
+            local cross = lerp(a.S[k], b.S[k], u)
+            s[k] = math.max(0.001, cross * (1 - along) + seg * along + overlap)
         end
 
         local r = {}
