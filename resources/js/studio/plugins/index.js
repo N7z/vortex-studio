@@ -45,10 +45,19 @@ export function stripId(part) {
     return rest;
 }
 
+// A result flagged Replace updates the part it came from instead of being added.
+// The flag is stripped here: validPart rejects any key outside PART_KEYS, so it
+// must never reach the map data.
 const toParts = (res) => {
     if (res == null || typeof res !== 'object') return [];
     const list = res.P !== undefined ? [res] : toArray(res);
-    return list.map(normPart).filter(Boolean);
+    return list.map((raw) => {
+        const part = normPart(raw);
+        if (!part) return null;
+        const replace = part.Replace === true || part.Replace === 1;
+        delete part.Replace;
+        return { part, replace };
+    }).filter(Boolean);
 };
 
 export async function compilePlugin(id, src, builtin = false) {
@@ -63,6 +72,7 @@ export async function compilePlugin(id, src, builtin = false) {
         const luaClick = lua.global.get('__click');
         const luaSetImage = lua.global.get('__set_image');
         const luaSetModel = lua.global.get('__set_model');
+        const luaSetSelection = lua.global.get('__set_selection');
         const ui = toArray(p.ui).map((c) => ({ ...c }));
         return {
             id,
@@ -80,6 +90,9 @@ export async function compilePlugin(id, src, builtin = false) {
                 toParts(await luaClick(btnId, JSON.stringify(part), JSON.stringify(values))),
             setImage: async (img) => {
                 await luaSetImage(img?.w ?? 0, img?.h ?? 0, img?.data ?? '');
+            },
+            setSelection: async (info) => {
+                await luaSetSelection(info ? JSON.stringify(info) : '');
             },
             setModel: async (grid) => {
                 await luaSetModel(

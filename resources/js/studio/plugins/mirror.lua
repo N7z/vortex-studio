@@ -5,6 +5,8 @@ plugin = {
         { id = "mx", type = "checkbox", label = "Mirror X", default = true },
         { id = "my", type = "checkbox", label = "Mirror Y", default = false },
         { id = "mz", type = "checkbox", label = "Mirror Z", default = false },
+        { id = "origin", type = "checkbox", label = "Around the selection", default = true },
+        { id = "copy", type = "checkbox", label = "Create a copy", default = true },
         { id = "px", type = "number", label = "Plane X", default = 0 },
         { id = "py", type = "number", label = "Plane Y", default = 0 },
         { id = "pz", type = "number", label = "Plane Z", default = 0 },
@@ -63,6 +65,12 @@ local function flip(part, values)
     local py = tonumber(values.py) or 0
     local pz = tonumber(values.pz) or 0
 
+    -- "Around the selection" needs the bounds of everything selected, which a
+    -- plugin cannot see: it is called one part at a time. The app hands them over.
+    if values.origin ~= false and Selection ~= nil then
+        px, py, pz = Selection.center[1], Selection.center[2], Selection.center[3]
+    end
+
     local out = {}
     for k, v in pairs(part) do
         out[k] = v
@@ -79,6 +87,8 @@ local function flip(part, values)
     local m = conjugate(r, mx and -1 or 1, my and -1 or 1, mz and -1 or 1)
     local ex, ey, ez = mat_to_euler(m)
     out.R = { round(math.deg(ex)), round(math.deg(ey)), round(math.deg(ez)) }
+
+    if values.copy == false then out.Replace = true end
 
     return out
 end

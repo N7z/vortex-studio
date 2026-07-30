@@ -106,6 +106,16 @@ function __set_image(w, h, data)
     Image = img
 end
 
+Selection = nil
+
+function __set_selection(info_json)
+    if info_json == nil or info_json == '' then
+        Selection = nil
+        return
+    end
+    Selection = json.decode(info_json)
+end
+
 Model = nil
 
 function __set_model(w, h, d, count, data)

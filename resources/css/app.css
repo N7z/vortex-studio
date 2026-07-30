@@ -32,21 +32,6 @@ body {
     flex: none;
 }
 
-.toolbar .plugin-group { flex: 1 1 auto; min-width: 0; }
-.plugin-scroll {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    min-width: 0;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: thin;
-    scrollbar-color: #2c2c35 transparent;
-}
-.plugin-scroll::-webkit-scrollbar { height: 6px; }
-.plugin-scroll::-webkit-scrollbar-thumb { background: #2c2c35; border-radius: 3px; }
-.plugin-scroll::-webkit-scrollbar-track { background: transparent; }
-
 .tool-btn {
     width: 60px;
     height: 58px;
@@ -115,13 +100,11 @@ a.tool-btn { text-decoration: none; }
 .snap-icon { display: flex; align-items: center; color: #8a8a94; }
 .snap-icon svg { width: 14px; height: 14px; }
 
-.help-group { margin-left: auto; border-right: none; border-left: 1px solid #1c1c22; }
-
 .help-backdrop { position: fixed; inset: 0; z-index: 40; }
 
 .help-pop {
     position: absolute;
-    top: 70px;
+    top: 98px;
     right: 8px;
     z-index: 50;
     width: 340px;
@@ -133,7 +116,7 @@ a.tool-btn { text-decoration: none; }
     font-size: 12px;
     line-height: 1.55;
     color: #b9b9c0;
-    max-height: calc(100vh - 90px);
+    max-height: calc(100vh - 118px);
     overflow-y: auto;
     overscroll-behavior: contain;
 }
@@ -919,3 +902,81 @@ a.tool-btn { text-decoration: none; }
 .join-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .join-row.joining { color: #aaa; font-size: 15px; }
 .join-row.joining b { color: #dcdce2; font-family: 'Consolas', monospace; letter-spacing: 2px; }
+
+/* ---------- menubar ---------- */
+
+.menubar {
+    display: flex;
+    align-items: stretch;
+    flex: none;
+    height: 26px;
+    background: #0a0a0d;
+    border-bottom: 1px solid #1c1c22;
+    position: relative;
+    z-index: 60;
+}
+
+.menu { position: relative; display: flex; }
+
+.menu-title {
+    background: transparent;
+    border: none;
+    color: #b9b9c0;
+    font-size: 12px;
+    font-family: inherit;
+    padding: 0 10px;
+    cursor: pointer;
+    border-radius: 3px;
+}
+.menu-title:hover { background: #1d1d24; color: #e2e2e8; }
+.menu-title.open { background: #2563eb; color: #fff; }
+
+.menu-drop {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 70;
+    min-width: 200px;
+    padding: 4px;
+    background: #14141a;
+    border: 1px solid #26262e;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+}
+.menu-drop::-webkit-scrollbar { width: 8px; }
+.menu-drop::-webkit-scrollbar-track { background: transparent; }
+.menu-drop::-webkit-scrollbar-thumb { background: #2c2c36; border-radius: 4px; }
+
+.menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: #b9b9c0;
+    font-size: 12px;
+    font-family: inherit;
+    text-align: left;
+    padding: 5px 8px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.menu-item:hover { background: #2563eb; color: #fff; }
+.menu-item:disabled { color: #4a4a52; cursor: default; }
+.menu-item:disabled:hover { background: transparent; color: #4a4a52; }
+
+.menu-tick { width: 12px; flex: none; text-align: center; font-size: 11px; }
+.menu-label { flex: 1 1 auto; }
+.menu-shortcut { flex: none; color: #6d6d78; font-size: 11px; margin-left: 18px; }
+.menu-item:hover .menu-shortcut { color: #cfd8f5; }
+.menu-item:disabled .menu-shortcut { color: #3d3d45; }
+
+.menu-sep { height: 1px; background: #26262e; margin: 4px 2px; }
+
+.menu-backdrop { z-index: 55; }

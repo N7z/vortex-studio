@@ -1,7 +1,7 @@
 import {
     Box, ChartColumn, ChevronRight, CircleHelp, ClipboardPaste, Copy, CopyPlus, Download,
     Folder, Globe, Grid2x2, Link2, LogOut, MapPin, MonitorCog, MousePointer2, Move, Pencil,
-    Play, Plus, RotateCw, Save, Scaling, Square, Trash2, UserX, Users, Zap,
+    Play, Plus, Redo2, RotateCw, Save, Scaling, Square, Trash2, Undo2, UserX, Users, Zap,
 } from 'lucide-react';
 import React from 'react';
 
@@ -34,6 +34,12 @@ export const StatsIcon = () => <ChartColumn {...TOOL} />;
 export const HelpIcon = () => <CircleHelp {...TOOL} />;
 
 export const DownloadIcon = () => <Download {...TOOL} />;
+
+export const UndoIcon = () => <Undo2 {...TOOL} />;
+
+export const RedoIcon = () => <Redo2 {...TOOL} />;
+
+export const DeleteIcon = () => <Trash2 {...TOOL} />;
 
 export const StudsIcon = () => <Grid2x2 {...SMALL} />;
 

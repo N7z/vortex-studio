@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import MenuBar from './MenuBar';
 import Toolbar from './Toolbar';
 import StartScreen from './StartScreen';
 import Explorer from './Explorer';
@@ -157,6 +158,25 @@ export default function App() {
             : (selected ? [selected] : [])
     ), [parts, selectedSet, selected]);
     const pluginTarget = selected;
+    // Plugins are called one part at a time, so the bounds of a whole folder are
+    // something only the app can work out. Handed over before every run.
+    const selectionInfo = useMemo(() => {
+        if (!selectedParts.length) return null;
+        const min = [Infinity, Infinity, Infinity];
+        const max = [-Infinity, -Infinity, -Infinity];
+        for (const p of selectedParts) {
+            for (let i = 0; i < 3; i++) {
+                min[i] = Math.min(min[i], p.P[i] - p.S[i] / 2);
+                max[i] = Math.max(max[i], p.P[i] + p.S[i] / 2);
+            }
+        }
+        return {
+            count: selectedParts.length,
+            min,
+            max,
+            center: [0, 1, 2].map((i) => Math.round((min[i] + max[i]) / 2 * 1000) / 1000),
+        };
+    }, [selectedParts]);
     const activePlugin = plugins.find((p) => p.id === activePluginId) ?? null;
     const activeValues = activePlugin ? pluginValues[activePlugin.id] ?? activePlugin.defaults : null;
     const activeImages = activePlugin ? pluginImages[activePlugin.id] ?? null : null;
@@ -240,10 +260,13 @@ export default function App() {
             setPluginPreview([]);
             return;
         }
-        activePlugin.preview(stripId(pluginTarget), activeValues)
-            .then((p) => { if (previewSeq.current === seq) setPluginPreview(p); })
+        activePlugin.setSelection(selectionInfo)
+            .then(() => activePlugin.preview(stripId(pluginTarget), activeValues))
+            .then((made) => {
+                if (previewSeq.current === seq) setPluginPreview(made.map((m) => m.part));
+            })
             .catch(() => { if (previewSeq.current === seq) setPluginPreview([]); });
-    }, [activePlugin, pluginTarget, activeValues, activeImages]);
+    }, [activePlugin, pluginTarget, activeValues, activeImages, selectionInfo]);
 
     useEffect(() => {
         if (live.live && live.canEdit) live.sendSelection(selectedIds);
@@ -403,19 +426,36 @@ export default function App() {
         if (!activePlugin || !selectedParts.length) return;
         try {
             const parts = [];
+            const updates = [];
             let capped = false;
+            await activePlugin.setSelection(selectionInfo);
             for (const target of selectedParts) {
                 const made = await activePlugin.click(btnId, stripId(target), activeValues);
-                for (const p of made) {
+                // Only the first Replace can land on the source; the rest have no
+                // part of their own to update, so they are added like anything else.
+                let taken = false;
+                for (const { part, replace } of made) {
+                    if (replace && !taken) {
+                        taken = true;
+                        updates.push({ id: target._id, ...part });
+                        continue;
+                    }
                     if (parts.length >= MAX_PLUGIN_PARTS) {
                         capped = true;
                         break;
                     }
-                    parts.push(p);
+                    parts.push(part);
                 }
                 if (capped) break;
             }
             if (capped) flash(`Stopped at ${MAX_PLUGIN_PARTS} parts`);
+            if (updates.length) {
+                edit(transformOp(updates));
+                if (!parts.length) {
+                    flash(`${activePlugin.name} moved ${updates.length} parts`);
+                    return;
+                }
+            }
             if (!parts.length) return;
             const placed = parts.map(withNewId);
             edit(addOp(placed));
@@ -692,19 +732,35 @@ export default function App() {
 
     return (
         <div className="studio">
+            <MenuBar
+                hasMap={!!mapName} canEdit={canEdit}
+                hasSelection={!!selected} hasClipboard={!!clipboard.current}
+                onSave={save} canSave={canSaveToServer}
+                onDownload={download} canDownload={!!mapName && canEdit}
+                onUndo={undo} onRedo={redo}
+                onCopy={copy} onPaste={paste} onDuplicate={duplicate}
+                onDelete={removeSelected}
+                onSelectAll={() => setSelectedIds(partsRef.current.map((p) => p._id))}
+                onGroup={groupSelection} onUngroup={ungroupSelection}
+                onAddPart={() => addPart(NEW_PART)}
+                onAddSpawn={() => addPart(NEW_SPAWN)}
+                graphics={graphics} onGraphics={changeGraphics}
+                teamOpen={teamOpen} onToggleTeam={() => setTeamOpen((o) => !o)}
+                plugins={plugins} activePluginId={activePluginId}
+                onTogglePlugin={togglePlugin} onNewPlugin={openNewPluginTab}
+            />
             <Toolbar
                 tool={tool} setTool={setTool}
                 snap={snap} setSnap={setSnap}
                 hasSelection={!!selected} hasClipboard={!!clipboard.current}
                 canEdit={canEdit}
+                onUndo={undo} onRedo={redo}
                 onAddPart={() => addPart(NEW_PART)}
                 onAddSpawn={() => addPart(NEW_SPAWN)}
                 onCopy={copy} onPaste={paste} onDuplicate={duplicate}
-                onSave={save} onDownload={download}
-                canSave={canSaveToServer} canDownload={!!mapName && canEdit}
+                onDelete={removeSelected}
+                onSave={save} canSave={canSaveToServer}
                 graphics={graphics} onGraphics={changeGraphics}
-                plugins={plugins} activePluginId={activePluginId} onTogglePlugin={togglePlugin}
-                onNewPlugin={openNewPluginTab}
                 live={live} teamOpen={teamOpen}
                 onToggleTeam={() => setTeamOpen((o) => !o)}
                 hasMap={!!mapName}
