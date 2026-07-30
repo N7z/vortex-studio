@@ -86,10 +86,12 @@ local STONE = { 0.55, 0.55, 0.56 }
 
 local function box(x, y, z, sx, sy, sz, rx, ry, rz, c)
     return {
+        T = "Part",
         P = { round(x), round(y), round(z) },
         S = { round(sx), round(sy), round(sz) },
         R = { round(rx), round(ry), round(rz) },
         C = c,
+        Tr = 0,
     }
 end
 

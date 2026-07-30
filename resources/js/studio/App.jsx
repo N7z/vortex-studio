@@ -43,6 +43,8 @@ const groupKey = (gs) => JSON.stringify(gs.map((g) => [g.id, g.name, g.ids]));
 
 const MAX_PLUGIN_PARTS = 20000;
 
+const MAX_MAP_PARTS = 20000;
+
 const MAX_SELECTION_PARTS = 256;
 
 export default function App() {
@@ -458,7 +460,8 @@ export default function App() {
                         updates.push({ id: target._id, ...part });
                         continue;
                     }
-                    if (parts.length >= MAX_PLUGIN_PARTS) {
+                    if (parts.length >= MAX_PLUGIN_PARTS
+                        || partsRef.current.length + parts.length >= MAX_MAP_PARTS) {
                         capped = true;
                         break;
                     }
@@ -466,7 +469,7 @@ export default function App() {
                 }
                 if (capped) break;
             }
-            if (capped) flash(`Stopped at ${MAX_PLUGIN_PARTS} parts`);
+            if (capped) flash(`Stopped at ${MAX_MAP_PARTS} parts, the most a map can hold`);
             if (updates.length) {
                 edit(transformOp(updates));
                 if (!parts.length) {
