@@ -21,6 +21,7 @@ import { loadGraphics, saveGraphics } from './graphics';
 import { roomFromUrl } from './live';
 import useLive from './useLive';
 import { decodeImage, imageMeta } from './image';
+import { buildVoxels, loadModel } from './model';
 import {
     addGroup, forgetGroups, loadGroups, newGroup, pruneGroups, removeGroups, saveGroups, ungroupIds,
 } from './groups';
@@ -53,6 +54,8 @@ export default function App() {
     const [pluginValues, setPluginValues] = useState({});
     const [pluginPreview, setPluginPreview] = useState([]);
     const [pluginImages, setPluginImages] = useState({});
+    const [pluginModels, setPluginModels] = useState({});
+    const loadedModels = useRef({});
     const [groups, setGroups] = useState([]);
     const [tabs, setTabs] = useState([]);
     const [activeTab, setActiveTab] = useState('game');
@@ -157,6 +160,7 @@ export default function App() {
     const activePlugin = plugins.find((p) => p.id === activePluginId) ?? null;
     const activeValues = activePlugin ? pluginValues[activePlugin.id] ?? activePlugin.defaults : null;
     const activeImages = activePlugin ? pluginImages[activePlugin.id] ?? null : null;
+    const activeModels = activePlugin ? pluginModels[activePlugin.id] ?? null : null;
 
     const select = useCallback((id, additive) => {
         setSelectedIds((cur) => {
@@ -352,6 +356,48 @@ export default function App() {
             flash(`Could not read ${file.name}: ${e.message ?? e}`);
         }
     };
+
+    const voxelise = async (plugin, ctrlId, entry, values) => {
+        const control = plugin.ui.find((c) => c.id === ctrlId);
+        const res = Number(values?.[control?.res]) || 32;
+        const solid = !!values?.[control?.solid];
+        const grid = await buildVoxels(entry.object, res, solid);
+        await plugin.setModel(grid);
+        setPluginModels((all) => ({
+            ...all,
+            [plugin.id]: {
+                ...(all[plugin.id] ?? {}),
+                [ctrlId]: { name: entry.name, ...grid, data: undefined },
+            },
+        }));
+    };
+
+    const pickModel = async (ctrlId, file) => {
+        if (!activePlugin) return;
+        const plugin = activePlugin;
+        try {
+            flash(`Reading ${file.name}...`);
+            const object = await loadModel(file);
+            const entry = { object, name: file.name };
+            loadedModels.current[`${plugin.id}:${ctrlId}`] = entry;
+            await voxelise(plugin, ctrlId, entry, activeValues);
+            flash(`${file.name} ready`);
+        } catch (e) {
+            flash(`Could not read ${file.name}: ${e.message ?? e}`);
+        }
+    };
+
+    useEffect(() => {
+        if (!activePlugin) return;
+        for (const c of activePlugin.ui) {
+            if (c.type !== 'model') continue;
+            const entry = loadedModels.current[`${activePlugin.id}:${c.id}`];
+            if (!entry) continue;
+            voxelise(activePlugin, c.id, entry, activeValues).catch((e) => {
+                flash(`Could not voxelise: ${e.message ?? e}`);
+            });
+        }
+    }, [activePlugin, activeValues]);
 
     const pluginButton = async (btnId) => {
         if (!activePlugin || !selectedParts.length) return;
@@ -710,6 +756,8 @@ export default function App() {
                             setValue={setPluginValue}
                             images={activeImages}
                             onImage={pickImage}
+                            models={activeModels}
+                            onModel={pickModel}
                             hasSelection={selectedParts.length > 0}
                             targetNote={selectedParts.length > 1
                                 ? `Runs on all ${selectedParts.length} selected parts`

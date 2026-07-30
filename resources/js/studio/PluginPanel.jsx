@@ -4,7 +4,8 @@ import NumberInput from './NumberInput';
 import useDraggable from './useDraggable';
 
 export default function PluginPanel({
-    plugin, values, setValue, images, onImage, hasSelection, targetNote, onButton, onEdit, onClose,
+    plugin, values, setValue, images, onImage, models, onModel,
+    hasSelection, targetNote, onButton, onEdit, onClose,
 }) {
     const pickers = useRef({});
     const { style, onPointerDown } = useDraggable('plugin');
@@ -13,6 +14,7 @@ export default function PluginPanel({
     const checks = plugin.ui.filter((c) => c.type === 'checkbox');
     const buttons = plugin.ui.filter((c) => c.type === 'button');
     const pictures = plugin.ui.filter((c) => c.type === 'image');
+    const shapes = plugin.ui.filter((c) => c.type === 'model');
 
     return (
         <div className="arch-pop" style={style}>
@@ -47,6 +49,34 @@ export default function PluginPanel({
                                     <span className="name" title={img.name}>{img.name}</span>
                                     <span className="dim">{img.srcW}×{img.srcH}</span>
                                 </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            })}
+            {shapes.map((c) => {
+                const info = models?.[c.id] ?? null;
+                return (
+                    <div className="arch-image" key={c.id}>
+                        <input
+                            type="file"
+                            accept=".glb,.gltf,.obj"
+                            ref={(el) => { pickers.current[c.id] = el; }}
+                            onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) onModel(c.id, file);
+                                e.target.value = '';
+                            }}
+                        />
+                        <button onClick={() => pickers.current[c.id]?.click()}>
+                            {info ? 'Choose another model' : `Choose ${c.label.toLowerCase()}...`}
+                        </button>
+                        {info && (
+                            <div className="arch-model-info">
+                                <span className="name" title={info.name}>{info.name}</span>
+                                <span className="dim">
+                                    {info.w}×{info.h}×{info.d}, {info.count} blocks
+                                </span>
                             </div>
                         )}
                     </div>

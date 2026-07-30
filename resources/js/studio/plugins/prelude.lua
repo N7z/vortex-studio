@@ -106,6 +106,25 @@ function __set_image(w, h, data)
     Image = img
 end
 
+Model = nil
+
+function __set_model(w, h, d, count, data)
+    if data == nil or data == '' or count == nil or count < 1 then
+        Model = nil
+        return
+    end
+    local m = { w = math.floor(w), h = math.floor(h), d = math.floor(d), count = math.floor(count) }
+    function m.at(i)
+        if i < 1 or i > m.count then return nil end
+        local o = (i - 1) * 12
+        return tonumber(data:sub(o + 1, o + 2), 16),
+            tonumber(data:sub(o + 3, o + 4), 16),
+            tonumber(data:sub(o + 5, o + 6), 16),
+            data:sub(o + 7, o + 12)
+    end
+    Model = m
+end
+
 function __preview(part_json, values_json)
     if plugin == nil or plugin.preview == nil then return nil end
     return plugin.preview(json.decode(part_json), json.decode(values_json))

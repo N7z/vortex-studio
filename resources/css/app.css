@@ -475,6 +475,9 @@ a.tool-btn { text-decoration: none; }
 .arch-stamp:hover { background: #3373f5; }
 .arch-stamp:disabled { background: #1d1d24; color: #4a4a52; cursor: default; }
 .arch-note { color: #777; font-size: 11px; margin-top: 7px; text-align: center; }
+.arch-model-info { display: flex; flex-direction: column; gap: 1px; margin-top: 6px; min-width: 0; }
+.arch-model-info .name { font-size: 11px; color: #ddd; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arch-model-info .dim { font-size: 10px; color: #777; }
 
 /* ---------- tabs + script editor ---------- */
 

@@ -4,12 +4,14 @@ import archimedesSrc from './archimedes.lua?raw';
 import arraySrc from './array.lua?raw';
 import imageMakerSrc from './imagemaker.lua?raw';
 import textSrc from './text.lua?raw';
+import voxelSrc from './voxel.lua?raw';
 
 const BUNDLED = [
     { id: 'archimedes', src: archimedesSrc },
     { id: 'array', src: arraySrc },
     { id: 'imagemaker', src: imageMakerSrc },
     { id: 'text', src: textSrc },
+    { id: 'voxel', src: voxelSrc },
 ];
 
 const STORE_KEY = 'studio_user_plugins';
@@ -58,6 +60,7 @@ export async function compilePlugin(id, src, builtin = false) {
         const luaPreview = lua.global.get('__preview');
         const luaClick = lua.global.get('__click');
         const luaSetImage = lua.global.get('__set_image');
+        const luaSetModel = lua.global.get('__set_model');
         const ui = toArray(p.ui).map((c) => ({ ...c }));
         return {
             id,
@@ -66,7 +69,7 @@ export async function compilePlugin(id, src, builtin = false) {
             icon: p.icon,
             ui,
             defaults: Object.fromEntries(
-                ui.filter((c) => c.type !== 'button' && c.type !== 'image')
+                ui.filter((c) => !['button', 'image', 'model'].includes(c.type))
                     .map((c) => [c.id, c.default]),
             ),
             preview: async (part, values) =>
@@ -75,6 +78,11 @@ export async function compilePlugin(id, src, builtin = false) {
                 toParts(await luaClick(btnId, JSON.stringify(part), JSON.stringify(values))),
             setImage: async (img) => {
                 await luaSetImage(img?.w ?? 0, img?.h ?? 0, img?.data ?? '');
+            },
+            setModel: async (grid) => {
+                await luaSetModel(
+                    grid?.w ?? 0, grid?.h ?? 0, grid?.d ?? 0, grid?.count ?? 0, grid?.data ?? '',
+                );
             },
             close: () => lua.global.close(),
         };
