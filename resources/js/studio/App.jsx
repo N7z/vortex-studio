@@ -41,7 +41,9 @@ const NEW_SPAWN = {
 
 const groupKey = (gs) => JSON.stringify(gs.map((g) => [g.id, g.name, g.ids]));
 
-const MAX_PLUGIN_PARTS = 5000;
+const MAX_PLUGIN_PARTS = 20000;
+
+const MAX_SELECTION_PARTS = 256;
 
 export default function App() {
     const [mapName, setMapName] = useState(null);
@@ -175,6 +177,9 @@ export default function App() {
             min,
             max,
             center: [0, 1, 2].map((i) => Math.round((min[i] + max[i]) / 2 * 1000) / 1000),
+            parts: selectedParts.length <= MAX_SELECTION_PARTS
+                ? selectedParts.map(stripId)
+                : null,
         };
     }, [selectedParts]);
     const activePlugin = plugins.find((p) => p.id === activePluginId) ?? null;
