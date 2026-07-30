@@ -16,5 +16,5 @@
     "dependencies": {
         "ws": "^8.18.0"
     },
-    "license": "ISC"
+    "license": "AGPL-3.0-or-later"
 }
