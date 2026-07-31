@@ -3,6 +3,7 @@ const RETRY_MS = [500, 1000, 2000, 4000, 8000];
 const SELECTION_THROTTLE_MS = 80;
 const SELECTION_LIMIT = 256;
 const VIEW_THROTTLE_MS = 120;
+const PLAY_THROTTLE_MS = 50;
 
 // A browser on an https page may not open a ws:// socket, so VITE_LIVE_URL is allowed
 // to be a bare path ("/live"): the host and the scheme then come from the page, which
@@ -81,6 +82,9 @@ export class LiveClient {
         this.viewTimer = null;
         this.pendingView = null;
         this.lastView = '';
+        this.playTimer = null;
+        this.pendingPlay = undefined;
+        this.lastPlay = 'off';
     }
 
     create(mapName, parts, groups = []) {
@@ -149,6 +153,7 @@ export class LiveClient {
             this.ws = null;
             this.stopSelectionTimer();
             this.stopViewTimer();
+            this.stopPlayTimer();
             // 4003 kicked, 4004 the room refused us. Neither is worth retrying, and
             // retrying a room that no longer exists would loop forever.
             if (this.closing || e.code === 4003 || e.code === 4004) {
@@ -187,6 +192,7 @@ export class LiveClient {
                 this.token = msg.you.token;
                 this.lastSelection = '';
                 this.lastView = '';
+                this.lastPlay = 'off';
                 writeToken(msg.code, msg.you.token);
                 showRoomInUrl(msg.code);
                 this.handlers.onWelcome?.(msg);
@@ -204,6 +210,8 @@ export class LiveClient {
                 return this.handlers.onSelection?.(msg);
             case 'view':
                 return this.handlers.onView?.(msg);
+            case 'play':
+                return this.handlers.onPlay?.(msg);
             case 'you':
                 return this.handlers.onYou?.(msg);
             case 'saved':
@@ -268,6 +276,14 @@ export class LiveClient {
         this.viewTimer = null;
     }
 
+    stopPlayTimer() {
+        this.lastPlay = 'off';
+        this.pendingPlay = undefined;
+        if (!this.playTimer) return;
+        clearTimeout(this.playTimer);
+        this.playTimer = null;
+    }
+
     sendView(view) {
         const key = `${view.p.join()}|${view.d.join()}`;
         if (key === this.lastView) return;
@@ -280,6 +296,32 @@ export class LiveClient {
             this.pendingView = null;
             if (pending) this.send({ t: 'view', view: pending });
         }, VIEW_THROTTLE_MS);
+    }
+
+    sendPlay(state) {
+        const play = state ? {
+            x: state.x,
+            y: state.y,
+            z: state.z,
+            yaw: state.yaw,
+            moving: !!state.moving,
+            grounded: !!state.grounded,
+            dead: !!state.dead,
+        } : null;
+        const key = play
+            ? `${play.x.toFixed(2)},${play.y.toFixed(2)},${play.z.toFixed(2)},${play.yaw.toFixed(3)}`
+              + `,${play.moving},${play.grounded},${play.dead}`
+            : 'off';
+        if (key === this.lastPlay) return;
+        this.lastPlay = key;
+        this.pendingPlay = play;
+        if (this.playTimer) return;
+        this.playTimer = setTimeout(() => {
+            this.playTimer = null;
+            const pending = this.pendingPlay;
+            this.pendingPlay = undefined;
+            if (pending !== undefined) this.send({ t: 'play', play: pending });
+        }, PLAY_THROTTLE_MS);
     }
 
     sendSelection(all) {
@@ -305,6 +347,7 @@ export class LiveClient {
         this.token = null;
         this.stopSelectionTimer();
         this.stopViewTimer();
+        this.stopPlayTimer();
         this.lastView = '';
         if (this.retryTimer) clearTimeout(this.retryTimer);
         this.ws?.close(1000, 'left');

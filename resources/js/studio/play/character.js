@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { BODY_HEIGHT, FEET_OFFSET } from './movement';
 
 const BASE = '/play';
@@ -116,36 +117,45 @@ function blocks() {
     };
 }
 
+let assets = null;
+
+function loadAssets() {
+    if (assets) return assets;
+    assets = (async () => {
+        const loader = await getLoader();
+        const body = await load(loader, `${BASE}/male.glb`);
+        const clips = await Promise.all(CLIPS.map((name) => load(loader, `${BASE}/${name}.glb`)
+            .then((gltf) => gltf.animations?.[0] ?? null)
+            .catch(() => null)));
+
+        const faceTex = makeFaceTexture();
+        body.scene.traverse((o) => {
+            if (!o.isMesh) return;
+            o.castShadow = true;
+            o.frustumCulled = false;
+            const mats = Array.isArray(o.material) ? o.material : [o.material];
+            for (const m of mats) {
+                if (!m || !m.vertexColors) continue;
+                applyFace(m, faceTex);
+            }
+        });
+
+        return { body, clips };
+    })();
+    assets.catch(() => { assets = null; });
+
+    return assets;
+}
+
 export async function createCharacter() {
-    let loader;
+    let loaded;
     try {
-        loader = await getLoader();
+        loaded = await loadAssets();
     } catch {
         return blocks();
     }
 
-    const bodyRequest = load(loader, `${BASE}/male.glb`);
-    const clipRequests = CLIPS.map((name) => load(loader, `${BASE}/${name}.glb`).catch(() => null));
-
-    let body;
-    try {
-        body = await bodyRequest;
-    } catch {
-        return blocks();
-    }
-
-    const object = body.scene;
-    const faceTex = makeFaceTexture();
-    object.traverse((o) => {
-        if (!o.isMesh) return;
-        o.castShadow = true;
-        o.frustumCulled = false;
-        const mats = Array.isArray(o.material) ? o.material : [o.material];
-        for (const m of mats) {
-            if (!m || !m.vertexColors) continue;
-            applyFace(m, faceTex);
-        }
-    });
+    const object = SkeletonUtils.clone(loaded.body.scene);
 
     const box = new THREE.Box3().setFromObject(object);
     const height = box.max.y - box.min.y;
@@ -158,11 +168,8 @@ export async function createCharacter() {
     const mixer = new THREE.AnimationMixer(object);
     const actions = {};
     let current = null;
-    let dead = false;
-    let wanted = 'idle';
 
     const play = (name) => {
-        wanted = name;
         const next = actions[name];
         if (!next || next === current) return;
         next.reset().setEffectiveWeight(1).fadeIn(BLEND).play();
@@ -171,19 +178,16 @@ export async function createCharacter() {
     };
 
     CLIPS.forEach((name, i) => {
-        clipRequests[i].then((gltf) => {
-            if (dead || !gltf) return;
-            const clip = gltf.animations?.[0];
-            if (!clip) return;
-            const action = mixer.clipAction(clip);
-            if (name === 'jump') {
-                action.setLoop(THREE.LoopOnce, 1);
-                action.clampWhenFinished = true;
-            }
-            actions[name] = action;
-            if (name === wanted) play(name);
-        });
+        const clip = loaded.clips[i];
+        if (!clip) return;
+        const action = mixer.clipAction(clip);
+        if (name === 'jump') {
+            action.setLoop(THREE.LoopOnce, 1);
+            action.clampWhenFinished = true;
+        }
+        actions[name] = action;
     });
+    play('idle');
 
     return {
         object: holder,
@@ -195,15 +199,8 @@ export async function createCharacter() {
             mixer.update(dt);
         },
         dispose() {
-            dead = true;
-            faceTex.dispose();
             mixer.stopAllAction();
-            object.traverse((o) => {
-                if (!o.isMesh) return;
-                o.geometry?.dispose();
-                const mats = Array.isArray(o.material) ? o.material : [o.material];
-                for (const m of mats) m?.dispose();
-            });
+            mixer.uncacheRoot(object);
         },
     };
 }

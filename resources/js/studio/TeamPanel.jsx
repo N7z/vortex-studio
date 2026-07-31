@@ -12,11 +12,12 @@ const ago = (ts) => {
     return `saved ${Math.floor(s / 3600)}h ago`;
 };
 
-function Member({ member, isMe, canManage, onRole, onKick }) {
+function Member({ member, isMe, canManage, onRole, onKick, testing }) {
     return (
         <div className="team-member">
             <span className="dot" style={{ background: isMe ? '#2f7fd9' : member.color }} />
             <span className="team-name">{member.name}</span>
+            {testing && <span className="team-testing" title="In the play test">Testing</span>}
             {member.owner ? (
                 <span className="team-role owner">Owner</span>
             ) : canManage ? (
@@ -40,7 +41,8 @@ function Member({ member, isMe, canManage, onRole, onKick }) {
     );
 }
 
-export default function TeamPanel({ live, onGoLive, onLeave, onClose }) {
+export default function TeamPanel({ live, onGoLive, onLeave, onClose, playing, onPlay }) {
+    const testers = live.playingIds ?? [];
     const [copied, setCopied] = useState(false);
     const [link, setLink] = useState(null);
     const [ask, setAsk] = useState(null);
@@ -107,11 +109,18 @@ export default function TeamPanel({ live, onGoLive, onLeave, onClose }) {
                                 member={m}
                                 isMe={m.id === live.me?.id}
                                 canManage={live.isOwner}
+                                testing={testers.includes(m.id) || (m.id === live.me?.id && playing)}
                                 onRole={live.setRole}
                                 onKick={(member) => setAsk({ what: 'kick', member })}
                             />
                         ))}
                     </div>
+
+                    {testers.length > 0 && !playing && (
+                        <button className="team-primary" onClick={onPlay}>
+                            {`Join the test (${testers.length})`}
+                        </button>
+                    )}
 
                     {link && (
                         <input

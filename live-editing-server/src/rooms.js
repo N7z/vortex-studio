@@ -20,6 +20,7 @@ class Member {
         this.joinedAt = now();
         this.selection = [];
         this.view = null;
+        this.play = null;
         this.color = '#888888';
     }
 }
@@ -33,6 +34,23 @@ export function cleanView(input) {
     if (!vec3(input.p) || !vec3(input.d)) return null;
 
     return { p: input.p, d: input.d };
+}
+
+export function cleanPlay(input) {
+    if (input === null || input === undefined) return null;
+    if (!input || typeof input !== 'object') return undefined;
+    const n = (v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 1e6;
+    if (!n(input.x) || !n(input.y) || !n(input.z) || !n(input.yaw)) return undefined;
+
+    return {
+        x: input.x,
+        y: input.y,
+        z: input.z,
+        yaw: input.yaw,
+        moving: !!input.moving,
+        grounded: !!input.grounded,
+        dead: !!input.dead,
+    };
 }
 
 export function cleanGroups(input) {
@@ -78,6 +96,7 @@ class Room {
                 owner: m.id === this.ownerId,
                 selection: m.selection,
                 view: m.view,
+                play: m.play,
             }));
     }
 
@@ -236,6 +255,15 @@ class Room {
 
         member.view = clean;
         this.broadcast({ t: 'view', id: member.id, view: clean }, member.id);
+    }
+
+    setPlayFrom(member, play) {
+        const clean = cleanPlay(play);
+        if (clean === undefined) return;
+        if (clean === null && member.play === null) return;
+
+        member.play = clean;
+        this.broadcast({ t: 'play', id: member.id, play: clean }, member.id);
     }
 
     setGroupsFrom(member, groups) {

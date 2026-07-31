@@ -1087,6 +1087,16 @@ a.tool-btn { text-decoration: none; }
 .tool-btn.is-live { color: #6fcf72; }
 .tool-btn.is-live.active { color: #fff; }
 
+.team-testing {
+    flex: none;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: #1d3a24;
+    color: #6fcf72;
+    font-size: 10px;
+}
+
 .team-panel {
     position: absolute;
     top: 10px;

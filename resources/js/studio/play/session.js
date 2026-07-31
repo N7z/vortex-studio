@@ -16,8 +16,13 @@ const BACK_KEYS = ['KeyS', 'ArrowDown'];
 const RIGHT_KEYS = ['KeyD'];
 const LEFT_KEYS = ['KeyA'];
 
+const SMOOTH = 18;
+
+const shortestAngle = (from, to) => from + Math.atan2(Math.sin(to - from), Math.cos(to - from));
+
 export function createSession({ scene, camera, canvas, parts, onExit }) {
-    const world = buildWorld(parts);
+    let world = buildWorld(parts);
+    const peers = new Map();
     const [sx, sy, sz] = spawnPoint(parts, world);
     const state = move.spawn(sx, sy, sz);
     const start = { x: sx, y: sy, z: sz };
@@ -117,9 +122,66 @@ export function createSession({ scene, camera, canvas, parts, onExit }) {
 
     const clamp1 = (v) => Math.max(-1, Math.min(1, v));
 
+    const dropPeer = (peer) => {
+        if (!peer.character) return;
+        scene.remove(peer.character.object);
+        peer.character.dispose();
+        peer.character = null;
+    };
+
+    const setPeers = (states) => {
+        for (const [id, play] of states) {
+            if (!play) continue;
+            const peer = peers.get(id);
+            if (peer) {
+                peer.target = play;
+                continue;
+            }
+            const added = { target: play, shown: { ...play, vy: 0 }, character: null };
+            peers.set(id, added);
+            createCharacter().then((c) => {
+                if (disposed || peers.get(id) !== added) {
+                    c.dispose();
+
+                    return;
+                }
+                added.character = c;
+                scene.add(c.object);
+            });
+        }
+        for (const [id, peer] of peers) {
+            if (states.has(id)) continue;
+            dropPeer(peer);
+            peers.delete(id);
+        }
+    };
+
+    const stepPeers = (dt) => {
+        const k = 1 - Math.exp(-dt * SMOOTH);
+        for (const peer of peers.values()) {
+            const { shown, target } = peer;
+            const before = shown.y;
+            shown.x += (target.x - shown.x) * k;
+            shown.y += (target.y - shown.y) * k;
+            shown.z += (target.z - shown.z) * k;
+            shown.yaw += (shortestAngle(shown.yaw, target.yaw) - shown.yaw) * k;
+            shown.vy = dt > 0 ? (shown.y - before) / dt : 0;
+            shown.moving = target.moving;
+            shown.grounded = target.grounded;
+            shown.dead = target.dead;
+            if (!peer.character) continue;
+            placeCharacter(peer.character, shown);
+            peer.character.update(dt, shown, elapsed);
+        }
+    };
+
     return {
         state,
         touch,
+        setPeers,
+        setParts(next) {
+            world = buildWorld(next);
+        },
         update(dt) {
             elapsed += dt;
             move.step(state, {
@@ -147,9 +209,12 @@ export function createSession({ scene, camera, canvas, parts, onExit }) {
                 placeCharacter(character, state);
                 character.update(dt, state, elapsed);
             }
+            stepPeers(dt);
         },
         dispose() {
             disposed = true;
+            for (const peer of peers.values()) dropPeer(peer);
+            peers.clear();
             window.removeEventListener('keydown', onKeyDown);
             window.removeEventListener('keyup', onKeyUp);
             window.removeEventListener('blur', onBlur);

@@ -101,6 +101,7 @@ JSON text frames, `t` is the type. Client to server:
 | `op` `{op}` | developers | one edit, see `src/ops.js` |
 | `selection` `{ids}` | developers | what you have selected, for the others' outlines |
 | `view` `{view}` | anyone | `{p, d}` camera position and facing, for the others' markers |
+| `play` `{play}` | anyone | `{x, y, z, yaw, moving, grounded, dead}` while play testing, `null` on stop |
 | `groups` `{groups}` | developers | the explorer folders, mirrored to the room |
 | `role` `{memberId, role}` | owner | `developer` or `spectator` |
 | `kick` `{memberId}` | owner | remove someone |
@@ -108,8 +109,14 @@ JSON text frames, `t` is the type. Client to server:
 | `resync` | anyone | ask for the authoritative map again |
 | `ping` | anyone | replied to with `pong` |
 
-Server to client: `welcome`, `members`, `op`, `snapshot`, `selection`, `view`, `groups`,
-`you` (your role or ownership changed), `saved`, `kicked`, `error`, `pong`.
+Server to client: `welcome`, `members`, `op`, `snapshot`, `selection`, `view`, `play`,
+`groups`, `you` (your role or ownership changed), `saved`, `kicked`, `error`, `pong`.
+
+`play` is the team test. Every client is authoritative over its own character and there
+is no server-side physics, exactly as the room is authoritative for edit *order* and
+nothing else. A spectator may play, since playing is not editing. The last state is kept
+on the member and included in `memberList`, so someone joining mid-test sees who is
+already running around instead of waiting for their next packet.
 
 An accepted op is broadcast to **everyone, the sender included**. The sender already
 applied it optimistically and every op is idempotent, so the echo costs nothing and acts

@@ -16,6 +16,34 @@ export default function useLive({
     const cbs = useRef({});
     cbs.current = { onWelcome, onOp, onSnapshot, onGroups, onError, onNotice };
 
+    const playRef = useRef(new Map());
+    const [playingIds, setPlayingIds] = useState(EMPTY);
+
+    const notePlay = (id, play) => {
+        const map = playRef.current;
+        const had = map.has(id);
+        if (play) map.set(id, play);
+        else map.delete(id);
+        if (had !== !!play) setPlayingIds([...map.keys()]);
+    };
+
+    const syncPlay = (list) => {
+        const map = playRef.current;
+        const ids = new Set(list.map((m) => m.id));
+        let changed = false;
+        for (const id of [...map.keys()]) {
+            if (ids.has(id)) continue;
+            map.delete(id);
+            changed = true;
+        }
+        for (const m of list) {
+            if (!m.play || map.has(m.id)) continue;
+            map.set(m.id, m.play);
+            changed = true;
+        }
+        if (changed) setPlayingIds([...map.keys()]);
+    };
+
     const client = useRef(null);
     if (!client.current) {
         client.current = new LiveClient({
@@ -24,11 +52,13 @@ export default function useLive({
                 setCode(msg.code);
                 setMe(msg.you);
                 setMembers(msg.members);
+                syncPlay(msg.members.filter((m) => m.id !== msg.you.id));
                 setLastSavedAt(msg.lastSavedAt ?? null);
                 cbs.current.onWelcome?.(msg);
             },
             onMembers: (msg) => {
                 setMembers(msg.members);
+                syncPlay(msg.members);
                 setMe((cur) => {
                     const mine = msg.members.find((m) => m.id === cur?.id);
 
@@ -45,6 +75,7 @@ export default function useLive({
             onView: (msg) => setMembers((ms) => ms.map(
                 (m) => (m.id === msg.id ? { ...m, view: msg.view } : m),
             )),
+            onPlay: (msg) => notePlay(msg.id, msg.play),
             onSaved: (msg) => setLastSavedAt(msg.at),
             onKicked: (msg) => {
                 setCode(null);
@@ -56,6 +87,7 @@ export default function useLive({
                 setCode(null);
                 setMe(null);
                 setMembers(EMPTY);
+                syncPlay([]);
             },
             onError: (message) => cbs.current.onError?.(message),
             onIdentity: () => liveToken(),
@@ -82,6 +114,7 @@ export default function useLive({
     const sendGroups = useCallback((groups) => client.current.sendGroups(groups), []);
     const sendSelection = useCallback((ids) => client.current.sendSelection(ids), []);
     const sendView = useCallback((view) => client.current.sendView(view), []);
+    const sendPlay = useCallback((play) => client.current.sendPlay(play), []);
     const setRole = useCallback((id, role) => client.current.setRole(id, role), []);
     const kick = useCallback((id) => client.current.kick(id), []);
     const notifySaved = useCallback(() => client.current.notifySaved(), []);
@@ -104,6 +137,8 @@ export default function useLive({
         me,
         members,
         peers,
+        playRef,
+        playingIds,
         isOwner,
         canEdit,
         lastSavedAt,
@@ -114,6 +149,7 @@ export default function useLive({
         sendGroups,
         sendSelection,
         sendView,
+        sendPlay,
         setRole,
         kick,
         notifySaved,

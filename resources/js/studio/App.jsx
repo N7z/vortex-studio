@@ -791,6 +791,25 @@ export default function App() {
     }, [mobile, activeTab, tabs, mapName]);
 
     useEffect(() => {
+        if (!live.live || playing) return undefined;
+        live.sendPlay(null);
+
+        return undefined;
+    }, [playing, live.live]);
+
+    const knownTesters = useRef([]);
+    useEffect(() => {
+        const now = live.playingIds ?? [];
+        const started = now.filter((id) => !knownTesters.current.includes(id));
+        knownTesters.current = now;
+        if (!started.length || playing) return;
+        const names = started
+            .map((id) => live.members.find((m) => m.id === id)?.name)
+            .filter(Boolean);
+        if (names.length) flash(`${names.join(', ')} started a play test`);
+    }, [live.playingIds]);
+
+    useEffect(() => {
         const onBeforeUnload = (e) => {
             if (dirty.current) {
                 e.preventDefault();
@@ -964,6 +983,8 @@ export default function App() {
                         playing={playing}
                         onExitPlay={() => setPlaying(false)}
                         touchRef={touchRef}
+                        playRef={live.live ? live.playRef : null}
+                        onPlayState={live.live ? live.sendPlay : null}
                     />
                     {mobile && playing && (
                         <TouchControls inputRef={touchRef} onExit={() => setPlaying(false)} />
@@ -991,6 +1012,8 @@ export default function App() {
                             live={live}
                             onGoLive={goLive}
                             onLeave={leaveSession}
+                            playing={playing}
+                            onPlay={() => { setSelectedIds([]); setPlaying(true); }}
                             onClose={() => setTeamOpen(false)}
                         />
                     )}

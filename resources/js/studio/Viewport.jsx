@@ -155,7 +155,7 @@ export default function Viewport({
     parts, selectedIds, setSelectedId, selectMany, tool, snap, onTransform, onTransformMany,
     mapName, graphics, preview, spawnRef, busyRef, canEdit = true, peers, onView,
     faces, showFaces = false, statsRef,
-    playing = false, onExitPlay, touchRef,
+    playing = false, onExitPlay, touchRef, playRef, onPlayState,
 }) {
     const mountRef = useRef(null);
     const ctx = useRef(null);
@@ -876,7 +876,10 @@ export default function Viewport({
             const dt = Math.min((now - last) / 1000, 0.1);
             last = now;
             if (ctx.current?.session) {
-                ctx.current.session.update(dt);
+                const s = ctx.current.session;
+                if (playRef?.current) s.setPeers(playRef.current);
+                s.update(dt);
+                ctx.current.onPlayState?.(s.state);
                 renderer.render(scene, camera);
                 countFps(now);
                 return;
@@ -1128,6 +1131,7 @@ export default function Viewport({
         c.faces = faces ?? null;
         c.showFaces = showFaces;
         c.onView = onView ?? null;
+        c.onPlayState = onPlayState ?? null;
         if (spawnRef) spawnRef.current = c.spawnPoint;
     });
 
@@ -1312,6 +1316,13 @@ export default function Viewport({
         c.gizmo.rotationSnap = snap.rotateOn ? snap.rotate * DEG : null;
         c.gizmo.setScaleSnap(snap.moveOn ? snap.move : null);
     }, [snap]);
+
+    useEffect(() => {
+        if (!playing) return undefined;
+        const t = setTimeout(() => ctx.current?.session?.setParts(partsRef.current), 250);
+
+        return () => clearTimeout(t);
+    }, [parts, playing]);
 
     useEffect(() => {
         const c = ctx.current;
