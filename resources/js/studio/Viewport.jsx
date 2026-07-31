@@ -204,6 +204,8 @@ export default function Viewport({
             RIGHT: null,
         };
         orbit.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+        orbit.zoomToCursor = true;
+        orbit.minDistance = 0.5;
         orbit.target.set(0, 0, 0);
 
         const gizmo = new TransformControls(camera, renderer.domElement);
@@ -453,9 +455,35 @@ export default function Viewport({
             flying = v;
             syncBusy();
         };
+        const focusBox = new THREE.Box3();
+        const focusSphere = new THREE.Sphere();
+        const focusDir = new THREE.Vector3();
+
+        const focusMeshes = (meshes, frame) => {
+            if (!meshes.length) return;
+            focusBox.makeEmpty();
+            for (const m of meshes) focusBox.expandByObject(m);
+            if (focusBox.isEmpty()) return;
+            focusBox.getBoundingSphere(focusSphere);
+            focusDir.subVectors(camera.position, orbit.target);
+            if (focusDir.lengthSq() < 1e-6) focusDir.set(0.5, 0.6, 0.5);
+            focusDir.normalize();
+            const half = THREE.MathUtils.degToRad(camera.fov) / 2;
+            const fit = focusSphere.radius / Math.sin(half);
+            const dist = Math.max(frame ? fit * 1.2 : Math.min(fit * 1.2, focusSphere.radius + 6), orbit.minDistance + 0.5);
+            orbit.target.copy(focusSphere.center);
+            camera.position.copy(focusSphere.center).addScaledVector(focusDir, dist);
+            orbit.update();
+        };
+
         const onKeyDown = (e) => {
             if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable) return;
             keys.add(e.code);
+            if (e.code === 'KeyF' && !e.ctrlKey && !e.altKey && !flying && !ctx.current?.session) {
+                e.preventDefault();
+                focusMeshes(ctx.current?.selectedMeshes ?? []);
+                return;
+            }
             if (drag && e.code === 'KeyR' && !e.ctrlKey && !e.altKey) {
                 e.preventDefault();
                 rotateDrag();
@@ -661,6 +689,7 @@ export default function Viewport({
 
         let longPress = null;
         let longFired = false;
+        let lastTap = { t: 0, x: 0, y: 0 };
 
         const onDown = (e) => {
             if (ctx.current?.session) return;
@@ -739,6 +768,19 @@ export default function Viewport({
             );
             raycaster.setFromCamera(ndc, camera);
             const hits = raycaster.intersectObjects(c.meshList, false);
+            if (e.pointerType !== 'mouse') {
+                const t = performance.now();
+                const near = Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 24;
+                if (t - lastTap.t < 320 && near) {
+                    lastTap = { t: 0, x: 0, y: 0 };
+                    if (hits.length) {
+                        focusMeshes([hits[0].object], true);
+                        return;
+                    }
+                } else {
+                    lastTap = { t, x: e.clientX, y: e.clientY };
+                }
+            }
             c.setSelectedId(
                 hits.length ? hits[0].object.userData.id : null,
                 e.ctrlKey || e.metaKey,

@@ -296,6 +296,7 @@ export default function MenuBar({
                             <li>Hold <b>right mouse</b> to look around</li>
                             <li>While holding it: <b>WASD</b> to fly, <b>E</b> up, <b>Q</b> down, <b>Shift</b> faster</li>
                             <li><b>Middle mouse</b> pans, <b>wheel</b> zooms</li>
+                            <li><b>F</b> goes to the selected part</li>
                         </ul>
                         <h4>Editing</h4>
                         <ul>
