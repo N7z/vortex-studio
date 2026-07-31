@@ -1,6 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { listMaps } from './api';
 import { listBackups, readBackup, deleteBackup } from './backup';
+import Account from './Account';
+
+const DISCLAIMER_KEY = 'studio_disclaimer_closed';
+
+const readClosed = () => {
+    try {
+        return localStorage.getItem(DISCLAIMER_KEY) === '1';
+    } catch {
+        return false;
+    }
+};
 
 const ago = (ms) => {
     const mins = Math.round((Date.now() - ms) / 60000);
@@ -11,15 +22,17 @@ const ago = (ms) => {
 };
 
 export default function StartScreen({
-    onOpen, onCreate, onUpload, onRestore, onImportRoblox, joining, liveStatus,
+    onOpen, onCreate, onUpload, onRestore, onPasteRoblox, openName, joining, liveStatus,
 }) {
     const [mine, setMine] = useState([]);
     const [examples, setExamples] = useState([]);
     const [ttl, setTtl] = useState(24);
+    const [account, setAccount] = useState(null);
+    const [claimed, setClaimed] = useState(0);
     const [backups, setBackups] = useState(() => listBackups());
+    const [disclaimer, setDisclaimer] = useState(() => !readClosed());
     const [error, setError] = useState('');
     const fileRef = useRef(null);
-    const robloxRef = useRef(null);
 
     const restore = (name) => {
         const parts = readBackup(name);
@@ -36,15 +49,23 @@ export default function StartScreen({
         setBackups(listBackups());
     };
 
-    useEffect(() => {
+    const refresh = () =>
         listMaps()
             .then((d) => {
                 setMine(d.mine ?? []);
                 setExamples(d.examples ?? []);
                 setTtl(d.ttl_hours ?? 24);
+                setAccount(d.account ?? null);
             })
             .catch((e) => setError(String(e.message ?? e)));
-    }, []);
+
+    useEffect(() => { refresh(); }, []);
+
+    const accountChanged = (next, moved) => {
+        setAccount(next);
+        setClaimed(moved);
+        refresh();
+    };
 
     const create = () => {
         const name = prompt('New map name (letters, digits, - and _):');
@@ -76,11 +97,19 @@ export default function StartScreen({
 
     return (
         <div className="start">
+            <div className="account-corner">
+                <Account account={account} ttl={ttl} onChange={accountChanged} />
+                {claimed > 0 && (
+                    <div className="account-claimed">
+                        {claimed} map{claimed === 1 ? '' : 's'} from this browser moved to your account.
+                    </div>
+                )}
+            </div>
             <div className="start-scroll">
                 <h1>Paulin Studio</h1>
                 <a onClick={create}>Create new project</a>
                 <a onClick={pickFile}>Upload a map (.json)</a>
-                <a onClick={() => robloxRef.current?.click()}>Import a Roblox place (.json)</a>
+                <a onClick={onPasteRoblox}>Import a Roblox place</a>
                 <input
                     ref={fileRef}
                     type="file"
@@ -88,29 +117,26 @@ export default function StartScreen({
                     style={{ display: 'none' }}
                     onChange={onFile}
                 />
-                <input
-                    ref={robloxRef}
-                    type="file"
-                    accept=".json,application/json"
-                    style={{ display: 'none' }}
-                    onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        e.target.value = '';
-                        if (file) onImportRoblox?.(file);
-                    }}
-                />
                 {joining && (
                     <div className="join-row joining">
                         Joining session <b>{joining}</b>
-                        {liveStatus === 'reconnecting' ? ' — reconnecting...' : '...'}
+                        {liveStatus === 'reconnecting' ? ', reconnecting...' : '...'}
                     </div>
                 )}
                 {error && <div style={{ color: '#e05252' }}>{error}</div>}
                 {mine.length > 0 && (
                     <>
-                        <h2>Your maps in the cloud <span className="ttl-note">kept {ttl}h after each save</span></h2>
+                        <h2>
+                            Your maps in the cloud
+                            <span className="ttl-note">
+                                {account ? 'kept with your account' : `kept ${ttl}h after each save`}
+                            </span>
+                        </h2>
                         {mine.map((m) => (
-                            <a key={m.name} onClick={() => onOpen(m.name)}>{m.name}.json</a>
+                            <a key={m.name} onClick={() => onOpen(m.name)}>
+                                {m.name}.json
+                                {m.name === openName && <span className="ttl-note">open</span>}
+                            </a>
                         ))}
                     </>
                 )}
@@ -137,12 +163,28 @@ export default function StartScreen({
                     <a key={m.name} onClick={() => onOpen(m.name)}>{m.name}.json</a>
                 ))}
             </div>
+            {disclaimer && (
             <div className="start-footer">
+                <button
+                    className="start-footer-close"
+                    title="Hide this"
+                    onClick={() => {
+                        setDisclaimer(false);
+                        try {
+                            localStorage.setItem(DISCLAIMER_KEY, '1');
+                        } catch {
+                            // Closing it for this visit is still worth doing.
+                        }
+                    }}
+                >
+                    ×
+                </button>
                 <strong>This is NOT affiliated with https://playvortex.io.</strong> Paulin Studio is
-                an independent fan-made map editor that works right in your browser. We never ask
-                you to log in, create an account, or download anything: it simply edits map
-                .json files.
+                an independent fan-made map editor that works right in your browser. You never
+                have to log in, create an account, or download anything: it simply edits map
+                .json files. An account is offered only so your maps outlive this browser.
             </div>
+            )}
         </div>
     );
 }

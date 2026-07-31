@@ -679,6 +679,9 @@ a.tool-btn { text-decoration: none; }
 
 /* ---------- start screen ---------- */
 
+.home-tab { flex: 1; min-height: 0; position: relative; }
+
+
 .start {
     position: absolute;
     inset: 0;
@@ -711,6 +714,97 @@ a.tool-btn { text-decoration: none; }
 }
 .start .forget:hover { color: #e05252; }
 
+.account-corner {
+    position: absolute;
+    top: 28px;
+    right: 34px;
+    z-index: 2;
+    width: 300px;
+}
+
+.account {
+    padding: 10px 12px;
+    border: 1px solid #26262e;
+    border-radius: 6px;
+    background: #14141a;
+    color: #8f8f98;
+    font-size: 12px;
+    line-height: 1.6;
+}
+.account b { color: #bcbcc4; font-weight: 500; }
+.account-actions { display: flex; gap: 14px; margin-top: 8px; }
+
+.account-warn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    color: #d8a24a;
+}
+.account-warn svg { flex: none; }
+
+.account-link {
+    padding: 0;
+    border: none;
+    background: none;
+    color: #5b8dd6;
+    font: inherit;
+    cursor: pointer;
+}
+.account-link:hover { text-decoration: underline; }
+.account-link:disabled { color: #6e6e78; cursor: default; text-decoration: none; }
+
+.account-form { display: block; }
+.account-tabs { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+.account-tabs button {
+    padding: 0 0 4px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: #8f8f98;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+.account-tabs button.on { color: #eee; border-bottom-color: #5b8dd6; }
+.account-close { margin-left: auto; font-size: 15px !important; }
+
+.account-form input {
+    display: block;
+    width: 100%;
+    margin-bottom: 8px;
+    padding: 7px 9px;
+    border: 1px solid #2c2c36;
+    border-radius: 4px;
+    background: #101014;
+    color: #ddd;
+    font: inherit;
+}
+.account-form input:focus { outline: none; border-color: #5b8dd6; }
+
+.account-go {
+    width: 100%;
+    padding: 8px;
+    border: none;
+    border-radius: 4px;
+    background: #2f5c99;
+    color: #fff;
+    font: inherit;
+    cursor: pointer;
+}
+.account-go:hover { background: #3a6cb0; }
+.account-go:disabled { background: #2a2a33; color: #6e6e78; cursor: default; }
+
+.account-error { margin: 2px 0 8px; color: #e05252; }
+.account-note { margin-top: 10px; color: #6e6e78; }
+.account-claimed { margin-top: 8px; color: #6ea86e; font-size: 12px; line-height: 1.5; }
+
+/* No corner to spare, and .start-scroll is inset:0 so the card cannot join the flow. */
+@media (max-width: 720px) {
+    .account-corner { left: 34px; right: 34px; width: auto; }
+    .start-scroll { padding-top: 150px; }
+}
+
 .start-footer {
     position: absolute;
     right: 34px;
@@ -725,6 +819,19 @@ a.tool-btn { text-decoration: none; }
     line-height: 1.6;
 }
 .start-footer strong { color: #bcbcc4; }
+
+.start-footer-close {
+    float: right;
+    margin: -4px -4px 0 8px;
+    padding: 0 4px;
+    border: none;
+    background: none;
+    color: #6e6e78;
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+}
+.start-footer-close:hover { color: #ddd; }
 
 /* ---------- play test ---------- */
 

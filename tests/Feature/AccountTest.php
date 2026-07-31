@@ -1,0 +1,111 @@
+<?php
+
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+
+uses(RefreshDatabase::class);
+
+const APART = ['T' => 'Part', 'P' => [0, 0.5, 0], 'S' => [4, 1, 4], 'R' => [0, 0, 0], 'C' => 'a3a2a5', 'Tr' => 0];
+
+function account(array $over = []): array
+{
+    return [
+        'name' => 'Paulin',
+        'email' => 'p@example.com',
+        'password' => 'correct horse',
+        'password_confirmation' => 'correct horse',
+    ] + $over;
+}
+
+it('registers, reports the account and signs out', function () {
+    $this->postJson('/account/register', account())->assertOk()->assertJson(['account' => ['name' => 'Paulin']]);
+    $this->getJson('/account')->assertOk()->assertJson(['account' => ['email' => 'p@example.com']]);
+
+    $this->postJson('/account/logout')->assertOk()->assertJson(['account' => null]);
+    $this->getJson('/account')->assertOk()->assertJson(['account' => null]);
+});
+
+it('rejects a duplicate email, a short password and a mismatch', function () {
+    $this->postJson('/account/register', account())->assertOk();
+    $this->postJson('/account/logout');
+
+    $this->postJson('/account/register', account())->assertStatus(422);
+    $this->postJson('/account/register', ['name' => 'x', 'email' => 'a@b.co', 'password' => 'short', 'password_confirmation' => 'short'])->assertStatus(422);
+    $this->postJson('/account/register', ['name' => 'x', 'email' => 'a@b.co', 'password' => 'longenough1', 'password_confirmation' => 'different1'])->assertStatus(422);
+});
+
+it('refuses a wrong password without saying which field was wrong', function () {
+    User::create(['name' => 'P', 'email' => 'p@example.com', 'password' => 'correct horse']);
+
+    $this->postJson('/account/login', ['email' => 'p@example.com', 'password' => 'nope'])->assertStatus(422);
+    $this->postJson('/account/login', ['email' => 'nobody@example.com', 'password' => 'nope'])->assertStatus(422);
+    $this->postJson('/account/login', ['email' => 'p@example.com', 'password' => 'correct horse'])->assertOk();
+});
+
+it('leaves the anonymous flow working with no account', function () {
+    asToken()->putJson('/api/maps/anon', [APART])->assertOk();
+    asToken()->getJson('/api/maps/anon')->assertOk()->assertJson([APART]);
+    asToken()->getJson('/api/maps')->assertOk()->assertJson(['account' => null, 'mine' => [['name' => 'anon']]]);
+});
+
+it('claims the maps made in this browser when signing in', function () {
+    asToken()->putJson('/api/maps/before', [APART])->assertOk();
+
+    asToken()->postJson('/account/register', account())->assertOk()->assertJson(['claimed' => 1]);
+
+    expect(DB::table('maps')->where('name', 'before')->value('user_id'))->toBe(User::first()->id);
+    $this->getJson('/api/maps')->assertOk()->assertJson(['mine' => [['name' => 'before']]]);
+});
+
+it('renames a claimed map rather than overwriting one the account already has', function () {
+    $user = User::create(['name' => 'P', 'email' => 'p@example.com', 'password' => 'correct horse']);
+    DB::table('maps')->insert([
+        'user_id' => $user->id, 'token' => str_repeat('B', 40), 'name' => 'dup',
+        'data' => '["kept"]', 'created_at' => now(), 'updated_at' => now(),
+    ]);
+
+    asToken()->putJson('/api/maps/dup', [APART])->assertOk();
+    asToken()->postJson('/account/login', ['email' => 'p@example.com', 'password' => 'correct horse'])
+        ->assertOk()->assertJson(['claimed' => 1]);
+
+    expect(DB::table('maps')->where('user_id', $user->id)->pluck('name')->sort()->values()->all())
+        ->toBe(['dup', 'dup-2']);
+    expect(DB::table('maps')->where('name', 'dup')->value('data'))->toBe('["kept"]');
+});
+
+it('keeps an account s maps past the anonymous TTL', function () {
+    $user = User::create(['name' => 'P', 'email' => 'p@example.com', 'password' => 'correct horse']);
+    $old = now()->subHours(48);
+    DB::table('maps')->insert([
+        ['user_id' => $user->id, 'token' => str_repeat('B', 40), 'name' => 'owned', 'data' => '[]', 'created_at' => $old, 'updated_at' => $old],
+        ['user_id' => null, 'token' => str_repeat('C', 40), 'name' => 'stale', 'data' => '[]', 'created_at' => $old, 'updated_at' => $old],
+    ]);
+
+    $this->getJson('/api/maps')->assertOk();
+
+    expect(DB::table('maps')->pluck('name')->all())->toBe(['owned']);
+});
+
+it('does not show one account the maps of another', function () {
+    $mine = User::create(['name' => 'A', 'email' => 'a@example.com', 'password' => 'correct horse']);
+    $other = User::create(['name' => 'B', 'email' => 'b@example.com', 'password' => 'correct horse']);
+    DB::table('maps')->insert([
+        'user_id' => $other->id, 'token' => str_repeat('B', 40), 'name' => 'secret',
+        'data' => '[]', 'created_at' => now(), 'updated_at' => now(),
+    ]);
+
+    $this->actingAs($mine)->getJson('/api/maps')->assertOk()->assertJsonCount(0, 'mine');
+    $this->actingAs($mine)->getJson('/api/maps/secret')->assertStatus(404);
+});
+
+it('follows the account rather than the cookie once signed in', function () {
+    $user = User::create(['name' => 'P', 'email' => 'p@example.com', 'password' => 'correct horse']);
+
+    $this->actingAs($user)->putJson('/api/maps/mine', [APART])->assertOk();
+    expect(DB::table('maps')->where('name', 'mine')->value('user_id'))->toBe($user->id);
+
+    // Signed out, the same browser sees its own anonymous maps, not the account's.
+    Auth::logout();
+    asToken()->getJson('/api/maps/mine')->assertStatus(404);
+});

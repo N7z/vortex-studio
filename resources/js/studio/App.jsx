@@ -67,7 +67,7 @@ export default function App() {
     const loadedModels = useRef({});
     const [groups, setGroups] = useState([]);
     const [tabs, setTabs] = useState([]);
-    const [activeTab, setActiveTab] = useState('game');
+    const [activeTab, setActiveTab] = useState('home');
     const [playing, setPlaying] = useState(false);
     const [teamOpen, setTeamOpen] = useState(false);
     const [statsOpen, setStatsOpen] = useState(false);
@@ -96,6 +96,7 @@ export default function App() {
         if (fixed) flash(`Repaired ${fixed} part${fixed === 1 ? '' : 's'} the server would reject`);
         setParts(data);
         setMapName(name);
+        setActiveTab(name ? 'game' : 'home');
         setSelectedIds([]);
         setFaces({});
         const next = remoteGroups ?? loadGroups(name, data);
@@ -366,6 +367,10 @@ export default function App() {
     };
 
     const closeTab = (id) => {
+        if (id === 'game') {
+            closeMap();
+            return;
+        }
         setTabs((ts) => ts.filter((t) => t.id !== id));
         setActiveTab((cur) => (cur === id ? 'game' : cur));
     };
@@ -552,6 +557,11 @@ export default function App() {
     };
 
     const open = async (name) => {
+        // Reloading the open map would throw away unsaved edits, so just show it.
+        if (name === mapName) {
+            setActiveTab('game');
+            return;
+        }
         try {
             const data = await loadMap(name);
             resetDocument(name, data.map(withNewId), false);
@@ -690,6 +700,15 @@ export default function App() {
         flash('Left the live session');
     };
 
+    const closeMap = () => {
+        if (dirty.current && !confirm(`${mapName}.json has unsaved changes. Close it anyway?`)) return;
+        if (liveRef.current?.live) live.leave();
+        setTeamOpen(false);
+        setPlaying(false);
+        setActivePluginId(null);
+        resetDocument(null, [], false);
+    };
+
     // A property edit applies to every selected part, not just the primary one.
     const updateSelected = (patch) => {
         if (!selectedIds.length) return;
@@ -768,10 +787,10 @@ export default function App() {
 
     useEffect(() => {
         const onKey = (e) => {
-            if (e.ctrlKey && e.key.toLowerCase() === 's' && activeTab !== 'game') {
+            const scriptTab = tabs.find((t) => t.id === activeTab);
+            if (e.ctrlKey && e.key.toLowerCase() === 's' && scriptTab) {
                 e.preventDefault();
-                const tab = tabs.find((t) => t.id === activeTab);
-                if (tab) saveTab(tab);
+                saveTab(scriptTab);
                 return;
             }
             if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable) return;
@@ -857,7 +876,8 @@ export default function App() {
             />
             <TabBar
                 tabs={[
-                    { id: 'game', title: mapName ? 'Workspace' : 'Welcome', icon: 'globe', closable: false },
+                    { id: 'home', title: 'Welcome', icon: 'globe', closable: false },
+                    ...(mapName ? [{ id: 'game', title: mapName, icon: 'globe', closable: true }] : []),
                     ...tabs.map((t) => ({ id: t.id, title: t.title, icon: t.icon, closable: true })),
                 ]}
                 active={activeTab}
@@ -875,6 +895,17 @@ export default function App() {
                     onReset={() => resetTab(t)}
                 />
             ))}
+            {activeTab === 'home' && (
+                <div className="home-tab">
+                    <StartScreen
+                        onOpen={open} onCreate={createNew}
+                        onUpload={openUploaded} onRestore={restore}
+                        onPasteRoblox={pasteRoblox}
+                        openName={mapName}
+                        joining={joining} liveStatus={live.status}
+                    />
+                </div>
+            )}
             <div className="main" style={activeTab === 'game' ? undefined : { display: 'none' }}>
                 <div className="viewport-wrap">
                     <Viewport
@@ -937,14 +968,6 @@ export default function App() {
                         />
                     )}
                     {mapName && <span className="credit">Developed by zPaulinBRz</span>}
-                    {!mapName && (
-                        <StartScreen
-                            onOpen={open} onCreate={createNew}
-                            onUpload={openUploaded} onRestore={restore}
-                            onImportRoblox={importRoblox}
-                            joining={joining} liveStatus={live.status}
-                        />
-                    )}
                     {status && <div className="statusbar">{status}</div>}
                 </div>
                 <div className="sidebar">

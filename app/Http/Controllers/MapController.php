@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Contracts\Database\Query\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\DB;
@@ -10,9 +12,12 @@ use Illuminate\Support\Str;
 
 class MapController extends Controller
 {
-    private const TTL_HOURS = 24;
+    public const TTL_HOURS = 24;
+
     private const MAX_BYTES = 2_000_000;
-    private const MAX_MAPS_PER_TOKEN = 50;
+
+    private const MAX_MAPS_PER_OWNER = 50;
+
     private const MAX_PARTS = 20_000;
 
     /** Keys the editor writes / the example maps use; anything else is rejected. */
@@ -33,6 +38,29 @@ class MapController extends Controller
         return $t;
     }
 
+    /**
+     * A signed-in visitor owns maps by account, everyone else by cookie. The cookie
+     * is issued either way, so signing out returns them to their anonymous maps.
+     */
+    private function scope(Request $request): Builder
+    {
+        $id = Auth::id();
+        $token = $this->token($request);
+
+        return $id
+            ? DB::table('maps')->where('user_id', $id)
+            : DB::table('maps')->whereNull('user_id')->where('token', $token);
+    }
+
+    /** Only anonymous maps expire; an account's maps are kept. */
+    public static function prune(): void
+    {
+        DB::table('maps')
+            ->whereNull('user_id')
+            ->where('updated_at', '<', now()->subHours(self::TTL_HOURS))
+            ->delete();
+    }
+
     private function validName(string $name): string
     {
         abort_unless(preg_match('/^[A-Za-z0-9_\-]{1,64}$/', $name), 400, 'bad map name');
@@ -50,7 +78,7 @@ class MapController extends Controller
         // Scanning + decoding every map is too expensive for a public route,
         // so the numbers are recomputed at most once a minute.
         return response()->json(Cache::remember('studio_stats', 60, function () {
-            DB::table('maps')->where('updated_at', '<', now()->subHours(self::TTL_HOURS))->delete();
+            self::prune();
 
             $rows = DB::table('maps')->get(['token', 'data', 'updated_at']);
             $last = $rows->max('updated_at');
@@ -58,6 +86,7 @@ class MapController extends Controller
             return [
                 'maps' => $rows->count(),
                 'sessions' => $rows->pluck('token')->unique()->count(),
+                'accounts' => DB::table('users')->count(),
                 'parts' => $rows->sum(fn ($r) => count(json_decode($r->data) ?: [])),
                 'examples' => count(glob($this->examplesDir().DIRECTORY_SEPARATOR.'*.json')),
                 'last_save' => $last ? strtotime($last) : null,
@@ -67,10 +96,9 @@ class MapController extends Controller
 
     public function index(Request $request)
     {
-        DB::table('maps')->where('updated_at', '<', now()->subHours(self::TTL_HOURS))->delete();
+        self::prune();
 
-        $mine = DB::table('maps')
-            ->where('token', $this->token($request))
+        $mine = $this->scope($request)
             ->orderByDesc('updated_at')
             ->get(['name', 'updated_at'])
             ->map(fn ($m) => ['name' => $m->name, 'modified' => strtotime($m->updated_at)]);
@@ -83,6 +111,7 @@ class MapController extends Controller
             'mine' => $mine,
             'examples' => $examples,
             'ttl_hours' => self::TTL_HOURS,
+            'account' => AccountController::current(),
         ]);
     }
 
@@ -90,10 +119,7 @@ class MapController extends Controller
     {
         $name = $this->validName($name);
 
-        $row = DB::table('maps')
-            ->where('token', $this->token($request))
-            ->where('name', $name)
-            ->first();
+        $row = $this->scope($request)->where('name', $name)->first();
         if ($row) {
             return response($row->data)->header('Content-Type', 'application/json');
         }
@@ -115,16 +141,17 @@ class MapController extends Controller
         abort_if(strlen($data) > self::MAX_BYTES, 413, 'map too large');
 
         $token = $this->token($request);
-        $exists = DB::table('maps')->where('token', $token)->where('name', $name)->exists();
+        $id = Auth::id();
+        $exists = $this->scope($request)->where('name', $name)->exists();
         abort_if(
-            ! $exists && DB::table('maps')->where('token', $token)->count() >= self::MAX_MAPS_PER_TOKEN,
+            ! $exists && $this->scope($request)->count() >= self::MAX_MAPS_PER_OWNER,
             403,
             'map limit reached',
         );
 
         DB::table('maps')->updateOrInsert(
-            ['token' => $token, 'name' => $name],
-            ['data' => $data, 'updated_at' => now(), 'created_at' => now()],
+            $id ? ['user_id' => $id, 'name' => $name] : ['user_id' => null, 'token' => $token, 'name' => $name],
+            ['token' => $token, 'data' => $data, 'updated_at' => now(), 'created_at' => now()],
         );
 
         return response()->json(['ok' => true]);
