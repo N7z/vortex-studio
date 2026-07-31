@@ -316,6 +316,9 @@ export default function App() {
         try {
             const compiled = await compilePlugin(pid, src, builtin);
             saveUserPlugin(pid, src);
+            for (const meta of Object.values(pluginImages[pid] ?? {})) {
+                await compiled.setImage(meta);
+            }
             const old = plugins.find((p) => p.id === pid);
             old?.close?.();
             setPlugins((ps) => ps.some((p) => p.id === pid)

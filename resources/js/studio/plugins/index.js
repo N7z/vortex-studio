@@ -1,4 +1,8 @@
 import { LuaFactory } from 'wasmoon';
+import { imagePixels } from '../image';
+import {
+    aspect, boxAt, grid, parseOpts, pixelAt,
+} from '../imagegrid';
 import preludeSrc from './prelude.lua?raw';
 import archimedesSrc from './archimedes.lua?raw';
 import arraySrc from './array.lua?raw';
@@ -70,7 +74,20 @@ const toParts = (res) => {
 
 export async function compilePlugin(id, src, builtin = false) {
     const lua = await getFactory().createEngine();
+    let pix = null;
     try {
+        lua.global.set('__img_px', (x, y) => (pix ? pixelAt(pix, x, y) : ''));
+        lua.global.set('__img_box', (x0, y0, x1, y1) => (pix ? boxAt(pix, x0, y0, x1, y1) : ''));
+        lua.global.set('__img_aspect', (o) => {
+            if (!pix) return '';
+            const [w, h] = aspect(pix, parseOpts(o));
+            return `${w},${h}`;
+        });
+        lua.global.set('__img_grid', (cols, o) => {
+            if (!pix) return '';
+            const g = grid(pix, cols, parseOpts(o));
+            return `${g.cols},${g.rows},${g.data}`;
+        });
         await lua.doString(preludeSrc);
         await lua.doString(src);
         const p = lua.global.get('plugin');
@@ -98,7 +115,8 @@ export async function compilePlugin(id, src, builtin = false) {
             click: async (btnId, part, values) =>
                 toParts(await luaClick(btnId, JSON.stringify(part), JSON.stringify(values))),
             setImage: async (img) => {
-                await luaSetImage(img?.w ?? 0, img?.h ?? 0, img?.data ?? '');
+                pix = imagePixels(img?.id);
+                await luaSetImage(pix?.w ?? 0, pix?.h ?? 0);
             },
             setSelection: async (info) => {
                 await luaSetSelection(info ? JSON.stringify(info) : '');

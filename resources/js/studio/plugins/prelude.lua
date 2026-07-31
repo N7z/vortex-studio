@@ -91,18 +91,70 @@ Icons = setmetatable({}, { __index = function(_, key) return key end })
 
 Image = nil
 
-function __set_image(w, h, data)
-    if data == nil or data == '' or w == nil or w < 1 or h < 1 then
+local function enc_opts(opts)
+    if opts == nil then return '' end
+    local out = {}
+    for k, v in pairs(opts) do
+        if type(v) == 'boolean' then
+            out[#out + 1] = k .. '=' .. (v and 'true' or 'false')
+        elseif type(v) == 'number' or type(v) == 'string' then
+            out[#out + 1] = k .. '=' .. tostring(v)
+        end
+    end
+    return table.concat(out, ';')
+end
+
+local function split_hex(s)
+    if s == nil or s == '' then return nil, 0 end
+    local a = tonumber(s:sub(7, 8), 16) or 255
+    if a == 0 then return nil, 0 end
+    return s:sub(1, 6), a
+end
+
+function __set_image(w, h)
+    if w == nil or h == nil or w < 1 or h < 1 then
         Image = nil
         return
     end
-    local img = { w = math.floor(w), h = math.floor(h), data = data }
+    local img = { w = math.floor(w), h = math.floor(h) }
+
     function img.pixel(x, y)
-        x, y = math.floor(x), math.floor(y)
-        if x < 0 or y < 0 or x >= img.w or y >= img.h then return nil, 0 end
-        local i = (y * img.w + x) * 8 + 1
-        return data:sub(i, i + 5), tonumber(data:sub(i + 6, i + 7), 16) or 255
+        return split_hex(__img_px(math.floor(x), math.floor(y)))
     end
+
+    function img.rgb(x, y)
+        local s = __img_px(math.floor(x), math.floor(y))
+        if s == nil or s == '' then return nil end
+        return tonumber(s:sub(1, 2), 16), tonumber(s:sub(3, 4), 16),
+            tonumber(s:sub(5, 6), 16), tonumber(s:sub(7, 8), 16)
+    end
+
+    function img.box(x0, y0, x1, y1)
+        return split_hex(__img_box(x0, y0, x1, y1))
+    end
+
+    function img.aspect(opts)
+        local s = __img_aspect(enc_opts(opts))
+        if s == nil or s == '' then return img.w, img.h end
+        local a, b = s:match('^(%d+),(%d+)$')
+        return tonumber(a) or img.w, tonumber(b) or img.h
+    end
+
+    function img.grid(cols, opts)
+        local s = __img_grid(math.floor(cols), enc_opts(opts))
+        if s == nil or s == '' then return nil end
+        local c, r, data = s:match('^(%d+),(%d+),(.*)$')
+        c, r = tonumber(c), tonumber(r)
+        if c == nil or r == nil then return nil end
+        local g = { cols = c, rows = r }
+        function g.get(col, row)
+            if col < 1 or row < 1 or col > c or row > r then return nil, 0 end
+            local i = ((row - 1) * c + (col - 1)) * 8 + 1
+            return split_hex(data:sub(i, i + 7))
+        end
+        return g
+    end
+
     Image = img
 end
 

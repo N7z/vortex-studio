@@ -1,37 +1,53 @@
-const MAX = 128;
+const MAX = 2048;
+const THUMB = 192;
 
-const HEX = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, '0'));
+const store = new Map();
+let seq = 0;
 
 export async function decodeImage(file) {
     const bmp = await createImageBitmap(file);
-    const scale = Math.min(1, MAX / Math.max(bmp.width, bmp.height));
-    const w = Math.max(1, Math.round(bmp.width * scale));
-    const h = Math.max(1, Math.round(bmp.height * scale));
+    const srcW = bmp.width;
+    const srcH = bmp.height;
+    const scale = Math.min(1, MAX / Math.max(srcW, srcH));
+    const w = Math.max(1, Math.round(srcW * scale));
+    const h = Math.max(1, Math.round(srcH * scale));
 
     const canvas = document.createElement('canvas');
     canvas.width = w;
     canvas.height = h;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingEnabled = scale < 1;
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(bmp, 0, 0, w, h);
-    bmp.close?.();
 
     const { data } = ctx.getImageData(0, 0, w, h);
-    const out = new Array(w * h);
-    for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
-        out[p] = HEX[data[i]] + HEX[data[i + 1]] + HEX[data[i + 2]] + HEX[data[i + 3]];
-    }
+
+    const tScale = Math.min(1, THUMB / Math.max(w, h));
+    const thumb = document.createElement('canvas');
+    thumb.width = Math.max(1, Math.round(w * tScale));
+    thumb.height = Math.max(1, Math.round(h * tScale));
+    const tctx = thumb.getContext('2d');
+    tctx.imageSmoothingEnabled = true;
+    tctx.imageSmoothingQuality = 'high';
+    tctx.drawImage(canvas, 0, 0, thumb.width, thumb.height);
+    bmp.close?.();
+
+    const id = `img-${++seq}`;
+    store.set(id, { w, h, data, bounds: new Map() });
 
     return {
+        id,
         name: file.name,
         w,
         h,
-        data: out.join(''),
-        srcW: bmp.width || w,
-        srcH: bmp.height || h,
-        url: canvas.toDataURL(),
+        srcW,
+        srcH,
+        url: thumb.toDataURL(),
     };
+}
+
+export function imagePixels(id) {
+    return (id && store.get(id)) ?? null;
 }
 
 export function imageMeta(img) {

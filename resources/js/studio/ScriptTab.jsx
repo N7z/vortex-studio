@@ -56,8 +56,12 @@ const COMPLETIONS = [
     prop('Selection.parts', 'every selected part, or nil past 256 selected'),
     prop('plugin.faces', 'true to highlight the clicked face and pass it as part.F'),
     prop('part.F', 'clicked face as a local normal {x,y,z}, or nil'),
-    prop('Image', 'the picked image, or nil: Image.w, Image.h, Image.pixel(x, y)'),
+    prop('Image', 'the picked image, or nil: Image.w, Image.h, Image.grid(cols, opts)'),
     fn('Image.pixel(x, y)', '0-based, top-left origin; returns "rrggbb", alpha 0-255'),
+    fn('Image.rgb(x, y)', 'the same pixel as four numbers r, g, b, a'),
+    fn('Image.box(x0, y0, x1, y1)', 'area average of a rect; returns "rrggbb", alpha'),
+    fn('Image.grid(cols, opts)', 'sampled grid: .cols, .rows, .get(col, row) -> hex, alpha'),
+    fn('Image.aspect(opts)', 'width, height the grid will be shaped from'),
     prop('part.P', 'position {x, y, z}'),
     prop('part.S', 'size {x, y, z}'),
     prop('part.R', 'rotation in degrees {x, y, z}'),
@@ -210,11 +214,27 @@ function ScriptHelp() {
             </p>
             <pre>{`Image.w, Image.h  -- pixels
 local hex, a =
-  Image.pixel(x, y)  -- 0-based`}</pre>
+  Image.pixel(x, y)  -- 0-based
+
+local g = Image.grid(32, {
+  trim = true, colors = 16, dither = false,
+  alphaCut = 128, nearest = false,
+  brightness = 0, contrast = 0,
+  saturation = 1, gamma = 1,
+  key = "", keyTol = 0.1,
+})
+local hex, a = g.get(col, row)  -- 1-based`}</pre>
             <p>
                 <code>hex</code> goes straight into <code>part.C</code>, <code>a</code> is alpha
-                0-255. The grid is capped at 128 on its longest side; sample it down for coarser
-                output.
+                0-255, and an empty cell comes back as <code>nil</code>. The source is kept at up
+                to 2048 on its longest side.
+            </p>
+            <p>
+                Prefer <code>Image.grid</code> over sampling <code>Image.pixel</code> yourself: it
+                averages every source pixel a cell covers, in linear light and weighted by alpha,
+                so colours are not picked at random from one pixel and edges do not darken. It
+                also quantises to a palette, which is what lets same-colour areas merge into few
+                parts instead of thousands.
             </p>
             <h4>A part</h4>
             <pre>{`part.P  -- position {x, y, z}
