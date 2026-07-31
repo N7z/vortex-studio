@@ -894,12 +894,16 @@ export default function App() {
             {mobile ? (
                 <MobileBar
                     tool={tool} setTool={setTool}
+                    snap={snap} setSnap={setSnap}
                     hasSelection={!!selected} canEdit={canEdit}
                     onUndo={undo} onRedo={redo}
                     onAddPart={() => addPart(NEW_PART)}
                     onDelete={removeSelected}
                     onSave={save} canSave={canSaveToServer}
                     hasMap={!!mapName}
+                    live={live.live}
+                    teamOpen={teamOpen}
+                    onToggleTeam={() => setTeamOpen((o) => !o)}
                     playing={playing}
                     onPlay={() => { setSelectedIds([]); setPlaying(true); }}
                     onStop={() => setPlaying(false)}

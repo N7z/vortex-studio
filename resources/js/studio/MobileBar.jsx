@@ -1,8 +1,8 @@
-import { Maximize, Minimize } from 'lucide-react';
+import { Magnet, Maximize, Minimize } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import {
     SelectIcon, MoveIcon, RotateIcon, ScaleIcon,
-    UndoIcon, RedoIcon, PartIcon, DeleteIcon, SaveIcon, PlayIcon, StopIcon,
+    UndoIcon, RedoIcon, PartIcon, DeleteIcon, SaveIcon, PlayIcon, StopIcon, TeamIcon,
 } from './icons';
 
 const canFullscreen = () => typeof document.documentElement.requestFullscreen === 'function';
@@ -18,7 +18,9 @@ export default function MobileBar({
     tool, setTool, hasSelection, canEdit,
     onUndo, onRedo, onAddPart, onDelete,
     onSave, canSave, hasMap, playing, onPlay, onStop,
+    live, teamOpen, onToggleTeam, snap, setSnap,
 }) {
+    const snapOn = snap.moveOn && snap.rotateOn;
     const [full, setFull] = useState(false);
 
     useEffect(() => {
@@ -54,7 +56,23 @@ export default function MobileBar({
             <button className="mb-btn" onClick={onDelete} disabled={!hasSelection || !canEdit} title="Delete">
                 <DeleteIcon />
             </button>
+            <button
+                className={`mb-btn ${snapOn ? 'active' : ''}`}
+                onClick={() => setSnap({ ...snap, moveOn: !snapOn, rotateOn: !snapOn })}
+                title={snapOn ? `Snapping to ${snap.move}` : 'Snapping off'}
+            >
+                <Magnet />
+                {snapOn && <span className="mb-badge">{snap.move}</span>}
+            </button>
             <span className="mb-grow" />
+            <button
+                className={`mb-btn ${teamOpen ? 'active' : ''} ${live ? 'is-live' : ''}`}
+                onClick={onToggleTeam}
+                disabled={!hasMap}
+                title="Team Create"
+            >
+                <TeamIcon />
+            </button>
             {canFullscreen() && (
                 <button className="mb-btn" onClick={toggleFull} title={full ? 'Exit fullscreen' : 'Fullscreen'}>
                     {full ? <Minimize /> : <Maximize />}
