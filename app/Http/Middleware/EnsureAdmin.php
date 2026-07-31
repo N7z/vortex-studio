@@ -12,8 +12,16 @@ class EnsureAdmin
     public function handle(Request $request, Closure $next)
     {
         $user = Auth::user();
-        abort_unless($user && $user->is_admin && ! $user->banned_at, 404);
+        if ($user && $user->is_admin && ! $user->banned_at) {
+            return $next($request);
+        }
 
-        return $next($request);
+        // Still a 404, so the admin API keeps answering the way its callers expect;
+        // only a browser asking for a page gets the picture instead of a blank error.
+        if ($request->expectsJson()) {
+            abort(404);
+        }
+
+        return response()->view('no-admin', [], 404);
     }
 }

@@ -139,3 +139,17 @@ it('grants and revokes admin from the console', function () {
 
     $this->artisan('admin:grant', ['email' => 'nobody@example.com'])->assertFailed();
 });
+
+it('shows the picture to a browser turned away from the admin area', function () {
+    $r = $this->actingAs(member())->get('/admin');
+    $r->assertNotFound();
+    $r->assertSee('img/no-admin.webp');
+
+    expect(is_file(public_path('img/no-admin.webp')))->toBeTrue();
+});
+
+it('keeps a json 404 for the admin api', function () {
+    $this->actingAs(member())->getJson('/admin/maps/1')
+        ->assertNotFound()
+        ->assertHeader('content-type', 'application/json');
+});

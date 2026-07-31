@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Middleware\BlockBanned;
+use App\Http\Middleware\EnsureAdmin;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -15,8 +17,8 @@ return Application::configure(basePath: dirname(__DIR__))
         // Nothing is exempt: the api routes authenticate by cookie, and reads are
         // never checked anyway.
         $middleware->validateCsrfTokens(except: []);
-        $middleware->web(append: [App\Http\Middleware\BlockBanned::class]);
-        $middleware->alias(['admin' => App\Http\Middleware\EnsureAdmin::class]);
+        $middleware->web(append: [BlockBanned::class]);
+        $middleware->alias(['admin' => EnsureAdmin::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
