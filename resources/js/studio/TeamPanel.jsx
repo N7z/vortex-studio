@@ -41,7 +41,7 @@ function Member({ member, isMe, canManage, onRole, onKick, testing }) {
     );
 }
 
-export default function TeamPanel({ live, onGoLive, onLeave, onClose, playing, onPlay }) {
+export default function TeamPanel({ live, onGoLive, onLeave, onClose, playing }) {
     const testers = live.playingIds ?? [];
     const [copied, setCopied] = useState(false);
     const [link, setLink] = useState(null);
@@ -115,12 +115,6 @@ export default function TeamPanel({ live, onGoLive, onLeave, onClose, playing, o
                             />
                         ))}
                     </div>
-
-                    {testers.length > 0 && !playing && (
-                        <button className="team-primary" onClick={onPlay}>
-                            {`Join the test (${testers.length})`}
-                        </button>
-                    )}
 
                     {link && (
                         <input

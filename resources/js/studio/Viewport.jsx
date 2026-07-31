@@ -877,7 +877,8 @@ export default function Viewport({
             last = now;
             if (ctx.current?.session) {
                 const s = ctx.current.session;
-                if (playRef?.current) s.setPeers(playRef.current);
+                const states = ctx.current.playRef?.current;
+                if (states) s.setPeers(states);
                 s.update(dt);
                 ctx.current.onPlayState?.(s.state);
                 renderer.render(scene, camera);
@@ -1132,6 +1133,7 @@ export default function Viewport({
         c.showFaces = showFaces;
         c.onView = onView ?? null;
         c.onPlayState = onPlayState ?? null;
+        c.playRef = playRef ?? null;
         if (spawnRef) spawnRef.current = c.spawnPoint;
     });
 

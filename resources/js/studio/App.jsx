@@ -1013,7 +1013,6 @@ export default function App() {
                             onGoLive={goLive}
                             onLeave={leaveSession}
                             playing={playing}
-                            onPlay={() => { setSelectedIds([]); setPlaying(true); }}
                             onClose={() => setTeamOpen(false)}
                         />
                     )}

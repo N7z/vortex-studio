@@ -17,6 +17,7 @@ export default function useLive({
     cbs.current = { onWelcome, onOp, onSnapshot, onGroups, onError, onNotice };
 
     const playRef = useRef(new Map());
+    const meId = useRef(null);
     const [playingIds, setPlayingIds] = useState(EMPTY);
 
     const notePlay = (id, play) => {
@@ -27,8 +28,9 @@ export default function useLive({
         if (had !== !!play) setPlayingIds([...map.keys()]);
     };
 
-    const syncPlay = (list) => {
+    const syncPlay = (all) => {
         const map = playRef.current;
+        const list = all.filter((m) => m.id !== meId.current);
         const ids = new Set(list.map((m) => m.id));
         let changed = false;
         for (const id of [...map.keys()]) {
@@ -51,8 +53,9 @@ export default function useLive({
             onWelcome: (msg) => {
                 setCode(msg.code);
                 setMe(msg.you);
+                meId.current = msg.you.id;
                 setMembers(msg.members);
-                syncPlay(msg.members.filter((m) => m.id !== msg.you.id));
+                syncPlay(msg.members);
                 setLastSavedAt(msg.lastSavedAt ?? null);
                 cbs.current.onWelcome?.(msg);
             },
@@ -86,6 +89,7 @@ export default function useLive({
             onGone: () => {
                 setCode(null);
                 setMe(null);
+                meId.current = null;
                 setMembers(EMPTY);
                 syncPlay([]);
             },
