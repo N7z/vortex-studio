@@ -1061,6 +1061,60 @@ a.tool-btn { text-decoration: none; }
 .tool-btn.stop-btn:not(:disabled) { color: #e06b6b; }
 .tool-btn.stop-btn:not(:disabled):hover { background: #301818; }
 
+/* ---------- update notice ---------- */
+
+.update-notice {
+    position: fixed;
+    left: 12px;
+    bottom: 12px;
+    z-index: 60;
+    width: 250px;
+    padding: 10px 12px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    background: #14141a;
+    border: 1px solid #26262e;
+    border-radius: 6px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+    font-size: 12px;
+    color: #b9b9c0;
+}
+
+.update-title { font-weight: 600; color: #e5e5ea; }
+.update-warning { font-size: 11px; color: #e0a34a; }
+.update-actions { display: flex; gap: 6px; }
+
+.update-primary {
+    flex: 1;
+    background: #2563eb;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 7px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.update-primary:hover:not(:disabled) { background: #1d4fd8; }
+
+.update-later {
+    background: none;
+    border: 1px solid #26262e;
+    border-radius: 4px;
+    color: #74747e;
+    padding: 7px 12px;
+    font-size: 12px;
+    cursor: pointer;
+}
+.update-later:hover:not(:disabled) { color: #e5e5ea; background: #1c1c24; }
+
+.update-primary:disabled, .update-later:disabled { opacity: 0.6; cursor: default; }
+
+@media (max-width: 700px) {
+    .update-notice { left: 8px; right: 8px; bottom: 8px; width: auto; }
+}
+
 /* ---------- misc ---------- */
 
 .credit {

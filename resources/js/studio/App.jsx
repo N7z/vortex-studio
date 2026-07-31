@@ -26,6 +26,8 @@ import {
 import { DeleteIcon, DuplicateIcon } from './icons';
 import { loadGraphics, saveGraphics } from './graphics';
 import { roomFromUrl } from './live';
+import UpdateNotice from './UpdateNotice';
+import { watchForUpdate } from './version';
 import useLive from './useLive';
 import { decodeImage, imageMeta } from './image';
 import { buildVoxels, loadModel } from './model';
@@ -53,6 +55,8 @@ const MAX_PLUGIN_PARTS = 20000;
 const MAX_MAP_PARTS = 20000;
 
 const MAX_SELECTION_PARTS = 256;
+
+const GROUPS_DEBOUNCE_MS = 400;
 
 export default function App() {
     const [mapName, setMapName] = useState(null);
@@ -289,7 +293,7 @@ export default function App() {
 
     useEffect(() => {
         if (joining) live.join(joining);
-    }, []);
+    }, [joining, live.join]);
 
     useEffect(() => {
         const seq = ++previewSeq.current;
@@ -540,12 +544,19 @@ export default function App() {
         setGroups((gs) => gs.map((g) => (g.id === groupId ? { ...g, name } : g)));
     };
 
+    // Both are debounced: a gizmo drag changes parts every frame, and pruning plus
+    // serializing to localStorage at that rate stalls the main thread.
     useEffect(() => {
-        setGroups((gs) => pruneGroups(gs, parts));
+        const t = setTimeout(() => setGroups((gs) => pruneGroups(gs, parts)), GROUPS_DEBOUNCE_MS);
+
+        return () => clearTimeout(t);
     }, [parts]);
 
     useEffect(() => {
-        if (mapName) saveGroups(mapName, groups, parts);
+        if (!mapName) return undefined;
+        const t = setTimeout(() => saveGroups(mapName, groups, parts), GROUPS_DEBOUNCE_MS);
+
+        return () => clearTimeout(t);
     }, [mapName, groups, parts]);
 
     useEffect(() => {
@@ -642,7 +653,8 @@ export default function App() {
         a.href = URL.createObjectURL(blob);
         a.download = `${mapName}.json`;
         a.click();
-        URL.revokeObjectURL(a.href);
+        // Firefox cancels the download if the URL is revoked in the same tick.
+        setTimeout(() => URL.revokeObjectURL(a.href), 10000);
     };
 
     const createNew = (name) => {
@@ -656,10 +668,10 @@ export default function App() {
     const canSaveToServer = !!mapName && (!live.live || live.isOwner);
 
     const save = useCallback(async (auto) => {
-        if (!mapName) return;
+        if (!mapName) return false;
         if (liveRef.current.live && !liveRef.current.isOwner) {
             if (auto !== true) flash('The session owner saves this map');
-            return;
+            return false;
         }
         const snapshot = partsRef.current;
         const clean = stripIds(snapshot);
@@ -672,10 +684,12 @@ export default function App() {
             if (partsRef.current === snapshot) dirty.current = false;
             liveRef.current.notifySaved();
             flash(auto === true ? 'Auto-saved' : `Saved ${mapName}.json`);
+            return true;
         } catch (e) {
             flash(backed
                 ? `Server save failed (${e.message ?? e}), kept a copy on this device`
                 : String(e.message ?? e));
+            return false;
         }
     }, [mapName, flash]);
 
@@ -820,6 +834,19 @@ export default function App() {
         return () => window.removeEventListener('beforeunload', onBeforeUnload);
     }, []);
 
+    const [updateReady, setUpdateReady] = useState(false);
+    const [updateHidden, setUpdateHidden] = useState(false);
+
+    useEffect(() => watchForUpdate(() => setUpdateReady(true)), []);
+
+    const reloadForUpdate = useCallback(async () => {
+        if (dirty.current && canSaveToServer && !await save()) return false;
+        // The reload is the answer to a prompt, so it must not raise a second one.
+        dirty.current = false;
+        window.location.reload();
+        return true;
+    }, [canSaveToServer, save]);
+
     useEffect(() => {
         const onKey = (e) => {
             const scriptTab = tabs.find((t) => t.id === activeTab);
@@ -870,6 +897,15 @@ export default function App() {
 
     return (
         <div className={mobile ? 'studio mobile' : 'studio'}>
+            {updateReady && !updateHidden && (
+                <UpdateNotice
+                    warning={dirty.current && !canSaveToServer && !live.live
+                        ? 'This map is not saved on the server, reloading loses your changes.'
+                        : null}
+                    onReload={reloadForUpdate}
+                    onDismiss={() => setUpdateHidden(true)}
+                />
+            )}
             <MenuBar
                 mobile={mobile}
                 hasMap={!!mapName} canEdit={canEdit}

@@ -3,10 +3,12 @@
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\MapController;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Vite;
 
 Route::get('/', fn () => view('studio'));
 
-// Deliberately not under /api, which is exempt from CSRF verification.
+Route::get('/api/build', fn () => ['build' => Vite::manifestHash()])->middleware('throttle:120,1');
+
 Route::prefix('account')->group(function () {
     Route::get('/', [AccountController::class, 'me']);
     Route::get('/live-token', [AccountController::class, 'liveToken']);
