@@ -155,7 +155,7 @@ export default function Viewport({
     parts, selectedIds, setSelectedId, selectMany, tool, snap, onTransform, onTransformMany,
     mapName, graphics, preview, spawnRef, busyRef, canEdit = true, peers, onView,
     faces, showFaces = false, statsRef,
-    playing = false, onExitPlay, touchRef, playRef, onPlayState,
+    playing = false, onExitPlay, onPlayError, touchRef, playRef, onPlayState,
 }) {
     const mountRef = useRef(null);
     const ctx = useRef(null);
@@ -1155,6 +1155,10 @@ export default function Viewport({
             });
             ctx.current.session = session;
             if (touchRef) touchRef.current = session.touch;
+        }).catch((e) => {
+            if (cancelled) return;
+            onPlayError?.(String(e?.message ?? e));
+            onExitPlay?.();
         });
         return () => {
             cancelled = true;

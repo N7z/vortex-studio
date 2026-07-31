@@ -982,6 +982,7 @@ export default function App() {
                         busyRef={busyRef}
                         playing={playing}
                         onExitPlay={() => setPlaying(false)}
+                        onPlayError={(m) => flash(`Could not start the play test: ${m}`)}
                         touchRef={touchRef}
                         playRef={live.live ? live.playRef : null}
                         onPlayState={live.live ? live.sendPlay : null}
