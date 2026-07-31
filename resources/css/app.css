@@ -117,11 +117,13 @@ a.tool-btn { text-decoration: none; }
 .help-backdrop { position: fixed; inset: 0; z-index: 40; }
 
 .help-pop {
-    position: absolute;
-    top: 114px;
-    right: 8px;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     z-index: 50;
     width: 340px;
+    max-width: calc(100vw - 32px);
     background: #14141a;
     border: 1px solid #26262e;
     border-radius: 6px;
@@ -130,10 +132,25 @@ a.tool-btn { text-decoration: none; }
     font-size: 12px;
     line-height: 1.55;
     color: #b9b9c0;
-    max-height: calc(100vh - 134px);
+    max-height: calc(100vh - 80px);
     overflow-y: auto;
     overscroll-behavior: contain;
 }
+.help-close-bar { position: sticky; top: 0; height: 0; z-index: 2; }
+.help-close {
+    position: absolute;
+    right: -4px;
+    top: -4px;
+    padding: 0 4px;
+    border: none;
+    background: none;
+    color: #6e6e78;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+}
+.help-close:hover { color: #ddd; }
+
 .help-pop::-webkit-scrollbar { width: 8px; }
 .help-pop::-webkit-scrollbar-track { background: transparent; }
 .help-pop::-webkit-scrollbar-thumb { background: #2c2c36; border-radius: 4px; }

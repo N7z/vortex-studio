@@ -18,7 +18,7 @@ export const MODES = [
 
 export const PRESETS = {
     High: { shadows: true, shadowRes: 2048, scale: 1, studs: true, grid: true },
-    Medium: { shadows: true, shadowRes: 1024, scale: 0.85, studs: true, grid: true },
+    Medium: { shadows: false, shadowRes: 1024, scale: 0.85, studs: true, grid: true },
     Low: { shadows: false, shadowRes: 1024, scale: 0.7, studs: false, grid: true },
 };
 

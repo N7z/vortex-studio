@@ -54,6 +54,13 @@ function Menu({ title, items, open, onOpen, onHover, onClose }) {
     );
 }
 
+// Sticky and zero height, so it stays pinned while a long popup scrolls under it.
+const ClosePop = ({ onClose }) => (
+    <div className="help-close-bar">
+        <button className="help-close" title="Close" onClick={onClose}>×</button>
+    </div>
+);
+
 export default function MenuBar({
     hasMap, canEdit, hasSelection, hasClipboard,
     onSave, canSave, onDownload, canDownload,
@@ -173,6 +180,7 @@ export default function MenuBar({
                 <>
                     <div className="help-backdrop" onClick={() => setPop(null)} />
                     <div className="help-pop gfx-pop">
+                        <ClosePop onClose={() => setPop(null)} />
                         <h3>Graphics</h3>
                         <div className="gfx-seg">
                             <span
@@ -252,6 +260,7 @@ export default function MenuBar({
                 <>
                     <div className="help-backdrop" onClick={() => setPop(null)} />
                     <div className="help-pop">
+                        <ClosePop onClose={() => setPop(null)} />
                         <h3>Stats</h3>
                         {!stats ? (
                             <div className="stats-note">Loading...</div>
@@ -278,6 +287,7 @@ export default function MenuBar({
                 <>
                     <div className="help-backdrop" onClick={() => setPop(null)} />
                     <div className="help-pop">
+                        <ClosePop onClose={() => setPop(null)} />
                         <h3>Quick help</h3>
                         <h4>Camera</h4>
                         <ul>
