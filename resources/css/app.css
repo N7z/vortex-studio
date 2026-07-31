@@ -2,6 +2,10 @@
 
 html, body, #root { height: 100%; overflow: hidden; overscroll-behavior: none; }
 
+@supports (height: 100dvh) {
+    html, body, #root { height: 100dvh; }
+}
+
 body {
     font-family: 'Segoe UI', system-ui, sans-serif;
     font-size: 13px;
@@ -882,6 +886,17 @@ a.tool-btn { text-decoration: none; }
 .mb-grow { flex: 1; }
 
 .studio.mobile .main { position: relative; }
+
+.studio.mobile .start { display: flex; flex-direction: column; }
+.studio.mobile .start-scroll { position: static; flex: 1; min-height: 0; padding: 4px 18px 18px; }
+.studio.mobile .start h1 { font-size: 22px; margin-bottom: 18px; }
+.studio.mobile .account-corner { position: static; width: auto; padding: 14px 18px 0; }
+.studio.mobile .start-footer {
+    position: static;
+    flex: none;
+    max-width: none;
+    margin: 0 18px 14px;
+}
 .studio.mobile .toolbar { display: none; }
 .studio.mobile .menubar { height: 34px; }
 .studio.mobile .tabbar { overflow-x: auto; }

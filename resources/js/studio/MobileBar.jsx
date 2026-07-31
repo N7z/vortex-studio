@@ -1,8 +1,11 @@
-import React from 'react';
+import { Maximize, Minimize } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 import {
     SelectIcon, MoveIcon, RotateIcon, ScaleIcon,
     UndoIcon, RedoIcon, PartIcon, DeleteIcon, SaveIcon, PlayIcon, StopIcon,
 } from './icons';
+
+const canFullscreen = () => typeof document.documentElement.requestFullscreen === 'function';
 
 const TOOLS = [
     ['select', SelectIcon],
@@ -16,6 +19,20 @@ export default function MobileBar({
     onUndo, onRedo, onAddPart, onDelete,
     onSave, canSave, hasMap, playing, onPlay, onStop,
 }) {
+    const [full, setFull] = useState(false);
+
+    useEffect(() => {
+        const on = () => setFull(!!document.fullscreenElement);
+        document.addEventListener('fullscreenchange', on);
+
+        return () => document.removeEventListener('fullscreenchange', on);
+    }, []);
+
+    const toggleFull = () => {
+        if (document.fullscreenElement) document.exitFullscreen?.();
+        else document.documentElement.requestFullscreen?.().catch(() => {});
+    };
+
     return (
         <div className="mobilebar">
             {TOOLS.map(([id, Icon]) => (
@@ -38,6 +55,11 @@ export default function MobileBar({
                 <DeleteIcon />
             </button>
             <span className="mb-grow" />
+            {canFullscreen() && (
+                <button className="mb-btn" onClick={toggleFull} title={full ? 'Exit fullscreen' : 'Fullscreen'}>
+                    {full ? <Minimize /> : <Maximize />}
+                </button>
+            )}
             <button
                 className={`mb-btn ${playing ? 'active' : ''}`}
                 onClick={playing ? onStop : onPlay}
