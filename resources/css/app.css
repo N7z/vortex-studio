@@ -1,6 +1,6 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
-html, body, #root { height: 100%; overflow: hidden; }
+html, body, #root { height: 100%; overflow: hidden; overscroll-behavior: none; }
 
 body {
     font-family: 'Segoe UI', system-ui, sans-serif;
@@ -238,7 +238,7 @@ a.tool-btn { text-decoration: none; }
 
 .main { display: flex; flex: 1; min-height: 0; }
 .viewport-wrap { flex: 1; position: relative; min-width: 0; }
-.viewport-wrap canvas { display: block; }
+.viewport-wrap canvas { display: block; touch-action: none; }
 
 .sidebar {
     width: 240px;
@@ -849,6 +849,171 @@ a.tool-btn { text-decoration: none; }
     cursor: pointer;
 }
 .start-footer-close:hover { color: #ddd; }
+
+/* ---------- mobile shell ---------- */
+
+.mobilebar {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 48px;
+    flex: none;
+    padding: 0 6px;
+    background: #0a0a0d;
+    border-bottom: 1px solid #000;
+}
+.mb-btn {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 5px;
+    background: none;
+    color: #b9b9c0;
+    cursor: pointer;
+}
+.mb-btn.active { background: #1d2b44; color: #cfe0ff; }
+.mb-btn:disabled { color: #43434c; }
+.mb-btn svg { width: 20px; height: 20px; }
+.mb-sep { flex: none; width: 1px; height: 24px; background: #26262e; margin: 0 4px; }
+.mb-grow { flex: 1; }
+
+.studio.mobile .main { position: relative; }
+.studio.mobile .toolbar { display: none; }
+.studio.mobile .menubar { height: 34px; }
+.studio.mobile .tabbar { overflow-x: auto; }
+.studio.mobile .credit { display: none; }
+
+.drawer-handle {
+    position: absolute;
+    top: 50%;
+    right: 0;
+    transform: translateY(-50%);
+    z-index: 26;
+    width: 22px;
+    height: 64px;
+    border: 1px solid #26262e;
+    border-right: none;
+    border-radius: 6px 0 0 6px;
+    background: #14141a;
+    color: #b9b9c0;
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+}
+.drawer-handle.open { right: 260px; }
+
+.sidebar.drawer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 25;
+    width: 260px;
+    transform: translateX(100%);
+    transition: transform 160ms ease;
+    border-left: 1px solid #26262e;
+}
+.sidebar.drawer.open { transform: none; }
+
+.drawer-tabs { display: flex; flex: none; border-bottom: 1px solid #1c1c22; }
+.drawer-tabs button {
+    flex: 1;
+    padding: 10px 4px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: #8f8f98;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+.drawer-tabs button.on { color: #e5e5ea; border-bottom-color: #2563eb; }
+
+.touch-actions {
+    position: absolute;
+    left: 50%;
+    bottom: 14px;
+    transform: translateX(-50%);
+    z-index: 24;
+    display: flex;
+    gap: 6px;
+    padding: 5px;
+    border: 1px solid #26262e;
+    border-radius: 8px;
+    background: rgba(20, 20, 26, 0.94);
+}
+.touch-actions button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    color: #b9b9c0;
+    font-size: 17px;
+    line-height: 1;
+    cursor: pointer;
+}
+.touch-actions button:active { background: #1d2b44; }
+.touch-actions button svg { width: 19px; height: 19px; }
+
+.touch-play { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
+.touch-play .stick {
+    position: absolute;
+    left: 22px;
+    bottom: 26px;
+    width: 128px;
+    height: 128px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 50%;
+    background: rgba(20, 20, 26, 0.35);
+    pointer-events: auto;
+    touch-action: none;
+}
+.touch-play .knob {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 54px;
+    height: 54px;
+    margin: -27px 0 0 -27px;
+    border-radius: 50%;
+    background: rgba(214, 214, 224, 0.5);
+}
+.touch-play .jump {
+    position: absolute;
+    right: 26px;
+    bottom: 40px;
+    width: 92px;
+    height: 92px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 50%;
+    background: rgba(20, 20, 26, 0.45);
+    color: #e5e5ea;
+    font: inherit;
+    font-size: 14px;
+    pointer-events: auto;
+    touch-action: none;
+}
+.touch-play .jump:active { background: rgba(37, 99, 235, 0.4); }
+.touch-play .leave-play {
+    position: absolute;
+    right: 12px;
+    top: 12px;
+    padding: 8px 14px;
+    border: 1px solid #26262e;
+    border-radius: 6px;
+    background: rgba(20, 20, 26, 0.9);
+    color: #b9b9c0;
+    font: inherit;
+    pointer-events: auto;
+}
 
 /* ---------- play test ---------- */
 

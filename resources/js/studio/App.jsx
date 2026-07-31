@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import MenuBar from './MenuBar';
 import Toolbar from './Toolbar';
+import MobileBar from './MobileBar';
+import TouchControls from './play/TouchControls';
+import useIsMobile from './useIsMobile';
 import StartScreen from './StartScreen';
 import Explorer from './Explorer';
 import Properties from './Properties';
@@ -20,6 +23,7 @@ import {
     addOp, applyOp, fillPart, invertOp, patchOp, removeOp, repairParts, stripIds,
     transformOp, withNewId,
 } from './ops';
+import { DeleteIcon, DuplicateIcon } from './icons';
 import { loadGraphics, saveGraphics } from './graphics';
 import { roomFromUrl } from './live';
 import useLive from './useLive';
@@ -68,6 +72,10 @@ export default function App() {
     const [groups, setGroups] = useState([]);
     const [tabs, setTabs] = useState([]);
     const [activeTab, setActiveTab] = useState('home');
+    const mobile = useIsMobile();
+    const [drawer, setDrawer] = useState(false);
+    const [drawerTab, setDrawerTab] = useState('explorer');
+    const touchRef = useRef(null);
     const [playing, setPlaying] = useState(false);
     const [teamOpen, setTeamOpen] = useState(false);
     const [statsOpen, setStatsOpen] = useState(false);
@@ -775,6 +783,10 @@ export default function App() {
     }, [selectedIds, edit]);
 
     useEffect(() => {
+        if (mobile && selected) setDrawerTab('properties');
+    }, [mobile, selected?._id]);
+
+    useEffect(() => {
         const onBeforeUnload = (e) => {
             if (dirty.current) {
                 e.preventDefault();
@@ -834,8 +846,9 @@ export default function App() {
         groupSelection, ungroupSelection, playing, mapName]);
 
     return (
-        <div className="studio">
+        <div className={mobile ? 'studio mobile' : 'studio'}>
             <MenuBar
+                mobile={mobile}
                 hasMap={!!mapName} canEdit={canEdit}
                 hasSelection={!!selected} hasClipboard={!!clipboard.current}
                 onSave={save} canSave={canSaveToServer}
@@ -855,6 +868,20 @@ export default function App() {
                 plugins={plugins} activePluginId={activePluginId}
                 onTogglePlugin={togglePlugin} onNewPlugin={openNewPluginTab}
             />
+            {mobile ? (
+                <MobileBar
+                    tool={tool} setTool={setTool}
+                    hasSelection={!!selected} canEdit={canEdit}
+                    onUndo={undo} onRedo={redo}
+                    onAddPart={() => addPart(NEW_PART)}
+                    onDelete={removeSelected}
+                    onSave={save} canSave={canSaveToServer}
+                    hasMap={!!mapName}
+                    playing={playing}
+                    onPlay={() => { setSelectedIds([]); setPlaying(true); }}
+                    onStop={() => setPlaying(false)}
+                />
+            ) : (
             <Toolbar
                 tool={tool} setTool={setTool}
                 snap={snap} setSnap={setSnap}
@@ -874,6 +901,7 @@ export default function App() {
                 onPlay={() => { setSelectedIds([]); setPlaying(true); }}
                 onStop={() => setPlaying(false)}
             />
+            )}
             <TabBar
                 tabs={[
                     { id: 'home', title: 'Welcome', icon: 'globe', closable: false },
@@ -930,7 +958,11 @@ export default function App() {
                         busyRef={busyRef}
                         playing={playing}
                         onExitPlay={() => setPlaying(false)}
+                        touchRef={touchRef}
                     />
+                    {mobile && playing && (
+                        <TouchControls inputRef={touchRef} onExit={() => setPlaying(false)} />
+                    )}
                     {activePlugin && mapName && (
                         <PluginPanel
                             plugin={activePlugin}
@@ -967,26 +999,62 @@ export default function App() {
                             onClose={() => setStatsOpen(false)}
                         />
                     )}
+                    {mobile && mapName && !playing && selectedIds.length > 0 && canEdit && (
+                        <div className="touch-actions">
+                            <button onClick={duplicate} title="Duplicate"><DuplicateIcon /></button>
+                            <button onClick={removeSelected} title="Delete"><DeleteIcon /></button>
+                            <button onClick={() => setSelectedIds([])} title="Deselect">×</button>
+                        </div>
+                    )}
                     {mapName && <span className="credit">Developed by zPaulinBRz</span>}
                     {status && <div className="statusbar">{status}</div>}
                 </div>
-                <div className="sidebar">
-                    <Explorer
-                        parts={parts}
-                        selectedIds={selectedIds}
-                        setSelectedId={setSelectedId}
-                        selectMany={selectMany}
-                        groups={groups}
-                        onUngroup={ungroup}
-                        onRenameGroup={renameGroup}
-                        mapName={mapName}
-                    />
-                    <Properties
-                        part={selected}
-                        count={selectedIds.length}
-                        onChange={updateSelected}
-                        readOnly={!canEdit}
-                    />
+                {mobile && (
+                    <button
+                        className={drawer ? 'drawer-handle open' : 'drawer-handle'}
+                        onClick={() => setDrawer((o) => !o)}
+                        title={drawer ? 'Hide panel' : 'Show panel'}
+                    >
+                        {drawer ? '›' : '‹'}
+                    </button>
+                )}
+                <div className={`sidebar${mobile ? ' drawer' : ''}${mobile && drawer ? ' open' : ''}`}>
+                    {mobile && (
+                        <div className="drawer-tabs">
+                            <button
+                                className={drawerTab === 'explorer' ? 'on' : ''}
+                                onClick={() => setDrawerTab('explorer')}
+                            >
+                                Explorer
+                            </button>
+                            <button
+                                className={drawerTab === 'properties' ? 'on' : ''}
+                                onClick={() => setDrawerTab('properties')}
+                            >
+                                Properties
+                            </button>
+                        </div>
+                    )}
+                    {(!mobile || drawerTab === 'explorer') && (
+                        <Explorer
+                            parts={parts}
+                            selectedIds={selectedIds}
+                            setSelectedId={setSelectedId}
+                            selectMany={selectMany}
+                            groups={groups}
+                            onUngroup={ungroup}
+                            onRenameGroup={renameGroup}
+                            mapName={mapName}
+                        />
+                    )}
+                    {(!mobile || drawerTab === 'properties') && (
+                        <Properties
+                            part={selected}
+                            count={selectedIds.length}
+                            onChange={updateSelected}
+                            readOnly={!canEdit}
+                        />
+                    )}
                 </div>
             </div>
         </div>

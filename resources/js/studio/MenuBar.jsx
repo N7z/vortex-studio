@@ -71,7 +71,7 @@ export default function MenuBar({
     graphics, onGraphics,
     teamOpen, onToggleTeam,
     statsOpen, onToggleStats,
-    plugins, activePluginId, onTogglePlugin, onNewPlugin,
+    plugins, activePluginId, onTogglePlugin, onNewPlugin, mobile,
 }) {
     const [openMenu, setOpenMenu] = useState(null);
     const robloxRef = useRef(null);
@@ -135,7 +135,7 @@ export default function MenuBar({
             checked: (graphics.mode ?? 'lit') === value,
             onClick: () => onGraphics({ mode: value }),
         }))],
-        ['Plugins', [
+        ...(mobile ? [] : [['Plugins', [
             ...plugins.map((p) => ({
                 label: p.name,
                 checked: activePluginId === p.id,
@@ -144,7 +144,7 @@ export default function MenuBar({
             })),
             ...(plugins.length ? [SEP] : []),
             { label: 'New plugin...', onClick: onNewPlugin, disabled: !hasMap },
-        ]],
+        ]]]),
         ['Help', [
             { label: 'Shortcuts', onClick: () => setPop('help') },
             { label: 'Server stats', onClick: showStats },

@@ -155,7 +155,7 @@ export default function Viewport({
     parts, selectedIds, setSelectedId, selectMany, tool, snap, onTransform, onTransformMany,
     mapName, graphics, preview, spawnRef, busyRef, canEdit = true, peers, onView,
     faces, showFaces = false, statsRef,
-    playing = false, onExitPlay,
+    playing = false, onExitPlay, touchRef,
 }) {
     const mountRef = useRef(null);
     const ctx = useRef(null);
@@ -203,9 +203,11 @@ export default function Viewport({
             MIDDLE: THREE.MOUSE.PAN,
             RIGHT: null,
         };
+        orbit.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
         orbit.target.set(0, 0, 0);
 
         const gizmo = new TransformControls(camera, renderer.domElement);
+        if (window.matchMedia?.('(pointer: coarse)').matches) gizmo.size = 1.6;
         scene.add(gizmo.getHelper());
 
         // One outline per selected part, created on demand and reused. Every part is a
@@ -657,6 +659,9 @@ export default function Viewport({
             );
         };
 
+        let longPress = null;
+        let longFired = false;
+
         const onDown = (e) => {
             if (ctx.current?.session) return;
             down.x = e.clientX;
@@ -664,10 +669,21 @@ export default function Viewport({
             if (e.button === 2) setFlying(true);
             if (e.button !== 0 || gizmo.dragging || gizmo.axis) return;
             const mesh = e.altKey ? null : pickMesh(e);
+            if (mesh && e.pointerType !== 'mouse') {
+                longFired = false;
+                clearTimeout(longPress);
+                longPress = setTimeout(() => {
+                    longPress = null;
+                    longFired = true;
+                    pending = null;
+                    ctx.current?.setSelectedId(mesh.userData.id, true, null);
+                }, 450);
+            }
             if (mesh) {
                 pending = { mesh };
                 return;
             }
+            if (e.pointerType !== 'mouse') return;
             if (e.altKey || ctx.current?.tool === 'select') {
                 marquee = { x: e.clientX, y: e.clientY, active: false, additive: e.ctrlKey || e.metaKey };
             }
@@ -675,6 +691,10 @@ export default function Viewport({
 
         const onMove = (e) => {
             if (ctx.current?.session) return;
+            if (longPress && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) {
+                clearTimeout(longPress);
+                longPress = null;
+            }
             if (pending && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) startDrag(e);
             if (drag) moveDrag(e);
             if (marquee) {
@@ -689,6 +709,13 @@ export default function Viewport({
         const onUp = (e) => {
             if (ctx.current?.session) return;
             if (e.button !== 0) return;
+            clearTimeout(longPress);
+            longPress = null;
+            if (longFired) {
+                longFired = false;
+                endDrag(e);
+                return;
+            }
             if (marquee) {
                 const active = marquee.active;
                 if (renderer.domElement.hasPointerCapture(e.pointerId)) {
@@ -718,6 +745,19 @@ export default function Viewport({
                 hits.length ? snapNormal(hits[0].face?.normal) : null,
             );
         };
+        const orbitHost = renderer.domElement.parentElement ?? window;
+        const claimTouch = (e) => {
+            if (e.pointerType === 'mouse' || ctx.current?.session) return;
+            if (gizmo.dragging || gizmo.axis) return;
+            orbit.enabled = !pickMesh(e);
+        };
+        const freeTouch = () => {
+            if (!drag && !marquee && !gizmo.dragging) orbit.enabled = true;
+        };
+
+        orbitHost.addEventListener('pointerdown', claimTouch, true);
+        window.addEventListener('pointerup', freeTouch);
+        window.addEventListener('pointercancel', freeTouch);
         renderer.domElement.addEventListener('pointerdown', onDown);
         renderer.domElement.addEventListener('pointermove', onMove);
         renderer.domElement.addEventListener('pointerup', onUp);
@@ -1002,6 +1042,9 @@ export default function Viewport({
         return () => {
             cancelAnimationFrame(raf);
             ro.disconnect();
+            orbitHost.removeEventListener('pointerdown', claimTouch, true);
+            window.removeEventListener('pointerup', freeTouch);
+            window.removeEventListener('pointercancel', freeTouch);
             renderer.domElement.removeEventListener('pointerdown', onDown);
             renderer.domElement.removeEventListener('pointermove', onMove);
             renderer.domElement.removeEventListener('pointerup', onUp);
@@ -1079,9 +1122,11 @@ export default function Viewport({
                 onExit: onExitPlay,
             });
             ctx.current.session = session;
+            if (touchRef) touchRef.current = session.touch;
         });
         return () => {
             cancelled = true;
+            if (touchRef) touchRef.current = null;
             if (ctx.current) {
                 ctx.current.session = null;
                 ctx.current.leavePlay();

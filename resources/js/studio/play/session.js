@@ -23,6 +23,7 @@ export function createSession({ scene, camera, canvas, parts, onExit }) {
     const start = { x: sx, y: sy, z: sz };
 
     const keys = new Set();
+    const touch = { forward: 0, strafe: 0, jump: false };
     let yaw = 0;
     let pitch = 0.22;
     let distance = CAM_DISTANCE;
@@ -53,7 +54,8 @@ export function createSession({ scene, camera, canvas, parts, onExit }) {
     let lastY = 0;
 
     const onPointerDown = (e) => {
-        if (e.button !== 2 || looking !== null) return;
+        if (looking !== null) return;
+        if (e.pointerType === 'mouse' && e.button !== 2) return;
         e.preventDefault();
         looking = e.pointerId;
         lastX = e.clientX;
@@ -63,7 +65,7 @@ export function createSession({ scene, camera, canvas, parts, onExit }) {
     };
     const onPointerMove = (e) => {
         if (looking === null || e.pointerId !== looking) return;
-        if ((e.buttons & 2) === 0) {
+        if (e.pointerType === 'mouse' && (e.buttons & 2) === 0) {
             stopLooking(e);
             return;
         }
@@ -113,14 +115,17 @@ export function createSession({ scene, camera, canvas, parts, onExit }) {
     const eye = new THREE.Vector3();
     const focus = new THREE.Vector3();
 
+    const clamp1 = (v) => Math.max(-1, Math.min(1, v));
+
     return {
         state,
+        touch,
         update(dt) {
             elapsed += dt;
             move.step(state, {
-                forward: axis(FORWARD_KEYS, BACK_KEYS),
-                strafe: axis(RIGHT_KEYS, LEFT_KEYS),
-                jump: keys.has('Space'),
+                forward: clamp1(axis(FORWARD_KEYS, BACK_KEYS) + touch.forward),
+                strafe: clamp1(axis(RIGHT_KEYS, LEFT_KEYS) + touch.strafe),
+                jump: keys.has('Space') || touch.jump,
                 yaw,
             }, dt, world);
 
