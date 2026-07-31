@@ -20,7 +20,7 @@ class AccountController extends Controller
     {
         $u = Auth::user();
 
-        return $u ? ['name' => $u->name, 'email' => $u->email] : null;
+        return $u ? ['name' => $u->name, 'email' => $u->email, 'admin' => (bool) $u->is_admin] : null;
     }
 
     public function me(): array
@@ -74,6 +74,10 @@ class AccountController extends Controller
         $user = User::where('email', $data['email'])->first();
         if (! $user || ! Hash::check($data['password'], $user->password)) {
             return response()->json(['message' => 'Those details did not match an account.'], 422);
+        }
+
+        if ($user->banned_at) {
+            return response()->json(['message' => 'This account has been suspended.'], 403);
         }
 
         return $this->signIn($request, $user, (bool) $request->boolean('remember'));

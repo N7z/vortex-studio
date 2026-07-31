@@ -17,7 +17,7 @@ import {
     loadPlugins, stripId, compilePlugin, saveUserPlugin, deleteUserPlugin,
     userPluginSource, isBuiltin, resetBuiltin,
 } from './plugins';
-import { loadMap, saveMap } from './api';
+import { loadMap, loadMapAsAdmin, saveMap } from './api';
 import { writeBackup } from './backup';
 import {
     addOp, applyOp, fillPart, invertOp, patchOp, removeOp, repairParts, stripIds,
@@ -84,6 +84,7 @@ export default function App() {
     const [statsOpen, setStatsOpen] = useState(false);
     const statsRef = useRef(null);
     const [joining, setJoining] = useState(() => roomFromUrl());
+    const [viewing] = useState(() => new URLSearchParams(window.location.search).get('view'));
     const tabSeq = useRef(0);
     const previewSeq = useRef(0);
     const [status, setStatus] = useState('');
@@ -176,7 +177,7 @@ export default function App() {
 
     const liveRef = useRef(live);
     liveRef.current = live;
-    const canEdit = (!live.live || live.canEdit) && !playing;
+    const canEdit = (!live.live || live.canEdit) && !playing && !viewing;
     const canEditRef = useRef(canEdit);
     canEditRef.current = canEdit;
 
@@ -675,7 +676,7 @@ export default function App() {
         ], true);
     };
 
-    const canSaveToServer = !!mapName && (!live.live || live.isOwner);
+    const canSaveToServer = !!mapName && (!live.live || live.isOwner) && !viewing;
 
     const save = useCallback(async (auto) => {
         if (!mapName) return false;
@@ -842,6 +843,16 @@ export default function App() {
         window.addEventListener('beforeunload', onBeforeUnload);
         return () => window.removeEventListener('beforeunload', onBeforeUnload);
     }, []);
+
+    useEffect(() => {
+        if (!viewing) return;
+        loadMapAsAdmin(viewing)
+            .then((m) => {
+                resetDocument(m.name, m.parts.map(withNewId), false);
+                flash(`Viewing ${m.name} as admin, read-only`);
+            })
+            .catch((e) => flash(String(e.message ?? e)));
+    }, [viewing]);
 
     const [updateReady, setUpdateReady] = useState(false);
     const [updateHidden, setUpdateHidden] = useState(false);

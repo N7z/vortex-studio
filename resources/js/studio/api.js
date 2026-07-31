@@ -28,6 +28,13 @@ export async function listMaps() {
     return r.json();
 }
 
+/** Any map by id, for an admin opening someone else's. 404 for everyone else. */
+export async function loadMapAsAdmin(id) {
+    const r = await fetch(`/admin/maps/${encodeURIComponent(id)}`, { headers: { Accept: 'application/json' } });
+    if (!r.ok) throw new Error('that map could not be opened');
+    return r.json();
+}
+
 // A bare array is what an older server returns; both shapes stay readable.
 export async function loadMap(name) {
     const r = await fetch(`/api/maps/${encodeURIComponent(name)}`);

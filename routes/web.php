@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AccountController;
+use App\Http\Controllers\AdminController;
 use App\Http\Controllers\MapController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Vite;
@@ -22,4 +23,15 @@ Route::middleware('throttle:60,1')->group(function () {
     Route::get('/api/maps', [MapController::class, 'index']);
     Route::get('/api/maps/{name}', [MapController::class, 'show']);
     Route::put('/api/maps/{name}', [MapController::class, 'save']);
+});
+
+Route::prefix('admin')->middleware('admin')->group(function () {
+    Route::get('/', [AdminController::class, 'page']);
+    Route::get('/overview', [AdminController::class, 'overview']);
+    Route::get('/users', [AdminController::class, 'users']);
+    Route::patch('/users/{user}', [AdminController::class, 'updateUser']);
+    Route::delete('/users/{user}', [AdminController::class, 'deleteUser']);
+    Route::get('/maps', [AdminController::class, 'maps']);
+    Route::get('/maps/{id}', [AdminController::class, 'map'])->whereNumber('id');
+    Route::delete('/maps/{id}', [AdminController::class, 'deleteMap'])->whereNumber('id');
 });
