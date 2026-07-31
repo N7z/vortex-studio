@@ -3,6 +3,13 @@ import { BODY_HEIGHT, FEET_OFFSET } from './movement';
 
 const BASE = '/play';
 const CLIPS = ['idle', 'walk', 'jump', 'fall'];
+
+// Stepping off a lip leaves the ground for a frame or two. With GRAVITY at -196.2 this
+// is about a one stud drop, below which the walk keeps playing instead of the fall.
+const FALL_SPEED = 20;
+
+const falling = (state) => !state.grounded && state.vy < -FALL_SPEED;
+const airborne = (state) => !state.grounded && (state.vy > 0 || falling(state));
 const BLEND = 0.15;
 
 function makeFaceTexture() {
@@ -103,7 +110,7 @@ function blocks() {
         object: rig.object,
         fallback: true,
         update(dt, state, t) {
-            rig.setPose(t, state.moving, !state.grounded);
+            rig.setPose(t, state.moving, airborne(state));
         },
         dispose() {},
     };
@@ -182,8 +189,9 @@ export async function createCharacter() {
         object: holder,
         fallback: false,
         update(dt, state) {
-            if (!state.grounded) play(state.vy > 0 ? 'jump' : 'fall');
-            else play(state.moving ? 'walk' : 'idle');
+            if (!state.grounded && state.vy > 0) play('jump');
+            else if (falling(state)) play('fall');
+            else if (state.grounded) play(state.moving ? 'walk' : 'idle');
             mixer.update(dt);
         },
         dispose() {
