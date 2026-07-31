@@ -11,7 +11,7 @@ const ago = (ms) => {
 };
 
 export default function StartScreen({
-    onOpen, onCreate, onUpload, onRestore, joining, liveStatus,
+    onOpen, onCreate, onUpload, onRestore, onImportRoblox, joining, liveStatus,
 }) {
     const [mine, setMine] = useState([]);
     const [examples, setExamples] = useState([]);
@@ -19,6 +19,7 @@ export default function StartScreen({
     const [backups, setBackups] = useState(() => listBackups());
     const [error, setError] = useState('');
     const fileRef = useRef(null);
+    const robloxRef = useRef(null);
 
     const restore = (name) => {
         const parts = readBackup(name);
@@ -79,12 +80,24 @@ export default function StartScreen({
                 <h1>Paulin Studio</h1>
                 <a onClick={create}>Create new project</a>
                 <a onClick={pickFile}>Upload a map (.json)</a>
+                <a onClick={() => robloxRef.current?.click()}>Import a Roblox place (.json)</a>
                 <input
                     ref={fileRef}
                     type="file"
                     accept=".json,application/json"
                     style={{ display: 'none' }}
                     onChange={onFile}
+                />
+                <input
+                    ref={robloxRef}
+                    type="file"
+                    accept=".json,application/json"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = '';
+                        if (file) onImportRoblox?.(file);
+                    }}
                 />
                 {joining && (
                     <div className="join-row joining">

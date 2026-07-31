@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { loadStats } from './api';
 import { MODES, PRESETS, SCALES, SHADOW_RES, presetName } from './graphics';
 
@@ -57,6 +57,7 @@ function Menu({ title, items, open, onOpen, onHover, onClose }) {
 export default function MenuBar({
     hasMap, canEdit, hasSelection, hasClipboard,
     onSave, canSave, onDownload, canDownload,
+    onImportRoblox, onPasteRoblox, canImport,
     onUndo, onRedo, onCopy, onPaste, onDuplicate, onDelete,
     onSelectAll, onGroup, onUngroup,
     onAddPart, onAddSpawn,
@@ -66,6 +67,7 @@ export default function MenuBar({
     plugins, activePluginId, onTogglePlugin, onNewPlugin,
 }) {
     const [openMenu, setOpenMenu] = useState(null);
+    const robloxRef = useRef(null);
     const [pop, setPop] = useState(null); // null | 'gfx' | 'stats' | 'help'
     const [stats, setStats] = useState(null);
 
@@ -94,6 +96,9 @@ export default function MenuBar({
         ['File', [
             { label: 'Save', shortcut: 'Ctrl+S', onClick: onSave, disabled: !canSave },
             { label: 'Download .json', onClick: onDownload, disabled: !canDownload },
+            SEP,
+            { label: 'Import Roblox place...', onClick: () => robloxRef.current?.click(), disabled: !canImport },
+            { label: 'Paste Roblox JSON...', onClick: onPasteRoblox, disabled: !canImport },
         ]],
         ['Edit', [
             { label: 'Undo', shortcut: 'Ctrl+Z', onClick: onUndo, disabled: noEdit },
@@ -141,6 +146,17 @@ export default function MenuBar({
 
     return (
         <div className="menubar">
+            <input
+                ref={robloxRef}
+                type="file"
+                accept=".json,application/json"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = '';
+                    if (file) onImportRoblox?.(file);
+                }}
+            />
             {MENUS.map(([title, items]) => (
                 <Menu
                     key={title}
