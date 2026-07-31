@@ -68,6 +68,7 @@ export class LiveClient {
     constructor(handlers) {
         this.handlers = handlers;
         this.ws = null;
+        this.identity = null;
         this.intent = null;
         this.code = null;
         this.token = null;
@@ -96,8 +97,11 @@ export class LiveClient {
         this.connect();
     }
 
-    connect() {
+    async connect() {
         this.closing = false;
+        // Refetched per attempt: the proof expires, and a reconnect can be much later.
+        this.identity = await this.handlers.onIdentity?.().catch(() => null) ?? null;
+        if (this.closing) return;
         const url = liveUrl();
         if (blockedAsInsecure(url)) {
             this.closing = true;
@@ -125,7 +129,7 @@ export class LiveClient {
             const hello = this.code
                 ? { t: 'join', code: this.code, token: this.token }
                 : this.intent;
-            ws.send(JSON.stringify(hello));
+            ws.send(JSON.stringify({ ...hello, identity: this.identity }));
         };
 
         ws.onmessage = (e) => {

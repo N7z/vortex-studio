@@ -43,6 +43,27 @@ it('refuses a wrong password without saying which field was wrong', function () 
     $this->postJson('/account/login', ['email' => 'p@example.com', 'password' => 'correct horse'])->assertOk();
 });
 
+it('issues a live token only to a signed-in user with a secret configured', function () {
+    config(['services.live.secret' => 'shared-with-laravel']);
+
+    $this->getJson('/account/live-token')->assertOk()->assertJson(['token' => null]);
+
+    $user = User::create(['name' => 'zpaulin', 'email' => 'p@example.com', 'password' => 'correct horse']);
+    $token = $this->actingAs($user)->getJson('/account/live-token')->assertOk()->json('token');
+
+    [$name, $exp, $sig] = explode('.', $token);
+    expect(base64_decode(strtr($name, '-_', '+/')))->toBe('zpaulin');
+    expect((int) $exp)->toBeGreaterThan(time());
+    expect($sig)->toBe(hash_hmac('sha256', "$name.$exp", 'shared-with-laravel'));
+});
+
+it('issues no live token when no secret is configured', function () {
+    config(['services.live.secret' => null]);
+    $user = User::create(['name' => 'zpaulin', 'email' => 'p@example.com', 'password' => 'correct horse']);
+
+    $this->actingAs($user)->getJson('/account/live-token')->assertOk()->assertJson(['token' => null]);
+});
+
 it('leaves the anonymous flow working with no account', function () {
     asToken()->putJson('/api/maps/anon', [APART])->assertOk();
     asToken()->getJson('/api/maps/anon')->assertOk()->assertJson([APART]);

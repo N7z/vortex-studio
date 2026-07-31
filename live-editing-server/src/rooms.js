@@ -1,4 +1,5 @@
 import { config } from './config.js';
+import { uniqueName } from './identity.js';
 import { MEMBER_COLORS, randomCode, randomId, randomName } from './names.js';
 import { applyOp, validateOp } from './ops.js';
 
@@ -10,11 +11,11 @@ export const ROLE_SPECTATOR = 'spectator';
 const now = () => Date.now();
 
 class Member {
-    constructor(socket, taken) {
+    constructor(socket, taken, verifiedName = null) {
         this.id = randomId();
         this.token = randomId();
         this.socket = socket;
-        this.name = randomName(taken);
+        this.name = (verifiedName && uniqueName(verifiedName, taken)) || randomName(taken);
         this.role = ROLE_SPECTATOR;
         this.joinedAt = now();
         this.selection = [];
@@ -101,11 +102,11 @@ class Room {
         }
     }
 
-    add(socket, token) {
+    add(socket, token, verifiedName = null) {
         this.pruneDeparted();
         const back = token ? this.departed.get(token) : null;
 
-        const member = new Member(socket, this.takenNames());
+        const member = new Member(socket, this.takenNames(), verifiedName);
         if (back) {
             this.departed.delete(token);
             member.id = back.id;

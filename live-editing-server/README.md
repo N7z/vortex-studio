@@ -63,6 +63,22 @@ the browser imports that same file (`resources/js/studio/ops.js` re-exports it).
 copies of `applyOp` that drifted apart would silently desynchronise clients, so there is
 one copy and both sides run it.
 
+## Member names and `LIVE_SECRET`
+
+A member is normally given a random `Adjective Animal` name. A signed-in studio user
+gets their account name instead, and because this process never talks to Laravel, the
+name has to arrive with proof: `GET /account/live-token` returns
+`base64url(name).expiry.hmac_sha256(name.expiry, LIVE_SECRET)`, valid for 5 minutes,
+and the client passes it as `identity` on `create`/`join`.
+
+**Set the same `LIVE_SECRET` in this `.env` and in the studio's `.env`.** Without it,
+nothing verifies and every member keeps a random name, which is the safe failure: a
+name that cannot be proven is never shown. The client refetches the token on every
+connection attempt, since a reconnect can happen long after the first join.
+
+Note this proves *the name*, not authorisation. Roles are still granted by the room
+owner, and the token cannot be replayed into a different room to gain anything.
+
 ## Roles
 
 A room has one **owner** (whoever opened it, and it passes to the longest-present member

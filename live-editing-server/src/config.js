@@ -35,6 +35,7 @@ const origins = (process.env.ALLOWED_ORIGINS ?? '*')
 
 export const config = {
     port: num('PORT', 8787),
+    liveSecret: process.env.LIVE_SECRET ?? '',
     allowAnyOrigin: origins.includes('*'),
     allowedOrigins: new Set(origins),
     roomGraceMs: num('ROOM_GRACE_SECONDS', 120) * 1000,

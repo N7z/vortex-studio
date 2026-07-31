@@ -2,6 +2,7 @@ import http from 'node:http';
 import { WebSocketServer } from 'ws';
 
 import { config, originAllowed } from './config.js';
+import { verifyName } from './identity.js';
 import { normaliseCode } from './names.js';
 import { validPart } from './ops.js';
 import {
@@ -96,7 +97,7 @@ export function createLiveServer({ log = () => {} } = {}) {
         const room = createRoom(mapName, parts, groups);
         if (!room) return refuse(ws, 'the server is at its room limit, try again later');
 
-        const { member } = room.add(ws);
+        const { member } = room.add(ws, null, verifyName(msg.identity));
         log(`room ${room.code} created for ${mapName} by ${member.name}`);
         welcome(ws, room, member, false);
     }
@@ -107,7 +108,7 @@ export function createLiveServer({ log = () => {} } = {}) {
         if (room.members.size >= config.maxMembersPerRoom) return refuse(ws, 'that session is full');
 
         const token = typeof msg.token === 'string' ? msg.token : null;
-        const { member, resumed } = room.add(ws, token);
+        const { member, resumed } = room.add(ws, token, verifyName(msg.identity));
         log(`room ${room.code}: ${member.name} ${resumed ? 'reconnected' : 'joined'} (${room.members.size} present)`);
         welcome(ws, room, member, resumed);
     }

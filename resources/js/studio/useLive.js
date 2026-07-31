@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { liveToken } from './api';
 import { LiveClient } from './live';
 
 const EMPTY = [];
@@ -57,6 +58,7 @@ export default function useLive({
                 setMembers(EMPTY);
             },
             onError: (message) => cbs.current.onError?.(message),
+            onIdentity: () => liveToken(),
         });
     }
 

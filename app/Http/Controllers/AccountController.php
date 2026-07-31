@@ -14,6 +14,8 @@ class AccountController extends Controller
 {
     private const MAX_CLAIM = 50;
 
+    private const TOKEN_TTL = 300;
+
     public static function current(): ?array
     {
         $u = Auth::user();
@@ -24,6 +26,25 @@ class AccountController extends Controller
     public function me(): array
     {
         return ['account' => self::current()];
+    }
+
+    /**
+     * A short-lived proof of username for the live server, which never talks to
+     * Laravel. No secret configured means no proof, and members stay anonymous.
+     */
+    public function liveToken(): array
+    {
+        $user = Auth::user();
+        $secret = config('services.live.secret');
+        if (! $user || ! is_string($secret) || $secret === '') {
+            return ['token' => null];
+        }
+
+        $name = rtrim(strtr(base64_encode($user->name), '+/', '-_'), '=');
+        $exp = time() + self::TOKEN_TTL;
+        $sig = hash_hmac('sha256', "$name.$exp", $secret);
+
+        return ['token' => "$name.$exp.$sig"];
     }
 
     public function register(Request $request)

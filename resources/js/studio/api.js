@@ -17,6 +17,7 @@ async function account(path, body) {
 }
 
 export const loadAccount = () => account('/');
+export const liveToken = () => account('/live-token').then((d) => d.token ?? null).catch(() => null);
 export const register = (fields) => account('/register', fields);
 export const login = (fields) => account('/login', fields);
 export const logout = () => account('/logout', {});
