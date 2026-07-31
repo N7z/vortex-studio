@@ -46,15 +46,18 @@ export function loadGraphics() {
     }
     if (!stored || typeof stored !== 'object') stored = {};
     const legacyStuds = localStorage.getItem('studio_studs');
+    const base = window.matchMedia?.('(pointer: coarse)').matches
+        ? { ...DEFAULTS, ...PRESETS.Low }
+        : DEFAULTS;
     return {
-        shadows: typeof stored.shadows === 'boolean' ? stored.shadows : DEFAULTS.shadows,
-        shadowRes: pick(stored.shadowRes, SHADOW_RES, DEFAULTS.shadowRes),
-        scale: pick(stored.scale, SCALES, DEFAULTS.scale),
+        shadows: typeof stored.shadows === 'boolean' ? stored.shadows : base.shadows,
+        shadowRes: pick(stored.shadowRes, SHADOW_RES, base.shadowRes),
+        scale: pick(stored.scale, SCALES, base.scale),
         studs: typeof stored.studs === 'boolean'
             ? stored.studs
-            : (legacyStuds === null ? DEFAULTS.studs : legacyStuds !== '0'),
-        grid: typeof stored.grid === 'boolean' ? stored.grid : DEFAULTS.grid,
-        mode: pick(stored.mode, MODES, DEFAULTS.mode),
+            : (legacyStuds === null ? base.studs : legacyStuds !== '0'),
+        grid: typeof stored.grid === 'boolean' ? stored.grid : base.grid,
+        mode: pick(stored.mode, MODES, base.mode),
     };
 }
 

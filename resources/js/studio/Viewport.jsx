@@ -679,11 +679,11 @@ export default function Viewport({
                     ctx.current?.setSelectedId(mesh.userData.id, true, null);
                 }, 450);
             }
+            if (e.pointerType !== 'mouse') return;
             if (mesh) {
                 pending = { mesh };
                 return;
             }
-            if (e.pointerType !== 'mouse') return;
             if (e.altKey || ctx.current?.tool === 'select') {
                 marquee = { x: e.clientX, y: e.clientY, active: false, additive: e.ctrlKey || e.metaKey };
             }
@@ -745,19 +745,6 @@ export default function Viewport({
                 hits.length ? snapNormal(hits[0].face?.normal) : null,
             );
         };
-        const orbitHost = renderer.domElement.parentElement ?? window;
-        const claimTouch = (e) => {
-            if (e.pointerType === 'mouse' || ctx.current?.session) return;
-            if (gizmo.dragging || gizmo.axis) return;
-            orbit.enabled = !pickMesh(e);
-        };
-        const freeTouch = () => {
-            if (!drag && !marquee && !gizmo.dragging) orbit.enabled = true;
-        };
-
-        orbitHost.addEventListener('pointerdown', claimTouch, true);
-        window.addEventListener('pointerup', freeTouch);
-        window.addEventListener('pointercancel', freeTouch);
         renderer.domElement.addEventListener('pointerdown', onDown);
         renderer.domElement.addEventListener('pointermove', onMove);
         renderer.domElement.addEventListener('pointerup', onUp);
@@ -1042,9 +1029,6 @@ export default function Viewport({
         return () => {
             cancelAnimationFrame(raf);
             ro.disconnect();
-            orbitHost.removeEventListener('pointerdown', claimTouch, true);
-            window.removeEventListener('pointerup', freeTouch);
-            window.removeEventListener('pointercancel', freeTouch);
             renderer.domElement.removeEventListener('pointerdown', onDown);
             renderer.domElement.removeEventListener('pointermove', onMove);
             renderer.domElement.removeEventListener('pointerup', onUp);

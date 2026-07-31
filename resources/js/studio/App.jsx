@@ -787,6 +787,10 @@ export default function App() {
     }, [mobile, selected?._id]);
 
     useEffect(() => {
+        if (mobile && tabs.some((t) => t.id === activeTab)) setActiveTab(mapName ? 'game' : 'home');
+    }, [mobile, activeTab, tabs, mapName]);
+
+    useEffect(() => {
         const onBeforeUnload = (e) => {
             if (dirty.current) {
                 e.preventDefault();
@@ -906,13 +910,13 @@ export default function App() {
                 tabs={[
                     { id: 'home', title: 'Welcome', icon: 'globe', closable: false },
                     ...(mapName ? [{ id: 'game', title: mapName, icon: 'globe', closable: true }] : []),
-                    ...tabs.map((t) => ({ id: t.id, title: t.title, icon: t.icon, closable: true })),
+                    ...(mobile ? [] : tabs.map((t) => ({ id: t.id, title: t.title, icon: t.icon, closable: true }))),
                 ]}
                 active={activeTab}
                 onSelect={setActiveTab}
                 onClose={closeTab}
             />
-            {tabs.map((t) => (
+            {!mobile && tabs.map((t) => (
                 <ScriptTab
                     key={t.id}
                     tab={t}
@@ -930,6 +934,7 @@ export default function App() {
                         onUpload={openUploaded} onRestore={restore}
                         onPasteRoblox={pasteRoblox}
                         openName={mapName}
+                        mobile={mobile}
                         joining={joining} liveStatus={live.status}
                     />
                 </div>
@@ -963,7 +968,7 @@ export default function App() {
                     {mobile && playing && (
                         <TouchControls inputRef={touchRef} onExit={() => setPlaying(false)} />
                     )}
-                    {activePlugin && mapName && (
+                    {activePlugin && mapName && !mobile && (
                         <PluginPanel
                             plugin={activePlugin}
                             values={activeValues}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { isMobileNow } from './useIsMobile';
 
 const KEY = 'studio_windows';
 const MARGIN = 40;
@@ -34,12 +35,14 @@ const writeOne = (key, pos) => {
 };
 
 export default function useDraggable(key) {
-    const [pos, setPos] = useState(() => readOne(key));
+    const fixed = isMobileNow();
+    const [pos, setPos] = useState(() => (fixed ? null : readOne(key)));
     const grab = useRef(null);
     const latest = useRef(pos);
     latest.current = pos;
 
     const onPointerDown = useCallback((e) => {
+        if (fixed) return;
         if (e.button !== 0 || e.target.closest('button, select, input, textarea')) return;
         const el = e.currentTarget.parentElement;
         if (!el) return;
@@ -52,7 +55,7 @@ export default function useDraggable(key) {
         };
         setPos({ left: r.left - ox, top: r.top - oy });
         e.preventDefault();
-    }, []);
+    }, [fixed]);
 
     useEffect(() => {
         const move = (e) => {

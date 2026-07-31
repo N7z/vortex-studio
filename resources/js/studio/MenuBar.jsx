@@ -104,8 +104,10 @@ export default function MenuBar({
             { label: 'Save', shortcut: 'Ctrl+S', onClick: onSave, disabled: !canSave },
             { label: 'Download .json', onClick: onDownload, disabled: !canDownload },
             SEP,
-            { label: 'Import Roblox place...', onClick: () => robloxRef.current?.click(), disabled: !canImport },
-            { label: 'Paste Roblox JSON...', onClick: onPasteRoblox, disabled: !canImport },
+            ...(mobile ? [] : [
+                { label: 'Import Roblox place...', onClick: () => robloxRef.current?.click(), disabled: !canImport },
+                { label: 'Paste Roblox JSON...', onClick: onPasteRoblox, disabled: !canImport },
+            ]),
         ]],
         ['Edit', [
             { label: 'Undo', shortcut: 'Ctrl+Z', onClick: onUndo, disabled: noEdit },

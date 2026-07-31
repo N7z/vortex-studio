@@ -22,7 +22,7 @@ const ago = (ms) => {
 };
 
 export default function StartScreen({
-    onOpen, onCreate, onUpload, onRestore, onPasteRoblox, openName, joining, liveStatus,
+    onOpen, onCreate, onUpload, onRestore, onPasteRoblox, openName, joining, liveStatus, mobile,
 }) {
     const [mine, setMine] = useState([]);
     const [examples, setExamples] = useState([]);
@@ -109,7 +109,7 @@ export default function StartScreen({
                 <h1>Paulin Studio</h1>
                 <a onClick={create}>Create new project</a>
                 <a onClick={pickFile}>Upload a map (.json)</a>
-                <a onClick={onPasteRoblox}>Import a Roblox place</a>
+                {!mobile && <a onClick={onPasteRoblox}>Import a Roblox place</a>}
                 <input
                     ref={fileRef}
                     type="file"
