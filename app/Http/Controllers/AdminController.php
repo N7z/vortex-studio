@@ -22,22 +22,25 @@ class AdminController extends Controller
 
     public function overview()
     {
+        // Only plain arrays are cached: a serialized Collection can come back as an
+        // incomplete class and then encodes as a JSON object, which the charts read
+        // as "not a list" and refuse to render.
         return ['me' => Auth::id()] + Cache::remember('admin_overview', 60, fn () => [
             'totals' => Stats::totals(),
             'history' => DB::table('daily_stats')
                 ->where('day', '>=', $this->since())
                 ->orderBy('day')
-                ->get(['day', 'users', 'maps', 'maps_anon', 'parts']),
+                ->get(['day', 'users', 'maps', 'maps_anon', 'parts'])->toArray(),
             'signups' => DB::table('users')
                 ->where('created_at', '>=', $this->since())
                 ->selectRaw('date(created_at) as day, count(*) as accounts')
-                ->groupBy('day')->orderBy('day')->get(),
+                ->groupBy('day')->orderBy('day')->get()->toArray(),
             'created' => DB::table('maps')
                 ->where('created_at', '>=', $this->since())
                 ->selectRaw('date(created_at) as day')
                 ->selectRaw('count(case when user_id is null then 1 end) as anon')
                 ->selectRaw('count(case when user_id is not null then 1 end) as account')
-                ->groupBy('day')->orderBy('day')->get(),
+                ->groupBy('day')->orderBy('day')->get()->toArray(),
         ]);
     }
 

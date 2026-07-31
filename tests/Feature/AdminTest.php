@@ -2,6 +2,7 @@
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 uses(RefreshDatabase::class);
@@ -26,10 +27,14 @@ function member(array $over = []): User
 
 function aMap(array $over = []): int
 {
-    return DB::table('maps')->insertGetId($over + [
+    $row = $over + [
         'token' => str_repeat('A', 40), 'name' => 'world', 'data' => '[]',
         'created_at' => now(), 'updated_at' => now(),
-    ]);
+    ];
+    // The parts column is what the stats read, and save() is what normally fills it.
+    $row += ['parts' => count(json_decode((string) $row['data'], true) ?: [])];
+
+    return DB::table('maps')->insertGetId($row);
 }
 
 it('hides the admin area from guests and ordinary accounts', function () {
@@ -152,4 +157,32 @@ it('keeps a json 404 for the admin api', function () {
     $this->actingAs(member())->getJson('/admin/maps/1')
         ->assertNotFound()
         ->assertHeader('content-type', 'application/json');
+});
+
+// The payload is cached, and a cached Collection used to come back as an incomplete
+// class that encodes as a JSON object, which broke every chart on the second request.
+it('serves the overview as json lists even from the cache', function () {
+    // The suite's array store never serializes, so it cannot reproduce this at all.
+    config()->set('cache.default', 'database');
+    Cache::forget('admin_overview');
+    $a = admin();
+    User::factory()->create();
+    asToken()->putJson('/api/maps/m', [PART])->assertOk();
+
+    $this->actingAs($a)->getJson('/admin/overview')->assertOk();
+    $second = $this->actingAs($a)->getJson('/admin/overview')->assertOk();
+
+    $body = $second->json();
+    expect($body['history'])->toBeArray()
+        ->and($body['signups'])->toBeArray()
+        ->and($body['created'])->toBeArray()
+        ->and(array_is_list($body['signups']))->toBeTrue()
+        ->and(array_is_list($body['created']))->toBeTrue();
+
+    foreach ($body['created'] as $row) {
+        expect($row)->toHaveKeys(['day', 'anon', 'account']);
+    }
+    foreach ($body['signups'] as $row) {
+        expect($row)->toHaveKeys(['day', 'accounts']);
+    }
 });

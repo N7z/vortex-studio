@@ -10,22 +10,16 @@ class Stats
     /** Current totals. Reads `data` a chunk at a time: a map is up to 2 MB. */
     public static function totals(): array
     {
-        $parts = 0;
-        DB::table('maps')->orderBy('id')->select(['id', 'data'])->chunk(50, function ($rows) use (&$parts) {
-            foreach ($rows as $row) {
-                $parts += count(json_decode((string) $row->data, true) ?: []);
-            }
-        });
-
         $maps = DB::table('maps')->selectRaw(
-            'count(*) as total, count(case when user_id is null then 1 end) as anon, max(updated_at) as last_save',
+            'count(*) as total, count(case when user_id is null then 1 end) as anon,'
+            .' sum(parts) as parts, max(updated_at) as last_save',
         )->first();
 
         return [
             'users' => DB::table('users')->count(),
             'maps' => (int) $maps->total,
             'maps_anon' => (int) $maps->anon,
-            'parts' => $parts,
+            'parts' => (int) $maps->parts,
             'last_save' => $maps->last_save ? strtotime($maps->last_save) : null,
         ];
     }
