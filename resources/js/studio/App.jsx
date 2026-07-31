@@ -33,7 +33,7 @@ import { decodeImage, imageMeta } from './image';
 import { buildVoxels, loadModel } from './model';
 import { convertRoblox, importSummary } from './roblox';
 import {
-    addGroup, forgetGroups, loadGroups, newGroup, pruneGroups, removeGroups, saveGroups, ungroupIds,
+    applyGroupOp, newGroupId, pruneGroups, takeLegacyGroups, ungroupIds,
 } from './groups';
 
 const HISTORY_LIMIT = 100;
@@ -48,7 +48,6 @@ const NEW_SPAWN = {
     T: 'SpawnLocation', Shape: 'Block', C: '4db84b',
 };
 
-const groupKey = (gs) => JSON.stringify(gs.map((g) => [g.id, g.name, g.ids]));
 
 const MAX_PLUGIN_PARTS = 20000;
 
@@ -96,7 +95,9 @@ export default function App() {
     const future = useRef([]);
     const partsRef = useRef(parts);
     partsRef.current = parts;
-    const syncedGroups = useRef(null);
+    const groupsRef = useRef([]);
+    groupsRef.current = groups;
+    const loadedGroups = useRef(null);
 
     const flash = useCallback((msg) => {
         setStatus(msg);
@@ -111,12 +112,15 @@ export default function App() {
         setActiveTab(name ? 'game' : 'home');
         setSelectedIds([]);
         setFaces({});
-        const next = remoteGroups ?? loadGroups(name, data);
-        syncedGroups.current = groupKey(next);
+        // Anything an older build left in localStorage is drained once, and only
+        // when the map itself carries none, so an import cannot overwrite real data.
+        const legacy = remoteGroups?.length ? [] : takeLegacyGroups(name, data);
+        const next = legacy.length ? legacy : (remoteGroups ?? []);
+        loadedGroups.current = next;
         setGroups(next);
         history.current = [];
         future.current = [];
-        dirty.current = isDirty || fixed > 0;
+        dirty.current = isDirty || fixed > 0 || legacy.length > 0;
     };
 
     const live = useLive({
@@ -125,7 +129,6 @@ export default function App() {
             if (msg.resumed) {
                 const alive = new Set(msg.parts.map((p) => p._id));
                 setParts(msg.parts);
-                syncedGroups.current = groupKey(msg.groups ?? []);
                 setGroups(msg.groups ?? []);
                 setSelectedIds((cur) => cur.filter((id) => alive.has(id)));
             } else {
@@ -148,15 +151,17 @@ export default function App() {
         onSnapshot: (msg) => {
             setParts(msg.parts);
             if (msg.groups) {
-                syncedGroups.current = groupKey(msg.groups);
                 setGroups(msg.groups);
             }
             history.current = [];
             future.current = [];
         },
         onGroups: (msg) => {
-            syncedGroups.current = groupKey(msg.groups);
             setGroups(msg.groups);
+        },
+        onGroupOp: (msg) => {
+            setGroups((gs) => applyGroupOp(gs, msg.op));
+            if (liveRef.current?.isOwner) dirty.current = true;
         },
         onError: (message) => {
             setJoining(null);
@@ -511,11 +516,12 @@ export default function App() {
             setSelectedIds(placed.map((p) => p._id));
             if (placed.length > 1) {
                 const label = pluginImages[activePlugin.id]?.img?.name;
-                setGroups((gs) => addGroup(
-                    gs,
-                    label ? `${activePlugin.name}: ${label}` : activePlugin.name,
-                    placed.map((p) => p._id),
-                ));
+                runGroupOp({
+                    t: 'group',
+                    id: newGroupId(),
+                    name: label ? `${activePlugin.name}: ${label}` : activePlugin.name,
+                    ids: placed.map((p) => p._id),
+                });
                 flash(`${activePlugin.name} placed ${placed.length} parts, grouped in the explorer`);
             }
         } catch (e) {
@@ -523,49 +529,47 @@ export default function App() {
         }
     };
 
+    // Applied here and again when the room echoes it back, exactly like part ops:
+    // the room's order is the authoritative one, and every group op is idempotent.
+    const runGroupOp = useCallback((op) => {
+        setGroups((gs) => applyGroupOp(gs, op));
+        liveRef.current.sendGroupOp(op);
+    }, []);
+
     const groupSelection = useCallback(() => {
         if (selectedIds.length < 2) return;
-        setGroups((gs) => addGroup(gs, `Group ${gs.length + 1}`, selectedIds));
+        runGroupOp({
+            t: 'group', id: newGroupId(), name: `Group ${groupsRef.current.length + 1}`, ids: [...selectedIds],
+        });
         flash(`Grouped ${selectedIds.length} parts`);
-    }, [selectedIds, flash]);
+    }, [selectedIds, flash, runGroupOp]);
 
     const ungroupSelection = useCallback(() => {
         if (!selectedIds.length) return;
-        setGroups((gs) => {
-            const next = ungroupIds(gs, selectedIds);
-            if (next.length !== gs.length) flash('Ungrouped');
-            return next;
-        });
-    }, [selectedIds, flash]);
+        const next = ungroupIds(groupsRef.current, selectedIds);
+        if (next.length !== groupsRef.current.length) flash('Ungrouped');
+        runGroupOp({ t: 'ungroup', ids: [...selectedIds] });
+    }, [selectedIds, flash, runGroupOp]);
 
-    const ungroup = (groupId) => setGroups((gs) => removeGroups(gs, [groupId]));
+    const ungroup = (groupId) => runGroupOp({ t: 'delete', id: groupId });
 
-    const renameGroup = (groupId, name) => {
-        setGroups((gs) => gs.map((g) => (g.id === groupId ? { ...g, name } : g)));
-    };
+    const renameGroup = (groupId, name) => runGroupOp({ t: 'rename', id: groupId, name });
 
-    // Both are debounced: a gizmo drag changes parts every frame, and pruning plus
-    // serializing to localStorage at that rate stalls the main thread.
+    // Debounced: a gizmo drag changes parts every frame, and pruning at that rate
+    // stalls the main thread.
     useEffect(() => {
         const t = setTimeout(() => setGroups((gs) => pruneGroups(gs, parts)), GROUPS_DEBOUNCE_MS);
 
         return () => clearTimeout(t);
     }, [parts]);
 
+    // Groups ride the normal save now, so a group-only change has to mark the
+    // document dirty or autosave never fires for it. The array resetDocument
+    // installed is the load itself, and pruneGroups returns its input unchanged
+    // when nothing was pruned, so identity is enough to tell an edit apart.
     useEffect(() => {
-        if (!mapName) return undefined;
-        const t = setTimeout(() => saveGroups(mapName, groups, parts), GROUPS_DEBOUNCE_MS);
-
-        return () => clearTimeout(t);
-    }, [mapName, groups, parts]);
-
-    useEffect(() => {
-        if (!live.live || !live.canEdit) return;
-        const key = groupKey(groups);
-        if (key === syncedGroups.current) return;
-        syncedGroups.current = key;
-        live.sendGroups(groups);
-    }, [groups, live.live, live.canEdit, live.sendGroups]);
+        if (groups !== loadedGroups.current) dirty.current = true;
+    }, [groups]);
 
     const changeGraphics = (patch) => {
         setGraphics((g) => {
@@ -582,8 +586,8 @@ export default function App() {
             return;
         }
         try {
-            const data = await loadMap(name);
-            resetDocument(name, data.map(withNewId), false);
+            const doc = await loadMap(name);
+            resetDocument(name, doc.parts, false, doc.groups);
         } catch (e) {
             flash(String(e.message ?? e));
         }
@@ -592,12 +596,12 @@ export default function App() {
     // A local backup goes straight back into the editor, dirty, so the next save
     // (manual or auto) puts it on the server again.
     const restore = (name, data) => {
-        resetDocument(name, data.map(withNewId), true);
+        resetDocument(name, data, true);
         flash(`Restored ${name}.json from this device`);
     };
 
     const openUploaded = (name, data) => {
-        resetDocument(name, data.map(withNewId), true);
+        resetDocument(name, data, true);
         flash(`Loaded upload as ${name}.json, Save to keep it`);
     };
 
@@ -626,9 +630,14 @@ export default function App() {
                 return;
             }
             const added = addMany(result.parts);
-            setGroups((gs) => addGroup(gs, `Roblox import${fileName ? `: ${fileName}` : ''}`, added.map((p) => p._id)));
+            runGroupOp({
+                t: 'group',
+                id: newGroupId(),
+                name: `Roblox import${fileName ? `: ${fileName}` : ''}`,
+                ids: added.map((p) => p._id),
+            });
         } else {
-            resetDocument(mapNameFrom(fileName), result.parts.map(withNewId), true);
+            resetDocument(mapNameFrom(fileName), result.parts, true);
         }
         flash(importSummary(result));
     };
@@ -648,7 +657,7 @@ export default function App() {
 
     const download = () => {
         if (!mapName) return;
-        const blob = new Blob([JSON.stringify(stripIds(parts))], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify(parts)], { type: 'application/json' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = `${mapName}.json`;
@@ -658,7 +667,8 @@ export default function App() {
     };
 
     const createNew = (name) => {
-        forgetGroups(name);
+        // Drain any leftover under this name: its indices would land on the new parts.
+        takeLegacyGroups(name, []);
         resetDocument(name, [
             withNewId({ Tr: 0, P: [0, 0, 0], S: [200, 2, 200], R: [0, 0, 0], T: 'Part', Shape: 'Block', C: '7d7d85' }),
             withNewId(NEW_SPAWN),
@@ -674,12 +684,12 @@ export default function App() {
             return false;
         }
         const snapshot = partsRef.current;
-        const clean = stripIds(snapshot);
+        const grouped = groupsRef.current;
         // Mirror locally first: the copy that matters most is the one for a save that
         // is about to fail. A save also restarts the server-side 24h TTL for this map.
-        const backed = writeBackup(mapName, clean);
+        const backed = writeBackup(mapName, snapshot);
         try {
-            await saveMap(mapName, clean);
+            await saveMap(mapName, snapshot, grouped);
             // Edits made while the request was in flight must stay dirty.
             if (partsRef.current === snapshot) dirty.current = false;
             liveRef.current.notifySaved();
@@ -771,23 +781,22 @@ export default function App() {
         const clip = clipboard.current;
         if (!clip?.parts.length) return;
         const added = addMany(clip.parts.map((p) => ({ ...p, P: [p.P[0] + 2, p.P[1], p.P[2] + 2] })));
-        if (!clip.groups.length) return;
-        setGroups((gs) => [
-            ...gs,
-            ...clip.groups.map((g) => newGroup(g.name, g.slots.map((i) => added[i]._id))),
-        ]);
+        for (const g of clip.groups) {
+            const ids = g.slots.map((i) => added[i]?._id).filter(Boolean);
+            if (ids.length) runGroupOp({ t: 'group', id: newGroupId(), name: g.name, ids });
+        }
     };
 
     const duplicate = () => {
         if (!selectedParts.length) return;
         const added = addMany(stripIds(selectedParts));
         const fresh = new Map(selectedParts.map((p, i) => [p._id, added[i]._id]));
-        setGroups((gs) => {
-            const copies = gs
-                .filter((g) => g.ids.every((id) => fresh.has(id)))
-                .map((g) => newGroup(`${g.name} copy`, g.ids.map((id) => fresh.get(id))));
-            return copies.length ? [...gs, ...copies] : gs;
-        });
+        for (const g of groupsRef.current) {
+            if (!g.ids.every((id) => fresh.has(id))) continue;
+            runGroupOp({
+                t: 'group', id: newGroupId(), name: `${g.name} copy`, ids: g.ids.map((id) => fresh.get(id)),
+            });
+        }
     };
 
     const removeSelected = useCallback(() => {

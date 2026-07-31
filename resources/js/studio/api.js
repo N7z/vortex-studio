@@ -28,17 +28,20 @@ export async function listMaps() {
     return r.json();
 }
 
+// A bare array is what an older server returns; both shapes stay readable.
 export async function loadMap(name) {
     const r = await fetch(`/api/maps/${encodeURIComponent(name)}`);
     if (!r.ok) throw new Error(`failed to load ${name}`);
-    return r.json();
+    const d = await r.json();
+
+    return Array.isArray(d) ? { parts: d, groups: [] } : { parts: d.parts ?? [], groups: d.groups ?? [] };
 }
 
-export async function saveMap(name, parts) {
+export async function saveMap(name, parts, groups) {
     const r = await fetch(`/api/maps/${encodeURIComponent(name)}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(parts),
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf },
+        body: JSON.stringify({ parts, groups }),
     });
     if (!r.ok) throw new Error(`failed to save ${name}`);
     return r.json();

@@ -1,5 +1,7 @@
 <?php
 
+use App\Models\User;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 
@@ -9,7 +11,7 @@ const PART = ['T' => 'Part', 'P' => [0, 0.5, 0], 'S' => [4, 1, 4], 'R' => [0, 0,
 
 it('round-trips a save and load', function () {
     asToken()->putJson('/api/maps/mymap', [PART])->assertOk()->assertJson(['ok' => true]);
-    asToken()->getJson('/api/maps/mymap')->assertOk()->assertJson([PART]);
+    asToken()->getJson('/api/maps/mymap')->assertOk()->assertJson(['parts' => [PART], 'groups' => []]);
 });
 
 it('rejects a JSON object body', function () {
@@ -48,6 +50,40 @@ it('enforces the map quota per token', function () {
     asToken()->putJson('/api/maps/first', [PART])->assertOk();
 });
 
+it('lets two accounts save the same name from one browser', function () {
+    $a = User::factory()->create();
+    $b = User::factory()->create();
+
+    asToken()->actingAs($a)->putJson('/api/maps/foo', [PART])->assertOk();
+    asToken()->actingAs($b)->putJson('/api/maps/foo', [PART])->assertOk();
+
+    expect(DB::table('maps')->where('name', 'foo')->count())->toBe(2);
+});
+
+it('keeps created_at across saves', function () {
+    asToken()->putJson('/api/maps/mymap', [PART])->assertOk();
+    $created = DB::table('maps')->value('created_at');
+
+    DB::table('maps')->update(['created_at' => '2020-01-01 00:00:00']);
+    asToken()->putJson('/api/maps/mymap', [PART, PART])->assertOk();
+
+    expect(DB::table('maps')->value('created_at'))->toBe('2020-01-01 00:00:00')
+        ->and(DB::table('maps')->value('parts'))->toBe(2)
+        ->and($created)->not->toBeNull();
+});
+
+it('counts parts in stats without reading the map data', function () {
+    asToken()->putJson('/api/maps/mymap', [PART, PART, PART])->assertOk();
+
+    $this->getJson('/api/stats')->assertOk()->assertJson(['parts' => 3, 'maps' => 1]);
+});
+
+// ValidateCsrfToken always passes under tests, so the write routes being covered
+// can only be asserted through the exemption list.
+it('exempts nothing from CSRF', function () {
+    expect(app(ValidateCsrfToken::class)->getExcludedPaths())->toBe([]);
+});
+
 it('returns stats as JSON', function () {
     $this->getJson('/api/stats')->assertOk()
         ->assertJsonStructure(['maps', 'sessions', 'parts', 'examples', 'last_save']);
@@ -56,4 +92,99 @@ it('returns stats as JSON', function () {
 it('rejects a bad map name', function () {
     $this->getJson('/api/maps/bad!name')->assertStatus(400);   // invalid chars
     $this->getJson('/api/maps/..%2Fsecret')->assertStatus(404); // traversal never reaches the controller
+});
+
+it('accepts a part id and keeps it', function () {
+    asToken()->putJson('/api/maps/mymap', [PART + ['_id' => 'abc123def4']])->assertOk();
+    asToken()->getJson('/api/maps/mymap')->assertOk()->assertJson(['parts' => [PART + ['_id' => 'abc123def4']]]);
+});
+
+it('still accepts a part with no id', function () {
+    $this->putJson('/api/maps/mymap', [PART])->assertOk();
+});
+
+it('rejects an over-long part id', function () {
+    $this->putJson('/api/maps/mymap', [PART + ['_id' => str_repeat('a', 65)]])->assertStatus(400);
+});
+
+it('rejects a part id with bad characters', function () {
+    $this->putJson('/api/maps/mymap', [PART + ['_id' => 'no spaces']])->assertStatus(400);
+});
+
+it('rejects duplicate part ids', function () {
+    $this->putJson('/api/maps/mymap', [PART + ['_id' => 'dup'], PART + ['_id' => 'dup']])->assertStatus(400);
+});
+
+const IPART = ['_id' => 'p1', 'T' => 'Part', 'P' => [0, 0, 0], 'S' => [1, 1, 1], 'R' => [0, 0, 0]];
+const IPART2 = ['_id' => 'p2', 'T' => 'Part', 'P' => [1, 0, 0], 'S' => [1, 1, 1], 'R' => [0, 0, 0]];
+
+it('round-trips groups in the envelope', function () {
+    asToken()->putJson('/api/maps/m', [
+        'parts' => [IPART, IPART2],
+        'groups' => [['id' => 'g1', 'name' => 'Wall', 'ids' => ['p1', 'p2']]],
+    ])->assertOk();
+
+    asToken()->getJson('/api/maps/m')->assertOk()->assertJson([
+        'parts' => [IPART, IPART2],
+        'groups' => [['id' => 'g1', 'name' => 'Wall', 'ids' => ['p1', 'p2']]],
+    ]);
+});
+
+it('leaves stored groups alone when an old client sends a bare array', function () {
+    asToken()->putJson('/api/maps/m', [
+        'parts' => [IPART],
+        'groups' => [['id' => 'g1', 'name' => 'Wall', 'ids' => ['p1']]],
+    ])->assertOk();
+
+    asToken()->putJson('/api/maps/m', [IPART])->assertOk();
+
+    asToken()->getJson('/api/maps/m')->assertOk()
+        ->assertJson(['groups' => [['id' => 'g1', 'name' => 'Wall', 'ids' => ['p1']]]]);
+});
+
+it('rejects a group naming an unknown part', function () {
+    $this->putJson('/api/maps/m', [
+        'parts' => [IPART],
+        'groups' => [['id' => 'g1', 'name' => 'Wall', 'ids' => ['nope']]],
+    ])->assertStatus(400);
+});
+
+it('rejects a part in two groups', function () {
+    $this->putJson('/api/maps/m', [
+        'parts' => [IPART],
+        'groups' => [
+            ['id' => 'g1', 'name' => 'A', 'ids' => ['p1']],
+            ['id' => 'g2', 'name' => 'B', 'ids' => ['p1']],
+        ],
+    ])->assertStatus(400);
+});
+
+it('rejects too many groups', function () {
+    $groups = [];
+    for ($i = 0; $i <= 2000; $i++) {
+        $groups[] = ['id' => "g$i", 'name' => 'G', 'ids' => ['p1']];
+    }
+    $this->putJson('/api/maps/m', ['parts' => [IPART], 'groups' => $groups])->assertStatus(400);
+});
+
+it('rejects a group with an empty id list and an unknown key', function () {
+    $this->putJson('/api/maps/m', [
+        'parts' => [IPART],
+        'groups' => [['id' => 'g1', 'name' => 'A', 'ids' => []]],
+    ])->assertStatus(400);
+
+    $this->putJson('/api/maps/m', [
+        'parts' => [IPART],
+        'groups' => [['id' => 'g1', 'name' => 'A', 'ids' => ['p1'], 'evil' => 1]],
+    ])->assertStatus(400);
+});
+
+it('clears groups when an empty list is sent', function () {
+    asToken()->putJson('/api/maps/m', [
+        'parts' => [IPART],
+        'groups' => [['id' => 'g1', 'name' => 'Wall', 'ids' => ['p1']]],
+    ])->assertOk();
+
+    asToken()->putJson('/api/maps/m', ['parts' => [IPART], 'groups' => []])->assertOk();
+    asToken()->getJson('/api/maps/m')->assertOk()->assertJson(['groups' => []]);
 });

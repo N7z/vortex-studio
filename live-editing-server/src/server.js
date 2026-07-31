@@ -11,9 +11,44 @@ import {
 
 const HELLO_TIMEOUT_MS = 15_000;
 const MAX_SELECTION_BROADCAST = 200;
+const RESYNC_WINDOW_MS = 60_000;
+// A burst this far past the per-second limit is a loop, not a fast editor.
+const FLOOD_FACTOR = 4;
+
+function overRate(ws) {
+    const at = Date.now();
+    if (at - ws.rate.at >= 1000) {
+        ws.rate.at = at;
+        ws.rate.count = 0;
+    }
+    ws.rate.count++;
+    if (ws.rate.count > config.maxMessagesPerSecond * FLOOD_FACTOR) {
+        ws.close(4009, 'too many messages');
+
+        return true;
+    }
+
+    return ws.rate.count > config.maxMessagesPerSecond;
+}
+
+function overResyncRate(ws) {
+    const at = Date.now();
+    if (at - ws.rate.resyncAt >= RESYNC_WINDOW_MS) {
+        ws.rate.resyncAt = at;
+        ws.rate.resyncs = 0;
+    }
+    ws.rate.resyncs++;
+
+    return ws.rate.resyncs > config.maxResyncsPerMinute;
+}
 
 function send(ws, msg) {
     if (ws.readyState !== 1) return;
+    if (ws.bufferedAmount > config.maxBufferedBytes) {
+        ws.close(4008, 'too far behind');
+
+        return;
+    }
     try {
         ws.send(JSON.stringify(msg));
     } catch { /* socket is closing */ }
@@ -108,6 +143,8 @@ export function createLiveServer({ log = () => {} } = {}) {
         if (room.members.size >= config.maxMembersPerRoom) return refuse(ws, 'that session is full');
 
         const token = typeof msg.token === 'string' ? msg.token : null;
+        if (room.isBanned(token)) return refuse(ws, 'the owner removed you from this session');
+
         const { member, resumed } = room.add(ws, token, verifyName(msg.identity));
         log(`room ${room.code}: ${member.name} ${resumed ? 'reconnected' : 'joined'} (${room.members.size} present)`);
         welcome(ws, room, member, resumed);
@@ -144,6 +181,7 @@ export function createLiveServer({ log = () => {} } = {}) {
         if (!target || target.id === room.ownerId) return;
 
         log(`room ${room.code}: ${target.name} kicked`);
+        room.ban(target.id);
         room.send(target, { t: 'kicked', reason: 'The room owner removed you from this session.' });
         target.socket.close(4003, 'kicked');
     }
@@ -195,6 +233,12 @@ export function createLiveServer({ log = () => {} } = {}) {
 
                 return;
             }
+            case 'gop': {
+                const bad = room.applyGroupOpFrom(member, msg.op);
+                if (bad) fail(ws, bad);
+
+                return;
+            }
             case 'view':
                 return room.setViewFrom(member, msg.view);
             case 'play':
@@ -212,6 +256,8 @@ export function createLiveServer({ log = () => {} } = {}) {
                 return room.broadcast({ t: 'saved', at: room.lastSavedAt });
             }
             case 'resync':
+                if (overResyncRate(ws)) return fail(ws, 'too many resyncs, slow down');
+
                 return send(ws, {
                     t: 'snapshot', parts: room.parts, groups: room.groups, seq: room.seq,
                 });
@@ -224,6 +270,9 @@ export function createLiveServer({ log = () => {} } = {}) {
 
     wss.on('connection', (ws) => {
         ws.alive = true;
+        ws.rate = {
+            at: 0, count: 0, resyncAt: 0, resyncs: 0,
+        };
         ws.on('pong', () => { ws.alive = true; });
 
         const helloTimer = setTimeout(() => {
@@ -232,6 +281,7 @@ export function createLiveServer({ log = () => {} } = {}) {
         helloTimer.unref?.();
 
         ws.on('message', (raw) => {
+            if (overRate(ws)) return;
             try {
                 handleMessage(ws, raw.toString());
             } catch (e) {

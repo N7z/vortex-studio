@@ -44,13 +44,19 @@ export const config = {
     maxMembersPerRoom: num('MAX_MEMBERS_PER_ROOM', 16),
     maxParts: num('MAX_PARTS', 20_000),
     maxGroups: num('MAX_GROUPS', 2_000),
-    maxMessageBytes: num('MAX_MESSAGE_BYTES', 2_000_000),
+    // Matches MapController::MAX_BYTES: a create message carries a whole map, and
+    // persisted part ids add ~20 bytes per part.
+    maxMessageBytes: num('MAX_MESSAGE_BYTES', 2_500_000),
     heartbeatMs: num('HEARTBEAT_SECONDS', 25) * 1000,
+    banMs: num('BAN_SECONDS', 3600) * 1000,
+    maxBansPerRoom: num('MAX_BANS_PER_ROOM', 200),
+    maxMessagesPerSecond: num('MAX_MESSAGES_PER_SECOND', 120),
+    maxResyncsPerMinute: num('MAX_RESYNCS_PER_MINUTE', 6),
+    maxBufferedBytes: num('MAX_BUFFERED_BYTES', 4_000_000),
 };
 
 export function originAllowed(origin) {
     if (config.allowAnyOrigin) return true;
-    if (!origin) return true;
 
-    return config.allowedOrigins.has(origin);
+    return !!origin && config.allowedOrigins.has(origin);
 }

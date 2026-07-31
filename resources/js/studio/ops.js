@@ -32,10 +32,18 @@ export function fillPart(part, source) {
 
 export function repairParts(parts) {
     let fixed = 0;
+    const seen = new Set();
     const out = parts.map((p) => {
         const clean = { _id: p._id };
         for (const k of PART_KEYS) if (k in p) clean[k] = p[k];
         let bad = Object.keys(p).some((k) => k !== '_id' && !PART_KEYS.includes(k));
+
+        // Legacy maps carry no id, and a duplicate would make a set op write twice.
+        if (!validId(clean._id) || seen.has(clean._id)) {
+            clean._id = newPartId();
+            bad = true;
+        }
+        seen.add(clean._id);
 
         if (!okType(clean.T) || !okColor(clean.C) || !okTr(clean.Tr) || !hasShape(clean)) bad = true;
         for (const k of ['P', 'S', 'R']) {
@@ -61,14 +69,21 @@ export function repairParts(parts) {
     return { parts: out, fixed };
 }
 
-const TAB = Math.random().toString(36).slice(2, 8);
-let seq = 0;
+const ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';
+const ID_LEN = 10;
 
+// Ids persist and are shared between collaborators, so they cannot come from a
+// per-tab counter: two tabs would mint the same id and an add op would overwrite.
 export function newPartId() {
-    seq += 1;
+    const bytes = new Uint8Array(ID_LEN);
+    globalThis.crypto.getRandomValues(bytes);
+    let out = '';
+    for (const b of bytes) out += ID_CHARS[b % ID_CHARS.length];
 
-    return `${TAB}-${seq}`;
+    return out;
 }
+
+export const validId = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(v);
 
 export const withNewId = (part) => ({ ...part, _id: newPartId() });
 

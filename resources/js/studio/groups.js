@@ -1,7 +1,11 @@
-let seq = 0;
+import { newPartId } from './ops.js';
+
+export { applyGroupOp } from '../../../live-editing-server/src/groupops.js';
+
+export const newGroupId = () => `g-${newPartId()}`;
 
 export const newGroup = (name, ids) => ({
-    id: `g-${++seq}`,
+    id: newGroupId(),
     name,
     ids: [...ids],
 });
@@ -47,22 +51,25 @@ export function ungroupIds(groups, ids) {
     return groups.filter((g) => !g.ids.some((id) => touched.has(id)));
 }
 
-// Stored by position in the part list, not by part id: ids are handed out fresh
-// on every open, so a stored id would point at nothing.
+// Groups used to live here, keyed by position in the part list. They are map data
+// now, so this only drains what an older build left behind, once.
 const KEY = 'studio_groups';
 
-const readAll = () => {
-    try {
-        const all = JSON.parse(localStorage.getItem(KEY));
-        return all && typeof all === 'object' ? all : {};
-    } catch {
-        return {};
-    }
-};
-
-export function loadGroups(mapName, parts) {
+export function takeLegacyGroups(mapName, parts) {
     if (!mapName) return [];
-    const stored = readAll()[mapName];
+    let all;
+    try {
+        all = JSON.parse(localStorage.getItem(KEY));
+    } catch {
+        return [];
+    }
+    if (!all || typeof all !== 'object') return [];
+    const stored = all[mapName];
+    delete all[mapName];
+    try {
+        localStorage.setItem(KEY, JSON.stringify(all));
+    } catch { /* ignore */ }
+
     if (!Array.isArray(stored)) return [];
     const out = [];
     for (const g of stored) {
@@ -71,33 +78,6 @@ export function loadGroups(mapName, parts) {
             .filter(Boolean);
         if (ids.length) out.push(newGroup(String(g.name ?? 'Group'), ids));
     }
+
     return out;
-}
-
-export function saveGroups(mapName, groups, parts) {
-    if (!mapName) return;
-    const index = new Map(parts.map((p, i) => [p._id, i]));
-    const all = readAll();
-    if (groups.length) {
-        all[mapName] = groups.map((g) => ({
-            name: g.name,
-            idx: g.ids.map((id) => index.get(id)).filter((i) => i !== undefined),
-        })).filter((g) => g.idx.length);
-    } else {
-        delete all[mapName];
-    }
-    try {
-        localStorage.setItem(KEY, JSON.stringify(all));
-    } catch {
-        /* ignore */
-    }
-}
-
-export function forgetGroups(mapName) {
-    const all = readAll();
-    if (!(mapName in all)) return;
-    delete all[mapName];
-    try {
-        localStorage.setItem(KEY, JSON.stringify(all));
-    } catch { /* ignore */ }
 }

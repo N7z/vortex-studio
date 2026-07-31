@@ -72,7 +72,55 @@ const toParts = (res) => {
     }).filter(Boolean);
 };
 
-export async function compilePlugin(id, src, builtin = false) {
+// The hook fires every STEP_CHUNK VM instructions; a call that burns more than
+// STEP_BUDGET of them is an endless loop, and without this it freezes the tab.
+const STEP_CHUNK = 1e6;
+const STEP_BUDGET = 1000;
+
+// The hook has to be installed from inside the call: wasmoon runs each one on its
+// own Lua thread, and a hook belongs to the thread that set it.
+const GUARD_SRC = `
+do
+    local steps = 0
+    local function guard()
+        steps = steps + 1
+        if steps > ${STEP_BUDGET} then
+            error('the script ran too long, check it for an endless loop', 2)
+        end
+    end
+    local function limited(fn)
+        return function(...)
+            steps = 0
+            debug.sethook(guard, '', ${STEP_CHUNK})
+            local ok, res = pcall(fn, ...)
+            debug.sethook()
+            if not ok then error(res, 0) end
+            return res
+        end
+    end
+    __preview = limited(__preview)
+    __click = limited(__click)
+end
+`;
+
+const meta = (p) => {
+    if (!p || typeof p !== 'object') throw new Error('script must define a global "plugin" table');
+    if (!p.name) throw new Error('plugin.name is required');
+    const ui = toArray(p.ui).map((c) => ({ ...c }));
+
+    return {
+        name: String(p.name),
+        icon: p.icon,
+        usesFaces: p.faces === true,
+        ui,
+        defaults: Object.fromEntries(
+            ui.filter((c) => !['button', 'image', 'model'].includes(c.type))
+                .map((c) => [c.id, c.default]),
+        ),
+    };
+};
+
+async function startEngine(src) {
     const lua = await getFactory().createEngine();
     let pix = null;
     try {
@@ -90,26 +138,15 @@ export async function compilePlugin(id, src, builtin = false) {
         });
         await lua.doString(preludeSrc);
         await lua.doString(src);
-        const p = lua.global.get('plugin');
-        if (!p || typeof p !== 'object') throw new Error('script must define a global "plugin" table');
-        if (!p.name) throw new Error('plugin.name is required');
+        await lua.doString(GUARD_SRC);
         const luaPreview = lua.global.get('__preview');
         const luaClick = lua.global.get('__click');
         const luaSetImage = lua.global.get('__set_image');
         const luaSetModel = lua.global.get('__set_model');
         const luaSetSelection = lua.global.get('__set_selection');
-        const ui = toArray(p.ui).map((c) => ({ ...c }));
+
         return {
-            id,
-            builtin,
-            name: String(p.name),
-            icon: p.icon,
-            usesFaces: p.faces === true,
-            ui,
-            defaults: Object.fromEntries(
-                ui.filter((c) => !['button', 'image', 'model'].includes(c.type))
-                    .map((c) => [c.id, c.default]),
-            ),
+            plugin: lua.global.get('plugin'),
             preview: async (part, values) =>
                 toParts(await luaPreview(JSON.stringify(part), JSON.stringify(values))),
             click: async (btnId, part, values) =>
@@ -121,9 +158,9 @@ export async function compilePlugin(id, src, builtin = false) {
             setSelection: async (info) => {
                 await luaSetSelection(info ? JSON.stringify(info) : '');
             },
-            setModel: async (grid) => {
+            setModel: async (model) => {
                 await luaSetModel(
-                    grid?.w ?? 0, grid?.h ?? 0, grid?.d ?? 0, grid?.count ?? 0, grid?.data ?? '',
+                    model?.w ?? 0, model?.h ?? 0, model?.d ?? 0, model?.count ?? 0, model?.data ?? '',
                 );
             },
             close: () => lua.global.close(),
@@ -133,6 +170,57 @@ export async function compilePlugin(id, src, builtin = false) {
         throw e;
     }
 }
+
+function wrap(id, builtin, info, open) {
+    let engine = null;
+    const get = () => (engine ??= open());
+
+    return {
+        id,
+        builtin,
+        ...info,
+        preview: async (part, values) => (await get()).preview(part, values),
+        click: async (btnId, part, values) => (await get()).click(btnId, part, values),
+        setImage: async (img) => (await get()).setImage(img),
+        setSelection: async (sel) => (await get()).setSelection(sel),
+        setModel: async (model) => (await get()).setModel(model),
+        close: () => {
+            const pending = engine;
+            engine = null;
+            pending?.then((e) => e.close(), () => {});
+        },
+    };
+}
+
+export async function compilePlugin(id, src, builtin = false) {
+    const engine = await startEngine(src);
+    try {
+        return wrap(id, builtin, meta(engine.plugin), () => Promise.resolve(engine));
+    } catch (e) {
+        engine.close();
+        throw e;
+    }
+}
+
+// One shared engine reads every plugin's registration table at boot, so the list can
+// be shown without giving each plugin its own wasm memory before it is ever opened.
+let metaEngine;
+const readMeta = async (src) => {
+    metaEngine ??= (async () => {
+        const lua = await getFactory().createEngine();
+        await lua.doString(preludeSrc);
+
+        return lua;
+    })();
+    const lua = await metaEngine;
+    await lua.doString('plugin = nil');
+    await lua.doString(src);
+
+    return meta(lua.global.get('plugin'));
+};
+
+const lazyPlugin = async (id, src, builtin = false) =>
+    wrap(id, builtin, await readMeta(src), () => startEngine(src));
 
 export function userPlugins() {
     try {
@@ -175,12 +263,12 @@ export async function loadPlugins() {
     for (const { id, src } of BUNDLED) {
         const override = stored.find((s) => s.id === id);
         try {
-            out.push(await compilePlugin(id, override?.src ?? src, true));
+            out.push(await lazyPlugin(id, override?.src ?? src, true));
         } catch (e) {
             console.error(`plugin ${id} failed to load`, e);
             if (override) {
                 try {
-                    out.push(await compilePlugin(id, src, true));
+                    out.push(await lazyPlugin(id, src, true));
                 } catch (e2) {
                     console.error(`builtin ${id} failed to load`, e2);
                 }
@@ -190,7 +278,7 @@ export async function loadPlugins() {
     for (const { id, src } of stored) {
         if (isBuiltin(id)) continue;
         try {
-            out.push(await compilePlugin(id, src));
+            out.push(await lazyPlugin(id, src));
         } catch (e) {
             console.error(`plugin ${id} failed to load`, e);
         }

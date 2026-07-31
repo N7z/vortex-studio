@@ -217,6 +217,24 @@ test('a kicked member is told why before the socket closes', async () => {
     owner.ws.close();
 });
 
+test('a kicked member cannot come back with the token it still holds', async () => {
+    const { c: owner, welcome: hi } = await host();
+    const { c: other, welcome } = await guest(hi.code);
+    owner.send({ t: 'role', memberId: welcome.you.id, role: 'developer' });
+    await other.next('you');
+
+    owner.send({ t: 'kick', memberId: welcome.you.id });
+    assert.equal(await other.closed, 4003);
+
+    const back = new Client();
+    await back.open;
+    back.send({ t: 'join', code: hi.code, token: welcome.you.token });
+    assert.match((await back.next('error')).message, /removed you/);
+    assert.equal(await back.closed, 4004);
+
+    owner.ws.close();
+});
+
 test('only the owner may replace the whole map', async () => {
     const { c: owner, welcome: hi } = await host();
     const { c: other, welcome } = await guest(hi.code);
@@ -497,11 +515,11 @@ test('a spectator cannot change the folders', async () => {
 test('deleting a part drops it from the folders, and an empty folder goes', async () => {
     const groups = [
         { id: 'g-1', name: 'Pair', ids: ['a', 'b'] },
-        { id: 'g-2', name: 'Lonely', ids: ['b'] },
+        { id: 'g-2', name: 'Lonely', ids: ['c'] },
     ];
-    const { c: owner, welcome: hi } = await host([part('a'), part('b')], groups);
+    const { c: owner, welcome: hi } = await host([part('a'), part('b'), part('c')], groups);
 
-    owner.send({ t: 'op', op: { t: 'remove', ids: ['b'] } });
+    owner.send({ t: 'op', op: { t: 'remove', ids: ['b', 'c'] } });
     await owner.next('op');
 
     const { c: late, welcome } = await guest(hi.code);
@@ -579,5 +597,137 @@ test('garbage and unknown message types are reported, not fatal', async () => {
     assert.match((await owner.next('error')).message, /unknown message/);
     owner.send({ t: 'ping' });
     await owner.next('pong');
+    owner.ws.close();
+});
+
+test('a group naming a part the room does not hold loses that member', async () => {
+    const groups = [{ id: 'g-1', name: 'Pair', ids: ['a', 'ghost'] }];
+    const { c: owner, welcome: hi } = await host([part('a')], groups);
+
+    const { c: late, welcome } = await guest(hi.code);
+    assert.deepEqual(welcome.groups, [{ id: 'g-1', name: 'Pair', ids: ['a'] }]);
+
+    owner.ws.close();
+    late.ws.close();
+});
+
+test('a part claimed by two folders is refused', async () => {
+    const { c: owner } = await host([part('a')]);
+    owner.send({
+        t: 'groups',
+        groups: [{ id: 'g-1', name: 'A', ids: ['a'] }, { id: 'g-2', name: 'B', ids: ['a'] }],
+    });
+    assert.match((await owner.next('error')).message, /bad group data/);
+    owner.ws.close();
+});
+
+test('a group op is broadcast with a seq to everyone, sender included', async () => {
+    const { c: owner, welcome: hi } = await host([part('a'), part('b')]);
+    const { c: other } = await guest(hi.code);
+
+    const op = { t: 'group', id: 'g-1', name: 'Pair', ids: ['a', 'b'] };
+    owner.send({ t: 'gop', op });
+
+    const mine = await owner.next('gop');
+    const theirs = await other.next('gop');
+    assert.equal(mine.seq, 1);
+    assert.equal(mine.from, hi.you.id);
+    assert.deepEqual(theirs.op, op);
+
+    const { c: late, welcome } = await guest(hi.code);
+    assert.deepEqual(welcome.groups, [{ id: 'g-1', name: 'Pair', ids: ['a', 'b'] }]);
+
+    owner.ws.close();
+    other.ws.close();
+    late.ws.close();
+});
+
+test('two developers grouping at once keep both folders', async () => {
+    const { c: owner, welcome: hi } = await host([part('a'), part('b'), part('c'), part('d')]);
+    const { c: other, welcome: you } = await guest(hi.code);
+    owner.send({ t: 'role', memberId: you.you.id, role: 'developer' });
+    await other.next('you');
+
+    owner.send({ t: 'gop', op: { t: 'group', id: 'g-1', name: 'Left', ids: ['a', 'b'] } });
+    other.send({ t: 'gop', op: { t: 'group', id: 'g-2', name: 'Right', ids: ['c', 'd'] } });
+    await owner.next('gop', (m) => m.seq === 2);
+    await other.next('gop', (m) => m.seq === 2);
+
+    const { c: late, welcome } = await guest(hi.code);
+    assert.deepEqual(welcome.groups.map((g) => g.id).sort(), ['g-1', 'g-2']);
+
+    owner.ws.close();
+    other.ws.close();
+    late.ws.close();
+});
+
+test('a group op re-applied is the same as applied once', async () => {
+    const { c: owner, welcome: hi } = await host([part('a'), part('b')]);
+    const op = { t: 'group', id: 'g-1', name: 'Pair', ids: ['a', 'b'] };
+
+    owner.send({ t: 'gop', op });
+    await owner.next('gop');
+    owner.send({ t: 'gop', op });
+    await owner.next('gop');
+
+    const { c: late, welcome } = await guest(hi.code);
+    assert.deepEqual(welcome.groups, [{ id: 'g-1', name: 'Pair', ids: ['a', 'b'] }]);
+
+    owner.ws.close();
+    late.ws.close();
+});
+
+test('grouping a part takes it out of the folder it was in', async () => {
+    const groups = [{ id: 'g-1', name: 'Both', ids: ['a', 'b'] }];
+    const { c: owner, welcome: hi } = await host([part('a'), part('b')], groups);
+
+    owner.send({ t: 'gop', op: { t: 'group', id: 'g-2', name: 'Just b', ids: ['b'] } });
+    await owner.next('gop');
+
+    const { c: late, welcome } = await guest(hi.code);
+    assert.deepEqual(welcome.groups, [
+        { id: 'g-1', name: 'Both', ids: ['a'] },
+        { id: 'g-2', name: 'Just b', ids: ['b'] },
+    ]);
+
+    owner.ws.close();
+    late.ws.close();
+});
+
+test('rename and delete group ops take effect, and a spectator is refused', async () => {
+    const groups = [{ id: 'g-1', name: 'Old', ids: ['a'] }];
+    const { c: owner, welcome: hi } = await host([part('a'), part('b')], groups);
+    const { c: other } = await guest(hi.code);
+
+    other.send({ t: 'gop', op: { t: 'rename', id: 'g-1', name: 'Nope' } });
+    assert.match((await other.next('error')).message, /spectator/);
+
+    owner.send({ t: 'gop', op: { t: 'rename', id: 'g-1', name: 'New' } });
+    await owner.next('gop');
+    owner.send({ t: 'gop', op: { t: 'group', id: 'g-2', name: 'Gone soon', ids: ['b'] } });
+    await owner.next('gop');
+    owner.send({ t: 'gop', op: { t: 'delete', id: 'g-2' } });
+    await owner.next('gop');
+
+    const { c: late, welcome } = await guest(hi.code);
+    assert.deepEqual(welcome.groups, [{ id: 'g-1', name: 'New', ids: ['a'] }]);
+
+    owner.ws.close();
+    other.ws.close();
+    late.ws.close();
+});
+
+test('a malformed group op is refused', async () => {
+    const { c: owner } = await host([part('a')]);
+
+    owner.send({ t: 'gop', op: { t: 'nonsense' } });
+    assert.match((await owner.next('error')).message, /unknown group op/);
+
+    owner.send({ t: 'gop', op: { t: 'group', id: 'g-1', name: 'X', ids: ['a', 'a'] } });
+    assert.match((await owner.next('error')).message, /duplicate part id/);
+
+    owner.send({ t: 'gop', op: { t: 'group', id: 'g-1', name: 'X', ids: [] } });
+    assert.match((await owner.next('error')).message, /needs ids/);
+
     owner.ws.close();
 });

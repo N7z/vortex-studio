@@ -1,7 +1,8 @@
 const DEFAULT_URL = 'ws://localhost:8787';
 const RETRY_MS = [500, 1000, 2000, 4000, 8000];
 const SELECTION_THROTTLE_MS = 80;
-const SELECTION_LIMIT = 256;
+// Must match the server's own cap, or the echo comes back smaller than what was sent.
+export const SELECTION_LIMIT = 200;
 const VIEW_THROTTLE_MS = 120;
 const PLAY_THROTTLE_MS = 50;
 
@@ -75,6 +76,7 @@ export class LiveClient {
         this.token = null;
         this.attempt = 0;
         this.closing = false;
+        this.generation = 0;
         this.retryTimer = null;
         this.selectionTimer = null;
         this.pendingSelection = null;
@@ -101,11 +103,26 @@ export class LiveClient {
         this.connect();
     }
 
+    // Detaches the handlers first, so the close does not read as a lost connection
+    // and start a retry against the socket that replaced it.
+    dropSocket() {
+        const ws = this.ws;
+        if (!ws) return;
+        this.ws = null;
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onerror = null;
+        ws.onclose = null;
+        ws.close(1000, 'superseded');
+    }
+
     async connect() {
         this.closing = false;
+        const gen = ++this.generation;
+        this.dropSocket();
         // Refetched per attempt: the proof expires, and a reconnect can be much later.
         this.identity = await this.handlers.onIdentity?.().catch(() => null) ?? null;
-        if (this.closing) return;
+        if (this.closing || gen !== this.generation) return;
         const url = liveUrl();
         if (blockedAsInsecure(url)) {
             this.closing = true;
@@ -206,6 +223,8 @@ export class LiveClient {
                 return this.handlers.onSnapshot?.(msg);
             case 'groups':
                 return this.handlers.onGroups?.(msg);
+            case 'gop':
+                return this.handlers.onGroupOp?.(msg);
             case 'selection':
                 return this.handlers.onSelection?.(msg);
             case 'view':
@@ -246,6 +265,10 @@ export class LiveClient {
 
     sendGroups(groups) {
         return this.send({ t: 'groups', groups });
+    }
+
+    sendGroupOp(op) {
+        return this.send({ t: 'gop', op });
     }
 
     setRole(memberId, role) {
@@ -341,6 +364,7 @@ export class LiveClient {
 
     leave() {
         this.closing = true;
+        this.generation += 1;
         if (this.code) writeToken(this.code, null);
         showRoomInUrl(null);
         this.code = null;

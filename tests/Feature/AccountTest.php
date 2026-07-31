@@ -66,7 +66,7 @@ it('issues no live token when no secret is configured', function () {
 
 it('leaves the anonymous flow working with no account', function () {
     asToken()->putJson('/api/maps/anon', [APART])->assertOk();
-    asToken()->getJson('/api/maps/anon')->assertOk()->assertJson([APART]);
+    asToken()->getJson('/api/maps/anon')->assertOk()->assertJson(['parts' => [APART]]);
     asToken()->getJson('/api/maps')->assertOk()->assertJson(['account' => null, 'mine' => [['name' => 'anon']]]);
 });
 

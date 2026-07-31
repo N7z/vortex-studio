@@ -135,5 +135,18 @@ the only honest way back.
   eventually saves, so junk from one client would reach every other viewport before
   Laravel ever saw it.
 - **The `Origin` header is checked during the upgrade**, so a rejected browser gets a
-  403 it can read instead of a socket that opens and immediately closes. Set
-  `ALLOWED_ORIGINS` in production; the default `*` is for development.
+  403 it can read instead of a socket that opens and immediately closes.
+  **`ALLOWED_ORIGINS` is required in production** and must list the page's origins,
+  comma separated; the default `*` is for development. Once it is a real list a request
+  with no `Origin` at all is refused too, so a non-browser client has to send one.
+- **A kicked member is banned from the room** for `BAN_SECONDS` (an hour by default,
+  which outlives `ROOM_GRACE_SECONDS`), keyed by the session token. Without that, the
+  kicked client reconnects with the token it still holds and `departed` hands its role,
+  and possibly the room, straight back. At most `MAX_BANS_PER_ROOM` are kept.
+- **Each connection is rate limited**: `MAX_MESSAGES_PER_SECOND` (120) messages, over
+  which they are dropped, and four times that closes the socket with 4009.
+  `resync` serialises the whole map, so it has its own budget,
+  `MAX_RESYNCS_PER_MINUTE` (6), answered with an `error` rather than a snapshot.
+- **A client that cannot keep up is disconnected** (4008) once its socket has more than
+  `MAX_BUFFERED_BYTES` (4 MB) waiting, instead of buffering the room's traffic in memory
+  for it.

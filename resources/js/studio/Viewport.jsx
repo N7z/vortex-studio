@@ -182,7 +182,8 @@ export default function Viewport({
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         mount.appendChild(renderer.domElement);
 
-        scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x5a5a52, 0.9));
+        const hemi = new THREE.HemisphereLight(0xcfe8ff, 0x5a5a52, 0.9);
+        scene.add(hemi);
         const sun = new THREE.DirectionalLight(0xffffff, 1.6);
         sun.position.set(80, 160, 60);
         sun.castShadow = true;
@@ -1111,7 +1112,16 @@ export default function Viewport({
             ctx.current.trussGeometry.dispose();
             for (const m of ctx.current.previewMeshes) scene.remove(m);
             ctx.current.previewMat.dispose();
+            scene.remove(grid);
+            grid.geometry.dispose();
+            grid.material.dispose();
+            scene.remove(sun);
+            sun.dispose();
+            sun.shadow.dispose();
+            scene.remove(hemi);
+            hemi.dispose();
             renderer.dispose();
+            renderer.forceContextLoss();
             band.remove();
             mount.removeChild(renderer.domElement);
             ctx.current = null;

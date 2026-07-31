@@ -116,6 +116,7 @@ export default function useLive({
 
     const sendOp = useCallback((op) => client.current.sendOp(op), []);
     const sendGroups = useCallback((groups) => client.current.sendGroups(groups), []);
+    const sendGroupOp = useCallback((op) => client.current.sendGroupOp(op), []);
     const sendSelection = useCallback((ids) => client.current.sendSelection(ids), []);
     const sendView = useCallback((view) => client.current.sendView(view), []);
     const sendPlay = useCallback((play) => client.current.sendPlay(play), []);
@@ -151,6 +152,7 @@ export default function useLive({
         leave,
         sendOp,
         sendGroups,
+        sendGroupOp,
         sendSelection,
         sendView,
         sendPlay,

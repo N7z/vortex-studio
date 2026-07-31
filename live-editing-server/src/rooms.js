@@ -1,6 +1,7 @@
 import { config } from './config.js';
 import { uniqueName } from './identity.js';
 import { MEMBER_COLORS, randomCode, randomId, randomName } from './names.js';
+import { applyGroupOp, validateGroupOp } from './groupops.js';
 import { applyOp, validateOp } from './ops.js';
 
 const rooms = new Map();
@@ -53,17 +54,28 @@ export function cleanPlay(input) {
     };
 }
 
-export function cleanGroups(input) {
+// `known` bounds membership to parts the room actually holds. Without it a client
+// can pin unbounded id lists in memory, and Room.pruneGroups only cleans up after.
+export function cleanGroups(input, known = null) {
     if (input === undefined || input === null) return [];
     if (!Array.isArray(input) || input.length > config.maxGroups) return null;
     const out = [];
+    const taken = new Set();
+    let total = 0;
     for (const g of input) {
         if (!g || typeof g !== 'object') return null;
         if (typeof g.id !== 'string' || typeof g.name !== 'string') return null;
         if (!Array.isArray(g.ids)) return null;
-        const ids = g.ids.filter((id) => typeof id === 'string');
+        const ids = g.ids.filter((id) => typeof id === 'string' && id.length <= 64);
         if (ids.length !== g.ids.length) return null;
-        out.push({ id: g.id.slice(0, 64), name: g.name.slice(0, 64), ids });
+        for (const id of ids) {
+            if (taken.has(id)) return null;
+            taken.add(id);
+        }
+        total += ids.length;
+        if (total > config.maxParts) return null;
+        const live = known ? ids.filter((id) => known.has(id)) : ids;
+        if (live.length) out.push({ id: g.id.slice(0, 64), name: g.name.slice(0, 64), ids: live });
     }
 
     return out;
@@ -75,9 +87,11 @@ class Room {
         this.mapName = mapName;
         this.parts = parts;
         this.groups = groups;
+        this.pruneGroups();
         this.seq = 0;
         this.members = new Map();
         this.departed = new Map();
+        this.banned = new Map();
         this.ownerId = null;
         this.createdAt = now();
         this.lastSavedAt = null;
@@ -121,9 +135,33 @@ class Room {
         }
     }
 
+    pruneBans() {
+        for (const [token, at] of this.banned) {
+            if (now() - at > config.banMs) this.banned.delete(token);
+        }
+        while (this.banned.size > config.maxBansPerRoom) {
+            this.banned.delete(this.banned.keys().next().value);
+        }
+    }
+
+    isBanned(token) {
+        this.pruneBans();
+
+        return !!token && this.banned.has(token);
+    }
+
+    ban(memberId) {
+        const member = this.members.get(memberId);
+        if (!member) return;
+
+        this.banned.set(member.token, now());
+        this.departed.delete(member.token);
+        this.pruneBans();
+    }
+
     add(socket, token, verifiedName = null) {
         this.pruneDeparted();
-        const back = token ? this.departed.get(token) : null;
+        const back = token && !this.isBanned(token) ? this.departed.get(token) : null;
 
         const member = new Member(socket, this.takenNames(), verifiedName);
         if (back) {
@@ -207,6 +245,11 @@ class Room {
 
     send(member, msg) {
         if (member.socket.readyState !== 1) return;
+        if (member.socket.bufferedAmount > config.maxBufferedBytes) {
+            member.socket.close(4008, 'too far behind');
+
+            return;
+        }
         try {
             member.socket.send(JSON.stringify(msg));
         } catch { /* socket is closing; the close handler tidies up */ }
@@ -266,9 +309,24 @@ class Room {
         this.broadcast({ t: 'play', id: member.id, play: clean }, member.id);
     }
 
+    applyGroupOpFrom(member, op) {
+        if (!this.canEdit(member)) return 'you are a spectator in this room';
+        const bad = validateGroupOp(op, config.maxGroups);
+        if (bad) return bad;
+
+        const next = applyGroupOp(this.groups, op);
+        if (next.length > config.maxGroups) return 'too many folders';
+        this.groups = next;
+        this.pruneGroups();
+        this.seq++;
+        this.broadcast({ t: 'gop', op, seq: this.seq, from: member.id });
+
+        return null;
+    }
+
     setGroupsFrom(member, groups) {
         if (!this.canEdit(member)) return 'you are a spectator in this room';
-        const clean = cleanGroups(groups);
+        const clean = cleanGroups(groups, new Set(this.parts.map((p) => p._id)));
         if (!clean) return 'bad group data';
 
         this.groups = clean;

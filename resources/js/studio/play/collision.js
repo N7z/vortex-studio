@@ -61,6 +61,8 @@ export function buildWorld(parts) {
 
     const cells = new Map();
     const always = [];
+    // A pure hash, so two cells can share a bucket. That only costs a few extra
+    // candidates: the AABB tests below reject them anyway.
     const key = (gx, gz) => (gx * 73856093) ^ (gz * 19349663);
 
     for (let i = 0; i < n; i++) {
