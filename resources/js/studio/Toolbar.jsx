@@ -2,7 +2,7 @@ import React from 'react';
 import {
     SelectIcon, MoveIcon, RotateIcon, ScaleIcon, TeamIcon,
     UndoIcon, RedoIcon, PartIcon, SpawnIcon, CopyIcon, PasteIcon, DuplicateIcon,
-    DeleteIcon, SaveIcon, StudsIcon,
+    DeleteIcon, SaveIcon, StudsIcon, PlayIcon, StopIcon,
 } from './icons';
 
 const TOOLS = [
@@ -28,6 +28,7 @@ export default function Toolbar({
     onCopy, onPaste, onDuplicate, onDelete,
     onSave, canSave, graphics, onGraphics,
     live, teamOpen, onToggleTeam, hasMap,
+    playing, onPlay, onStop,
 }) {
     const numInput = (key) => (e) => {
         const v = parseFloat(e.target.value);
@@ -87,6 +88,14 @@ export default function Toolbar({
                     <SpawnIcon />
                     Spawn
                 </button>
+                <button
+                    className={`tool-btn ${graphics.studs ? 'active' : ''}`}
+                    onClick={() => onGraphics({ studs: !graphics.studs })}
+                    title="Show stud textures on top faces"
+                >
+                    <StudsIcon />
+                    Studs
+                </button>
             </Group>
             <Group label="Edit">
                 <button className="tool-btn" onClick={onCopy} disabled={!hasSelection} title="Ctrl+C">
@@ -106,14 +115,24 @@ export default function Toolbar({
                     Delete
                 </button>
             </Group>
-            <Group label="View">
+            <Group label="Test">
                 <button
-                    className={`tool-btn ${graphics.studs ? 'active' : ''}`}
-                    onClick={() => onGraphics({ studs: !graphics.studs })}
-                    title="Show stud textures on top faces"
+                    className="tool-btn play-btn"
+                    onClick={onPlay}
+                    disabled={!hasMap || playing}
+                    title="Walk around this map (F6)"
                 >
-                    <StudsIcon />
-                    Studs
+                    <PlayIcon />
+                    Play
+                </button>
+                <button
+                    className="tool-btn stop-btn"
+                    onClick={onStop}
+                    disabled={!playing}
+                    title="Back to editing (Escape)"
+                >
+                    <StopIcon />
+                    Stop
                 </button>
             </Group>
             <Group label="Map">

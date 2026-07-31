@@ -726,6 +726,13 @@ a.tool-btn { text-decoration: none; }
 }
 .start-footer strong { color: #bcbcc4; }
 
+/* ---------- play test ---------- */
+
+.tool-btn.play-btn:not(:disabled) { color: #6fcf72; }
+.tool-btn.play-btn:not(:disabled):hover { background: #17301a; }
+.tool-btn.stop-btn:not(:disabled) { color: #e06b6b; }
+.tool-btn.stop-btn:not(:disabled):hover { background: #301818; }
+
 /* ---------- misc ---------- */
 
 .credit {

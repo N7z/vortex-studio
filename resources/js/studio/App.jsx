@@ -68,6 +68,7 @@ export default function App() {
     const [groups, setGroups] = useState([]);
     const [tabs, setTabs] = useState([]);
     const [activeTab, setActiveTab] = useState('game');
+    const [playing, setPlaying] = useState(false);
     const [teamOpen, setTeamOpen] = useState(false);
     const [statsOpen, setStatsOpen] = useState(false);
     const statsRef = useRef(null);
@@ -157,7 +158,7 @@ export default function App() {
 
     const liveRef = useRef(live);
     liveRef.current = live;
-    const canEdit = !live.live || live.canEdit;
+    const canEdit = (!live.live || live.canEdit) && !playing;
     const canEditRef = useRef(canEdit);
     canEditRef.current = canEdit;
 
@@ -774,6 +775,13 @@ export default function App() {
                 return;
             }
             if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable) return;
+            if (e.key === 'F6' && mapName) {
+                e.preventDefault();
+                setSelectedIds([]);
+                setPlaying((p) => !p);
+                return;
+            }
+            if (playing) return;
             if (e.ctrlKey && e.key.toLowerCase() === 's') { e.preventDefault(); save(); return; }
             if (e.ctrlKey && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
             if (e.ctrlKey && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
@@ -804,7 +812,7 @@ export default function App() {
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
     }, [save, removeSelected, undo, redo, selected, selectedIds, parts, activeTab, tabs,
-        groupSelection, ungroupSelection]);
+        groupSelection, ungroupSelection, playing, mapName]);
 
     return (
         <div className="studio">
@@ -843,6 +851,9 @@ export default function App() {
                 live={live} teamOpen={teamOpen}
                 onToggleTeam={() => setTeamOpen((o) => !o)}
                 hasMap={!!mapName}
+                playing={playing}
+                onPlay={() => { setSelectedIds([]); setPlaying(true); }}
+                onStop={() => setPlaying(false)}
             />
             <TabBar
                 tabs={[
@@ -886,6 +897,8 @@ export default function App() {
                         preview={pluginPreview}
                         spawnRef={spawnRef}
                         busyRef={busyRef}
+                        playing={playing}
+                        onExitPlay={() => setPlaying(false)}
                     />
                     {activePlugin && mapName && (
                         <PluginPanel

@@ -155,6 +155,7 @@ export default function Viewport({
     parts, selectedIds, setSelectedId, selectMany, tool, snap, onTransform, onTransformMany,
     mapName, graphics, preview, spawnRef, busyRef, canEdit = true, peers, onView,
     faces, showFaces = false, statsRef,
+    playing = false, onExitPlay,
 }) {
     const mountRef = useRef(null);
     const ctx = useRef(null);
@@ -170,10 +171,13 @@ export default function Viewport({
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x7ec8e8);
 
-        const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 5000);
+        const camera = new THREE.PerspectiveCamera(70, 1, 0.5, 5000);
         camera.position.set(40, 40, 40);
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        const renderer = new THREE.WebGLRenderer({
+            antialias: true,
+            logarithmicDepthBuffer: true,
+        });
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         mount.appendChild(renderer.domElement);
@@ -466,7 +470,7 @@ export default function Viewport({
         const lookDir = new THREE.Vector3();
         const lookSph = new THREE.Spherical();
         const onLook = (e) => {
-            if (!flying) return;
+            if (!flying || ctx.current?.session) return;
             const dist = camera.position.distanceTo(orbit.target) || 30;
             lookDir.subVectors(orbit.target, camera.position).normalize();
             lookSph.setFromVector3(lookDir);
@@ -654,6 +658,7 @@ export default function Viewport({
         };
 
         const onDown = (e) => {
+            if (ctx.current?.session) return;
             down.x = e.clientX;
             down.y = e.clientY;
             if (e.button === 2) setFlying(true);
@@ -669,6 +674,7 @@ export default function Viewport({
         };
 
         const onMove = (e) => {
+            if (ctx.current?.session) return;
             if (pending && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) startDrag(e);
             if (drag) moveDrag(e);
             if (marquee) {
@@ -681,6 +687,7 @@ export default function Viewport({
             }
         };
         const onUp = (e) => {
+            if (ctx.current?.session) return;
             if (e.button !== 0) return;
             if (marquee) {
                 const active = marquee.active;
@@ -785,11 +792,27 @@ export default function Viewport({
         let fpsMark = last;
         let fpsCount = 0;
         let fps = 0;
+        const countFps = (now) => {
+            fpsCount++;
+            if (now - fpsMark >= 500) {
+                fps = Math.round((fpsCount * 1000) / (now - fpsMark));
+                fpsCount = 0;
+                fpsMark = now;
+            }
+        };
+
         const tick = () => {
             raf = requestAnimationFrame(tick);
             const now = performance.now();
-            fly(Math.min((now - last) / 1000, 0.1));
+            const dt = Math.min((now - last) / 1000, 0.1);
             last = now;
+            if (ctx.current?.session) {
+                ctx.current.session.update(dt);
+                renderer.render(scene, camera);
+                countFps(now);
+                return;
+            }
+            fly(dt);
             orbit.update();
             const c = ctx.current;
             const sel = c?.selectedMeshes ?? [];
@@ -902,12 +925,7 @@ export default function Viewport({
 
             renderer.render(scene, camera);
 
-            fpsCount++;
-            if (now - fpsMark >= 500) {
-                fps = Math.round((fpsCount * 1000) / (now - fpsMark));
-                fpsCount = 0;
-                fpsMark = now;
-            }
+            countFps(now);
             if (c?.statsRef) {
                 const info = renderer.info.render;
                 c.statsRef.current = {
@@ -938,6 +956,26 @@ export default function Viewport({
             isDragging: () => drag !== null,
             isDraggingMesh: (m) => !!drag?.meshes.includes(m),
             snapMove: 0,
+            session: null,
+            enterPlay: () => {
+                gizmo.detach();
+                for (const b of selBoxes) b.visible = false;
+                for (const b of peerBoxes) b.visible = false;
+                for (const q of faceQuads) q.visible = false;
+                for (const m of marks) { m.cone.visible = false; m.label.visible = false; }
+                grid.visible = false;
+                keys.clear();
+                setFlying(false);
+                orbit.enabled = false;
+            },
+            leavePlay: () => {
+                grid.visible = true;
+                keys.clear();
+                orbit.enabled = true;
+                orbit.target.copy(camera.position).addScaledVector(
+                    camera.getWorldDirection(new THREE.Vector3()), 30,
+                );
+            },
             shadows: gfxRef.current.shadows,
             canEdit: true,
             peers: [],
@@ -1023,6 +1061,35 @@ export default function Viewport({
         c.onView = onView ?? null;
         if (spawnRef) spawnRef.current = c.spawnPoint;
     });
+
+    useEffect(() => {
+        const c = ctx.current;
+        if (!c || !playing) return undefined;
+        let cancelled = false;
+        let session = null;
+        if (busyRef) busyRef.current = true;
+        c.enterPlay();
+        import('./play/session').then(({ createSession }) => {
+            if (cancelled || !ctx.current) return;
+            session = createSession({
+                scene: c.scene,
+                camera: c.camera,
+                canvas: c.renderer.domElement,
+                parts: partsRef.current,
+                onExit: onExitPlay,
+            });
+            ctx.current.session = session;
+        });
+        return () => {
+            cancelled = true;
+            if (ctx.current) {
+                ctx.current.session = null;
+                ctx.current.leavePlay();
+            }
+            if (busyRef) busyRef.current = false;
+            session?.dispose();
+        };
+    }, [playing]);
 
     useEffect(() => {
         const c = ctx.current;
