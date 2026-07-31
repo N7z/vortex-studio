@@ -48,6 +48,7 @@ export default function Account({ account, ttl, onChange }) {
             <div className="account">
                 <span>Signed in as <b>{account.name}</b>. Your maps are kept until you delete them.</span>
                 <div className="account-actions">
+                    {account.admin && <a className="account-link" href="/admin">Admin</a>}
                     <button className="account-link" disabled={busy} onClick={signOut}>Sign out</button>
                 </div>
             </div>
