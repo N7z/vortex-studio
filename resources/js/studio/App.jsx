@@ -25,6 +25,7 @@ import { roomFromUrl } from './live';
 import useLive from './useLive';
 import { decodeImage, imageMeta } from './image';
 import { buildVoxels, loadModel } from './model';
+import { convertRoblox, importSummary } from './roblox';
 import {
     addGroup, forgetGroups, loadGroups, newGroup, pruneGroups, removeGroups, saveGroups, ungroupIds,
 } from './groups';
@@ -567,6 +568,51 @@ export default function App() {
         flash(`Loaded upload as ${name}.json, Save to keep it`);
     };
 
+    const mapNameFrom = (fileName) => (fileName ?? '')
+        .replace(/\.json$/i, '')
+        .replace(/[^A-Za-z0-9_-]/g, '-')
+        .slice(0, 64) || 'roblox';
+
+    const importRobloxText = (text, fileName) => {
+        let result;
+        try {
+            result = convertRoblox(JSON.parse(text), MAX_MAP_PARTS - (mapName ? partsRef.current.length : 0));
+        } catch (e) {
+            flash(`Could not import: ${e.message ?? e}`);
+            return;
+        }
+        if (!result.parts.length) {
+            flash(result.dropped
+                ? `Nothing imported, ${result.dropped} part${result.dropped === 1 ? '' : 's'} had no usable Position or Size`
+                : 'Nothing imported, that file has no parts');
+            return;
+        }
+        if (mapName) {
+            if (!canEditRef.current) {
+                flash('You are a spectator in this session');
+                return;
+            }
+            const added = addMany(result.parts);
+            setGroups((gs) => addGroup(gs, `Roblox import${fileName ? `: ${fileName}` : ''}`, added.map((p) => p._id)));
+        } else {
+            resetDocument(mapNameFrom(fileName), result.parts.map(withNewId), true);
+        }
+        flash(importSummary(result));
+    };
+
+    const importRoblox = async (file) => {
+        try {
+            importRobloxText(await file.text(), file.name);
+        } catch (e) {
+            flash(`Could not read ${file.name}: ${e.message ?? e}`);
+        }
+    };
+
+    const pasteRoblox = () => {
+        const text = prompt('Paste the exported Roblox JSON:');
+        if (text) importRobloxText(text, null);
+    };
+
     const download = () => {
         if (!mapName) return;
         const blob = new Blob([JSON.stringify(stripIds(parts))], { type: 'application/json' });
@@ -764,6 +810,8 @@ export default function App() {
                 hasSelection={!!selected} hasClipboard={!!clipboard.current}
                 onSave={save} canSave={canSaveToServer}
                 onDownload={download} canDownload={!!mapName && canEdit}
+                onImportRoblox={importRoblox} onPasteRoblox={pasteRoblox}
+                canImport={!mapName || canEdit}
                 onUndo={undo} onRedo={redo}
                 onCopy={copy} onPaste={paste} onDuplicate={duplicate}
                 onDelete={removeSelected}
@@ -877,6 +925,7 @@ export default function App() {
                         <StartScreen
                             onOpen={open} onCreate={createNew}
                             onUpload={openUploaded} onRestore={restore}
+                            onImportRoblox={importRoblox}
                             joining={joining} liveStatus={live.status}
                         />
                     )}
