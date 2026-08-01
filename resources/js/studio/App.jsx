@@ -17,7 +17,7 @@ import TeamPanel from './TeamPanel';
 import ScriptTab, { TEMPLATE } from './ScriptTab';
 import {
     loadPlugins, setPartLimit, stripId, compilePlugin, saveUserPlugin, deleteUserPlugin,
-    userPluginSource, isBuiltin, resetBuiltin,
+    userPluginSource, isBuiltin, resetBuiltin, onPluginPrint,
 } from './plugins';
 import { listTeams, loadAccount, loadMap, loadMapAsAdmin, putThumb, saveMap } from './api';
 import { writeBackup } from './backup';
@@ -170,6 +170,8 @@ export default function App() {
     useEffect(() => {
         setPartLimit(unlimited ? Number.MAX_SAFE_INTEGER : MAX_PLUGIN_PARTS);
     }, [unlimited]);
+
+    useEffect(() => onPluginPrint(flash), [flash]);
 
     const flash = useCallback((msg) => {
         setStatus(msg);

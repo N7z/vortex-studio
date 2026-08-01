@@ -89,6 +89,14 @@ end
 
 Icons = setmetatable({}, { __index = function(_, key) return key end })
 
+function print(...)
+    if __print == nil then return end
+    local n = select('#', ...)
+    local out = {}
+    for i = 1, n do out[i] = tostring((select(i, ...))) end
+    __print(table.concat(out, ' '))
+end
+
 Image = nil
 
 local function enc_opts(opts)

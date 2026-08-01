@@ -32,6 +32,25 @@ const BUNDLED = [
 
 const STORE_KEY = 'studio_user_plugins';
 
+// print() from a plugin script goes to the status line. A call that prints in a loop
+// would otherwise queue thousands of them, so each run gets a small budget and the
+// rest are console-only.
+const MAX_PRINTS = 24;
+let printSink = null;
+let printsLeft = 0;
+let printLabel = '';
+
+export const onPluginPrint = (fn) => { printSink = fn; };
+
+const openPrints = (label) => {
+    printsLeft = MAX_PRINTS;
+    printLabel = label ?? '';
+};
+
+// The count runs on its own, off a debounce, so anything it prints is not something
+// the user asked to see.
+const mutePrints = () => { printsLeft = 0; };
+
 let factory;
 const getFactory = () => (factory ??= new LuaFactory());
 
@@ -127,6 +146,13 @@ async function startEngine(src) {
     const lua = await getFactory().createEngine();
     let pix = null;
     try {
+        lua.global.set('__print', (text) => {
+            const line = String(text ?? '');
+            console.log(`[${printLabel || 'plugin'}] ${line}`);
+            if (printsLeft <= 0) return;
+            printsLeft -= 1;
+            printSink?.(printLabel ? `${printLabel}: ${line}` : line);
+        });
         lua.global.set('__img_px', (x, y) => (pix ? pixelAt(pix, x, y) : ''));
         lua.global.set('__img_box', (x0, y0, x1, y1) => (pix ? boxAt(pix, x0, y0, x1, y1) : ''));
         lua.global.set('__img_aspect', (o) => {
@@ -185,9 +211,18 @@ function wrap(id, builtin, info, open) {
         id,
         builtin,
         ...info,
-        preview: async (part, values) => (await get()).preview(part, values),
-        click: async (btnId, part, values) => (await get()).click(btnId, part, values),
-        count: async (values) => (await get()).count(values),
+        preview: async (part, values) => {
+            openPrints(info.name);
+            return (await get()).preview(part, values);
+        },
+        click: async (btnId, part, values) => {
+            openPrints(info.name);
+            return (await get()).click(btnId, part, values);
+        },
+        count: async (values) => {
+            mutePrints();
+            return (await get()).count(values);
+        },
         setImage: async (img) => (await get()).setImage(img),
         setSelection: async (sel) => (await get()).setSelection(sel),
         setModel: async (model) => (await get()).setModel(model),
