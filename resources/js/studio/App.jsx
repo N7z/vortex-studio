@@ -1087,6 +1087,7 @@ export default function App() {
                         snap={snap}
                         canEdit={canEdit}
                         peers={live.peers}
+                        members={live.members}
                         onView={live.live ? live.sendView : null}
                         onTransform={updateSelected}
                         onTransformMany={transformMany}

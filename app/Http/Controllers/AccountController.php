@@ -56,10 +56,9 @@ class AccountController extends Controller
 
         $role = null;
         if ($map !== null) {
-            $row = MapAccess::find($request, $map, $teamId);
-            $role = $row
-                ? (MapAccess::canEdit($row) ? MapAccess::EDITOR : MapAccess::VIEWER)
-                : (MapAccess::teamRole($teamId) === MapAccess::VIEWER ? MapAccess::VIEWER : MapAccess::EDITOR);
+            // A team map carries the team role itself, so the room can tell its owner
+            // from an editor. A personal map is always the caller's own.
+            $role = $teamId !== null ? MapAccess::teamRole($teamId) : MapAccess::EDITOR;
         }
 
         $payload = [

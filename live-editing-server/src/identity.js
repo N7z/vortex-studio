@@ -65,7 +65,7 @@ export function verifyIdentity(token, secret = config.liveSecret, now = Date.now
         name,
         mapName: typeof claim.m === 'string' ? claim.m : null,
         teamId: Number.isInteger(claim.t) ? claim.t : null,
-        role: claim.r === 'editor' || claim.r === 'viewer' ? claim.r : null,
+        role: ['owner', 'editor', 'viewer'].includes(claim.r) ? claim.r : null,
     };
 }
 

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import { labelMaterial } from './play/label';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import {
@@ -155,7 +156,7 @@ export default function Viewport({
     parts, selectedIds, setSelectedId, selectMany, tool, snap, onTransform, onTransformMany,
     mapName, graphics, preview, spawnRef, busyRef, canEdit = true, peers, onView,
     faces, showFaces = false, statsRef,
-    playing = false, onExitPlay, onPlayError, touchRef, playRef, onPlayState,
+    playing = false, onExitPlay, onPlayError, touchRef, playRef, onPlayState, members = [],
 }) {
     const mountRef = useRef(null);
     const ctx = useRef(null);
@@ -265,28 +266,16 @@ export default function Viewport({
             return m;
         };
 
+        const LABEL_HEIGHT = 2;
         const labelMats = new Map();
         const labelMat = (name, color) => {
             const key = `${name}|${color}`;
             let m = labelMats.get(key);
-            if (m) return m;
-            const c = document.createElement('canvas');
-            c.width = 256;
-            c.height = 64;
-            const g = c.getContext('2d');
-            g.font = 'bold 30px system-ui, sans-serif';
-            g.textAlign = 'center';
-            g.textBaseline = 'middle';
-            g.fillStyle = 'rgba(0,0,0,0.55)';
-            g.fillRect(0, 12, 256, 40);
-            g.fillStyle = color;
-            g.fillText(name, 128, 32);
-            const tex = new THREE.CanvasTexture(c);
-            tex.colorSpace = THREE.SRGBColorSpace;
-            m = new THREE.SpriteMaterial({
-                map: tex, depthTest: false, depthWrite: false, transparent: true,
-            });
-            labelMats.set(key, m);
+            if (!m) {
+                m = labelMaterial(name, color, { fontPx: 30, weight: 700, depthTest: false });
+                labelMats.set(key, m);
+            }
+
             return m;
         };
 
@@ -295,8 +284,7 @@ export default function Viewport({
         const mark = () => {
             const cone = new THREE.Mesh(markGeom, markMat('#888888'));
             cone.renderOrder = 997;
-            const label = new THREE.Sprite(labelMat('', '#888888'));
-            label.scale.set(8, 2, 1);
+            const label = new THREE.Sprite(labelMat('', '#888888').material);
             label.renderOrder = 1000;
             scene.add(cone);
             scene.add(label);
@@ -879,7 +867,7 @@ export default function Viewport({
             if (ctx.current?.session) {
                 const s = ctx.current.session;
                 const states = ctx.current.playRef?.current;
-                if (states) s.setPeers(states);
+                if (states) s.setPeers(states, ctx.current.memberNames);
                 s.update(dt);
                 ctx.current.onPlayState?.(s.state);
                 renderer.render(scene, camera);
@@ -980,8 +968,10 @@ export default function Viewport({
                 cone.lookAt(markTarget);
                 cone.material = markMat(peer.color);
                 cone.visible = true;
+                const { material, aspect } = labelMat(peer.name, peer.color);
+                label.material = material;
+                label.scale.set(LABEL_HEIGHT * aspect, LABEL_HEIGHT, 1);
                 label.position.set(px, py + 2.2, pz);
-                label.material = labelMat(peer.name, peer.color);
                 label.visible = true;
             }
             for (let i = k; i < marks.length; i++) {
@@ -1144,6 +1134,7 @@ export default function Viewport({
         c.onView = onView ?? null;
         c.onPlayState = onPlayState ?? null;
         c.playRef = playRef ?? null;
+        c.memberNames = new Map(members.map((m) => [m.id, { name: m.name, color: m.color }]));
         if (spawnRef) spawnRef.current = c.spawnPoint;
     });
 

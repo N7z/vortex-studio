@@ -159,7 +159,7 @@ export function createLiveServer({ log = () => {} } = {}) {
                 name: null,
                 mapName,
                 teamId: Number.isInteger(msg.teamId) ? msg.teamId : null,
-                role: 'editor',
+                role: 'owner',
             };
 
         const teamId = who?.teamId ?? null;

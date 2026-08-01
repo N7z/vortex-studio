@@ -820,7 +820,8 @@ test('the first to open a team map starts the room and the next one lands in it'
     const team = nextTeam();
     const a = await openTeam(team, { u: 1 });
     const first = await a.next('welcome');
-    assert.equal(first.you.owner, true);
+    // An editor never runs the room just by arriving first.
+    assert.equal(first.you.owner, false);
     assert.equal(first.you.role, 'developer');
 
     const b = await openTeam(team, { u: 2, n: 'Bo' }, [part('zzz')]);
@@ -956,4 +957,40 @@ test('a team room cannot be reached by passing its code around', async () => {
 
     a.ws.close();
     member.ws.close();
+});
+
+
+test('the team owner runs the room whenever they arrive', async () => {
+    const team = nextTeam();
+    const editor = await openTeam(team, { u: 1, n: 'Ed' });
+    assert.equal((await editor.next('welcome')).you.owner, false);
+
+    const boss = await openTeam(team, { u: 2, n: 'Boss', r: 'owner' });
+    const hi = await boss.next('welcome');
+    assert.equal(hi.you.owner, true);
+
+    // And the editor is told the room now has one.
+    const members = await editor.next('members', (m) => m.members.some((x) => x.owner));
+    assert.equal(members.members.find((x) => x.owner).name, 'Boss');
+
+    editor.ws.close();
+    boss.ws.close();
+});
+
+test('an editor cannot kick or change roles in a team room', async () => {
+    const team = nextTeam();
+    const a = await openTeam(team, { u: 1, n: 'Ed' });
+    const hi = await a.next('welcome');
+    const b = await openTeam(team, { u: 2, n: 'Bo' });
+    const you = await b.next('welcome');
+
+    a.send({ t: 'kick', memberId: you.you.id });
+    assert.match((await a.next('error')).message, /only the room owner/);
+
+    a.send({ t: 'role', memberId: you.you.id, role: 'spectator' });
+    assert.match((await a.next('error')).message, /only the room owner/);
+    assert.equal(hi.you.owner, false);
+
+    a.ws.close();
+    b.ws.close();
 });

@@ -63,7 +63,7 @@ it('issues a live token only to a signed-in user with a secret configured', func
     expect($sig)->toBe(hash_hmac('sha256', "$payload.$exp", 'shared-with-laravel'));
 });
 
-it('claims editor on a map you can save and viewer on one you cannot', function () {
+it('claims the team role on a team map, so the room knows its owner', function () {
     config(['services.live.secret' => 'shared-with-laravel']);
     $a = User::factory()->create();
     $b = User::factory()->create();
@@ -81,8 +81,14 @@ it('claims editor on a map you can save and viewer on one you cannot', function 
         '+/',
     )), true);
 
-    expect($claim($a, "map=shared&team=$team")['r'])->toBe('editor')
+    $c = User::factory()->create();
+    $this->actingAs($a)->postJson("/api/teams/$team/members", ['who' => $c->email])->assertOk();
+
+    expect($claim($a, "map=shared&team=$team")['r'])->toBe('owner')
+        ->and($claim($c, "map=shared&team=$team")['r'])->toBe('editor')
         ->and($claim($b, "map=shared&team=$team")['r'])->toBe('viewer')
+        // A personal map is always the caller's own.
+        ->and($claim($a, 'map=solo')['r'])->toBe('editor')
         // A team you are not in resolves to nothing at all, not to a claim.
         ->and($claim(User::factory()->create(), "map=shared&team=$team")['m'])->toBeNull();
 });

@@ -17,6 +17,7 @@ class Member {
         this.token = randomId();
         this.socket = socket;
         this.userId = identity?.userId ?? null;
+        this.owns = false;
         this.name = (identity?.name && uniqueName(identity.name, taken)) || randomName(taken);
         this.role = ROLE_SPECTATOR;
         this.joinedAt = now();
@@ -167,6 +168,7 @@ class Room {
         const back = token && !this.isBanned(token) ? this.departed.get(token) : null;
 
         const member = new Member(socket, this.takenNames(), identity);
+        member.owns = this.claimsOwnership(identity);
         if (back) {
             this.departed.delete(token);
             member.id = back.id;
@@ -207,7 +209,15 @@ class Room {
         if (identity.mapName !== this.mapName) return null;
         if ((identity.teamId ?? null) !== (this.teamId ?? null)) return null;
 
-        return identity.role === 'editor' ? ROLE_DEVELOPER : ROLE_SPECTATOR;
+        return identity.role === 'viewer' ? ROLE_SPECTATOR : ROLE_DEVELOPER;
+    }
+
+    /** Only the team's own owner runs a team room, however early anyone else arrived. */
+    claimsOwnership(identity) {
+        if (this.teamId == null) return false;
+        if (identity?.role !== 'owner') return false;
+
+        return identity.mapName === this.mapName && (identity.teamId ?? null) === this.teamId;
     }
 
     /**
@@ -215,7 +225,7 @@ class Room {
      * A personal room stays with its account, or a stranger could claim someone's map.
      */
     mayOwn(member) {
-        if (this.teamId != null) return member.role === ROLE_DEVELOPER;
+        if (this.teamId != null) return member.owns;
         if (this.ownerUserId == null) return true;
 
         return member.userId === this.ownerUserId;

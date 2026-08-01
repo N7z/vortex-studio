@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { buildWorld, spawnPoint } from './collision';
 import { createCharacter, placeCharacter } from './character';
+import { peerLabel } from './label';
 import * as move from './movement';
 
 const CAM_DISTANCE = 24;
@@ -17,6 +18,9 @@ const RIGHT_KEYS = ['KeyD'];
 const LEFT_KEYS = ['KeyA'];
 
 const SMOOTH = 18;
+
+// Above the head, from the middle-of-body position the wire carries.
+const LABEL_HEIGHT = 3.4;
 
 const shortestAngle = (from, to) => from + Math.atan2(Math.sin(to - from), Math.cos(to - from));
 
@@ -123,21 +127,44 @@ export function createSession({ scene, camera, canvas, parts, onExit }) {
     const clamp1 = (v) => Math.max(-1, Math.min(1, v));
 
     const dropPeer = (peer) => {
+        if (peer.label) {
+            scene.remove(peer.label);
+            peer.label.material.map?.dispose();
+            peer.label.material.dispose();
+            peer.label = null;
+        }
         if (!peer.character) return;
         scene.remove(peer.character.object);
         peer.character.dispose();
         peer.character = null;
     };
 
-    const setPeers = (states) => {
+    const setPeers = (states, who = null) => {
         for (const [id, play] of states) {
             if (!play) continue;
+            const named = who?.get(id) ?? null;
             const peer = peers.get(id);
             if (peer) {
                 peer.target = play;
+                if (named && peer.name !== named.name) {
+                    if (peer.label) scene.remove(peer.label);
+                    peer.name = named.name;
+                    peer.label = peerLabel(named.name, named.color);
+                    scene.add(peer.label);
+                }
                 continue;
             }
-            const added = { target: play, shown: { ...play, vy: 0 }, character: null };
+            const added = {
+                target: play,
+                shown: { ...play, vy: 0 },
+                character: null,
+                name: named?.name ?? null,
+                label: null,
+            };
+            if (named) {
+                added.label = peerLabel(named.name, named.color);
+                scene.add(added.label);
+            }
             peers.set(id, added);
             createCharacter().then((c) => {
                 if (disposed || peers.get(id) !== added) {
@@ -169,6 +196,10 @@ export function createSession({ scene, camera, canvas, parts, onExit }) {
             shown.moving = target.moving;
             shown.grounded = target.grounded;
             shown.dead = target.dead;
+            if (peer.label) {
+                peer.label.position.set(shown.x, shown.y + LABEL_HEIGHT, shown.z);
+                peer.label.visible = !shown.dead;
+            }
             if (!peer.character) continue;
             placeCharacter(peer.character, shown);
             peer.character.update(dt, shown, elapsed);
