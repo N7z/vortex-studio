@@ -20,6 +20,7 @@ plugin = {
 local MAX_VOXELS = 400000
 local MAX_RUN = 64
 local TO_DEG = 180 / math.pi
+local AGREE = 0.4
 
 local function maxParts()
     return (Limits and Limits.parts) or 50000
@@ -37,9 +38,6 @@ local function round(n)
     return math.floor(n * 1000 + 0.5) / 1000
 end
 
--- Euler XYZ from the three local axes, which are the columns of the rotation matrix.
--- Inverted from three.js' own makeRotationFromEuler, so a part wears exactly the
--- orientation asked for: local Y along the normal, local X along the run.
 local function euler_from_axes(xx, _, _, yx, yy, yz, zx, zy, zz)
     local ry = math.asin(clamp(zx, -1, 1))
     local rx, rz
@@ -54,28 +52,12 @@ local function euler_from_axes(xx, _, _, yx, yy, yz, zx, zy, zz)
     return round(rx * TO_DEG), round(ry * TO_DEG), round(rz * TO_DEG)
 end
 
--- `counting` swaps the emit for a tally down the one code path, so what the panel
--- promises and what the button makes can never drift apart.
-local function build(part, values, counting)
-    if Model == nil or Model.count < 1 then return counting and 0 or {} end
-    if Model.count > MAX_VOXELS then
-        error("that model has " .. Model.count .. " voxels, too many to sculpt: lower Detail")
-    end
+local cache = {}
 
-    local size = clamp(tonumber(values.size) or 1, 0.05, 50)
-    local radius = math.floor(clamp(tonumber(values.smooth) or 2, 0, 4))
-    local thick = clamp(tonumber(values.thick) or 0.5, 0.1, 2) * size
-    local cover = clamp(tonumber(values.cover) or 1.7, 1, 4) * size
-    local flat = clamp(tonumber(values.flat) or 0.985, 0, 1)
-    local merge = clamp(tonumber(values.merge) or 6, 0, 45)
-    local agree = merge > 0 and math.cos(merge / TO_DEG) or 2
-    local core = values.core == true
-    local base = values.ground ~= false and (part.P[2] + part.S[2] / 2) or part.P[2]
+local function prepared(radius)
+    if cache.model == Model and cache.radius == radius then return cache end
 
     local W, D = Model.w, Model.d
-    local ox = part.P[1] - W * size / 2
-    local oz = part.P[3] - D * size / 2
-
     local slot = {}
     local xs, ys, zs, cs = {}, {}, {}, {}
     local nxs, nys, nzs = {}, {}, {}
@@ -90,11 +72,6 @@ local function build(part, values, counting)
         return slot[(y * D + z) * W + x]
     end
 
-    -- The mesh's own normals are exact but carry the tessellation's jitter, so each
-    -- one is averaged with its neighbours' inside a ball. Only neighbours already
-    -- facing the same way join in: without that the average reaches across a thin
-    -- wall or around a crease and tilts a plate into its own model.
-    local AGREE = 0.4
     local ball = {}
     for dx = -radius, radius do
         for dy = -radius, radius do
@@ -130,8 +107,6 @@ local function build(part, values, counting)
             end
 
             local len = math.sqrt(nx * nx + ny * ny + nz * nz)
-            -- No mesh normal here, or the neighbourhood cancelled out: fall back to
-            -- which way the empty space lies, which is all a filled cell can say.
             if len < 0.05 then
                 nx, ny, nz = 0, 0, 0
                 for k = 1, #ball do
@@ -152,6 +127,43 @@ local function build(part, values, counting)
         end
     end
 
+    cache = {
+        model = Model, radius = radius, at = at, counts = {},
+        xs = xs, ys = ys, zs = zs, cs = cs,
+        skin = skin, sx = sx, sy = sy, sz = sz,
+    }
+
+    return cache
+end
+
+local function build(part, values, counting)
+    if Model == nil or Model.count < 1 then return counting and 0 or {} end
+    if Model.count > MAX_VOXELS then
+        error("that model has " .. Model.count .. " voxels, too many to sculpt: lower Detail")
+    end
+
+    local size = clamp(tonumber(values.size) or 1, 0.05, 50)
+    local radius = math.floor(clamp(tonumber(values.smooth) or 2, 0, 4))
+    local thick = clamp(tonumber(values.thick) or 0.5, 0.1, 2) * size
+    local cover = clamp(tonumber(values.cover) or 1.7, 1, 4) * size
+    local flat = clamp(tonumber(values.flat) or 0.985, 0, 1)
+    local merge = clamp(tonumber(values.merge) or 6, 0, 45)
+    local agree = merge > 0 and math.cos(merge / TO_DEG) or 2
+    local core = values.core == true
+    local base = values.ground ~= false and (part.P[2] + part.S[2] / 2) or part.P[2]
+
+    local c = prepared(radius)
+    local xs, ys, zs, cs = c.xs, c.ys, c.zs, c.cs
+    local skin, sx, sy, sz = c.skin, c.sx, c.sy, c.sz
+    local at = c.at
+
+    local key = flat .. "/" .. merge .. "/" .. tostring(core)
+    if counting and c.counts[key] then return c.counts[key] end
+
+    local W, D = Model.w, Model.d
+    local ox = part.P[1] - W * size / 2
+    local oz = part.P[3] - D * size / 2
+
     local function is_flat(i)
         return math.max(math.abs(sx[i]), math.abs(sy[i]), math.abs(sz[i])) >= flat
     end
@@ -165,8 +177,10 @@ local function build(part, values, counting)
         if not counting then out[#out + 1] = p end
     end
     local function done()
-        if counting then return made end
-        return out
+        if not counting then return out end
+        c.counts[key] = made
+
+        return made
     end
 
     for i = 1, Model.count do
@@ -174,8 +188,6 @@ local function build(part, values, counting)
             local nx, ny, nz = sx[i], sy[i], sz[i]
             local square = is_flat(i)
 
-            -- Run along the world axis the plate is most face-on to, so each step is
-            -- across the plate rather than into it and the tangent cannot degenerate.
             local ax, ay, az = 0, 0, 0
             local bx, by, bz = math.abs(nx), math.abs(ny), math.abs(nz)
             if bx <= by and bx <= bz then ax = 1
@@ -197,14 +209,12 @@ local function build(part, values, counting)
                 taken[at(xs[i] + ax * k, ys[i] + ay * k, zs[i] + az * k)] = true
             end
 
-            -- Halfway between the ends, which is the run's middle cell centre.
             local cx = ox + ((xs[i] + xs[last]) / 2 + 0.5) * size
             local cy = base + ((ys[i] + ys[last]) / 2 + 0.5) * size
             local cz = oz + ((zs[i] + zs[last]) / 2 + 0.5) * size
 
             if made >= limit then return done() end
             if square then
-                -- Square-on to an axis already: a plate here would only add seams.
                 emit({
                     T = "Part",
                     P = { round(cx), round(cy), round(cz) },
@@ -227,8 +237,6 @@ local function build(part, values, counting)
                 local uz = tx * ny - ty * nx
                 local rx, ry, rz = euler_from_axes(tx, ty, tz, nx, ny, nz, ux, uy, uz)
 
-                -- Pushed out along the normal so the plate's outer face lands where
-                -- the voxel's did, instead of sinking half a block into the model.
                 local push = (size - thick) / 2
                 emit({
                     T = "Part",
@@ -248,7 +256,6 @@ local function build(part, values, counting)
 
     if not core then return done() end
 
-    -- What is left is entirely inside the shell, so it can be plain merged blocks.
     local i = 1
     while i <= Model.count do
         if skin[i] then
@@ -287,6 +294,6 @@ function plugin.click(id, part, values)
     return build(part, values)
 end
 
-function plugin.count(part, values)
-    return build(part, values, true)
+function plugin.count(values)
+    return build({ P = { 0, 0, 0 }, S = { 0, 0, 0 } }, values, true)
 end

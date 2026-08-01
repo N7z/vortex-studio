@@ -156,8 +156,7 @@ async function startEngine(src) {
                 toParts(await luaPreview(JSON.stringify(part), JSON.stringify(values))),
             click: async (btnId, part, values) =>
                 toParts(await luaClick(btnId, JSON.stringify(part), JSON.stringify(values))),
-            count: async (part, values) =>
-                Number(await luaCount(JSON.stringify(part), JSON.stringify(values))),
+            count: async (values) => Number(await luaCount(JSON.stringify(values))),
             setImage: async (img) => {
                 pix = imagePixels(img?.id);
                 await luaSetImage(pix?.w ?? 0, pix?.h ?? 0);
@@ -188,7 +187,7 @@ function wrap(id, builtin, info, open) {
         ...info,
         preview: async (part, values) => (await get()).preview(part, values),
         click: async (btnId, part, values) => (await get()).click(btnId, part, values),
-        count: async (part, values) => (await get()).count(part, values),
+        count: async (values) => (await get()).count(values),
         setImage: async (img) => (await get()).setImage(img),
         setSelection: async (sel) => (await get()).setSelection(sel),
         setModel: async (model) => (await get()).setModel(model),

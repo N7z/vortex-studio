@@ -577,42 +577,46 @@ export default function App() {
         }
     }, [activePlugin, activeValues]);
 
-    // What the button would make, counted by the plugin itself down the same code
-    // path, so the panel cannot promise a number the run does not produce. Debounced:
-    // every keystroke in a settings box would otherwise re-count the whole model.
+    // What one click would make, counted by the plugin itself down the same code
+    // path, so the panel cannot promise a number the run does not produce. It runs
+    // on this thread, so it must not depend on the selection: recounting on every
+    // click in the viewport is what made selecting a part freeze the tab.
     useEffect(() => {
-        if (!activePlugin || !selected || busyRef.current) {
+        if (!activePlugin) {
             setPluginCount(null);
             return undefined;
         }
         const plugin = activePlugin;
-        const targets = selectedParts.length || 1;
         let alive = true;
         const timer = setTimeout(async () => {
+            setPluginCount({ id: plugin.id, text: 'Counting...', each: null });
+            // Paint the placeholder first: the count blocks this thread, and a
+            // heavy model can hold it for a second or more.
+            await paint();
             try {
-                await plugin.setSelection(selectionInfo);
-                const each = await plugin.count(stripId(selected), activeValues);
-                if (!alive) return;
-                if (!(each >= 0)) {
-                    setPluginCount(null);
-                    return;
-                }
-                const total = each * targets;
-                const cap = Math.min(pluginCap, Math.max(0, mapCap - partsRef.current.length));
-                setPluginCount({
-                    id: plugin.id,
-                    text: total > cap
-                        ? `Would make ${total.toLocaleString()} parts, over the ${cap.toLocaleString()} left`
-                        : `Will make ${total.toLocaleString()} part${total === 1 ? '' : 's'}`,
-                });
+                const each = await plugin.count(activeValues);
+                if (alive) setPluginCount({ id: plugin.id, each: each >= 0 ? each : null });
             } catch {
                 if (alive) setPluginCount(null);
             }
         }, 300);
 
         return () => { alive = false; clearTimeout(timer); };
-    }, [activePlugin, activeValues, pluginModels, pluginImages, selected, selectedParts.length,
-        pluginCap, mapCap, parts]);
+    }, [activePlugin, activeValues, pluginModels, pluginImages]);
+
+    // Multiplying by the targets is the host's job, so changing the selection costs
+    // nothing: the plugin is asked once and its answer stands.
+    const countNote = useMemo(() => {
+        if (pluginCount?.id !== activePlugin?.id || !pluginCount) return null;
+        if (pluginCount.text) return pluginCount.text;
+        if (pluginCount.each == null) return null;
+        const total = pluginCount.each * (selectedParts.length || 1);
+        const room = Math.min(pluginCap, Math.max(0, mapCap - parts.length));
+
+        return total > room
+            ? `${total.toLocaleString()} parts, over the ${room.toLocaleString()} left`
+            : `${total.toLocaleString()} part${total === 1 ? '' : 's'}`;
+    }, [pluginCount, activePlugin, selectedParts.length, pluginCap, mapCap, parts.length]);
 
     const pluginButton = async (btnId) => {
         if (!activePlugin || !selectedParts.length) return;
@@ -1313,9 +1317,7 @@ export default function App() {
                                 ? `Runs on all ${selectedParts.length} selected parts`
                                 : null}
                             onButton={pluginButton}
-                            resultNote={pluginCount?.id === activePlugin.id
-                                ? pluginCount.text
-                                : null}
+                            countNote={countNote}
                             onEdit={() => openEditTab(activePlugin.id)}
                             onClose={() => setActivePluginId(null)}
                         />

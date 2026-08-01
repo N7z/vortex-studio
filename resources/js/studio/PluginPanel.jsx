@@ -5,7 +5,7 @@ import useDraggable from './useDraggable';
 
 export default function PluginPanel({
     plugin, values, setValue, images, onImage, models, onModel,
-    hasSelection, targetNote, resultNote, onButton, onEdit, onClose,
+    hasSelection, targetNote, countNote, onButton, onEdit, onClose,
 }) {
     const pickers = useRef({});
     const { style, onPointerDown } = useDraggable('plugin');
@@ -75,13 +75,15 @@ export default function PluginPanel({
                             <div className="arch-model-info">
                                 <span className="name" title={info.name}>{info.name}</span>
                                 <span className="dim">
-                                    {info.w}×{info.h}×{info.d}, {info.count} blocks
+                                    {info.w}×{info.h}×{info.d}, {info.count.toLocaleString()} blocks
+                                    {countNote && <> {'→'} <b>{countNote}</b></>}
                                 </span>
                             </div>
                         )}
                     </div>
                 );
             })}
+            {countNote && !shapes.length && <div className="arch-count">Makes {countNote}</div>}
             {texts.map((c) => (
                 <label className="arch-text" key={c.id}>
                     {c.label}
@@ -128,7 +130,6 @@ export default function PluginPanel({
                 </button>
             ))}
             {targetNote && <div className="arch-note">{targetNote}</div>}
-            {resultNote && <div className="arch-note">{resultNote}</div>}
         </div>
     );
 }
