@@ -51,10 +51,40 @@ it('issues a live token only to a signed-in user with a secret configured', func
     $user = User::create(['name' => 'zpaulin', 'email' => 'p@example.com', 'password' => 'correct horse']);
     $token = $this->actingAs($user)->getJson('/account/live-token')->assertOk()->json('token');
 
-    [$name, $exp, $sig] = explode('.', $token);
-    expect(base64_decode(strtr($name, '-_', '+/')))->toBe('zpaulin');
+    [$payload, $exp, $sig] = explode('.', $token);
+    $claim = json_decode(base64_decode(strtr($payload, '-_', '+/')), true);
+    expect($claim['v'])->toBe(2)
+        ->and($claim['n'])->toBe('zpaulin')
+        ->and($claim['u'])->toBe($user->id)
+        // No map was named, so the token proves the name and claims no rights.
+        ->and($claim['m'])->toBeNull()
+        ->and($claim['r'])->toBeNull();
     expect((int) $exp)->toBeGreaterThan(time());
-    expect($sig)->toBe(hash_hmac('sha256', "$name.$exp", 'shared-with-laravel'));
+    expect($sig)->toBe(hash_hmac('sha256', "$payload.$exp", 'shared-with-laravel'));
+});
+
+it('claims editor on a map you can save and viewer on one you cannot', function () {
+    config(['services.live.secret' => 'shared-with-laravel']);
+    $a = User::factory()->create();
+    $b = User::factory()->create();
+
+    $team = $this->actingAs($a)->postJson('/api/teams', ['name' => 'Crew'])->json('id');
+    $this->actingAs($a)->postJson("/api/teams/$team/members", ['email' => $b->email, 'role' => 'viewer'])
+        ->assertOk();
+    $this->actingAs($a)->putJson("/api/maps/shared?team=$team", [
+        'parts' => [['T' => 'Part', 'P' => [0, 0, 0], 'S' => [1, 1, 1], 'R' => [0, 0, 0]]],
+    ])->assertOk();
+
+    $claim = fn ($user, $q) => json_decode(base64_decode(strtr(
+        explode('.', $this->actingAs($user)->getJson("/account/live-token?$q")->json('token'))[0],
+        '-_',
+        '+/',
+    )), true);
+
+    expect($claim($a, "map=shared&team=$team")['r'])->toBe('editor')
+        ->and($claim($b, "map=shared&team=$team")['r'])->toBe('viewer')
+        // A team you are not in resolves to nothing at all, not to a claim.
+        ->and($claim(User::factory()->create(), "map=shared&team=$team")['m'])->toBeNull();
 });
 
 it('issues no live token when no secret is configured', function () {

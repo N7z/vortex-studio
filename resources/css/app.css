@@ -1420,3 +1420,46 @@ a.tool-btn { text-decoration: none; }
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
+
+.team-row { display: flex; flex-direction: column; }
+.team-error { color: #e05252; font-size: 12px; margin: 4px 0; }
+.team-members {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 6px 0 12px 14px;
+    padding-left: 12px;
+    border-left: 1px solid #2c2c33;
+}
+.team-member { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #ccc; }
+.team-member > span:first-child { min-width: 140px; }
+.team-add { display: flex; gap: 6px; margin-top: 4px; }
+.team-add input { flex: 1; min-width: 0; }
+.team-members select,
+.team-add input,
+.team-add select,
+.team-add button {
+    background: #1b1b20;
+    border: 1px solid #2c2c33;
+    color: #ddd;
+    border-radius: 3px;
+    padding: 4px 6px;
+    font: inherit;
+    font-size: 12px;
+}
+.team-add button { cursor: pointer; }
+.team-add button:hover { border-color: #3987e5; }
+
+.team-delete {
+    align-self: flex-start;
+    margin-top: 6px;
+    background: none;
+    border: 1px solid #40232a;
+    color: #c2606a;
+    border-radius: 3px;
+    padding: 4px 8px;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+.team-delete:hover { border-color: #e05252; color: #e05252; }

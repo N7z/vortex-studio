@@ -3,6 +3,7 @@
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\MapController;
+use App\Http\Controllers\TeamController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Vite;
 
@@ -23,6 +24,16 @@ Route::middleware('throttle:60,1')->group(function () {
     Route::get('/api/maps', [MapController::class, 'index']);
     Route::get('/api/maps/{name}', [MapController::class, 'show']);
     Route::put('/api/maps/{name}', [MapController::class, 'save']);
+
+    Route::get('/api/teams', [TeamController::class, 'index']);
+    Route::post('/api/teams', [TeamController::class, 'store']);
+    Route::delete('/api/teams/{team}', [TeamController::class, 'destroy'])->whereNumber('team');
+    Route::get('/api/teams/{team}/members', [TeamController::class, 'members'])->whereNumber('team');
+    Route::post('/api/teams/{team}/members', [TeamController::class, 'addMember'])->whereNumber('team');
+    Route::patch('/api/teams/{team}/members/{user}', [TeamController::class, 'updateMember'])
+        ->whereNumber(['team', 'user']);
+    Route::delete('/api/teams/{team}/members/{user}', [TeamController::class, 'removeMember'])
+        ->whereNumber(['team', 'user']);
 });
 
 Route::prefix('admin')->middleware('admin')->group(function () {

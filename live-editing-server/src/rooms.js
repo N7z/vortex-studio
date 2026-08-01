@@ -12,11 +12,12 @@ export const ROLE_SPECTATOR = 'spectator';
 const now = () => Date.now();
 
 class Member {
-    constructor(socket, taken, verifiedName = null) {
+    constructor(socket, taken, identity = null) {
         this.id = randomId();
         this.token = randomId();
         this.socket = socket;
-        this.name = (verifiedName && uniqueName(verifiedName, taken)) || randomName(taken);
+        this.userId = identity?.userId ?? null;
+        this.name = (identity?.name && uniqueName(identity.name, taken)) || randomName(taken);
         this.role = ROLE_SPECTATOR;
         this.joinedAt = now();
         this.selection = [];
@@ -82,9 +83,11 @@ export function cleanGroups(input, known = null) {
 }
 
 class Room {
-    constructor(code, mapName, parts, groups = []) {
+    constructor(code, mapName, parts, groups = [], ownerUserId = null, teamId = null) {
         this.code = code;
         this.mapName = mapName;
+        this.ownerUserId = ownerUserId;
+        this.teamId = teamId;
         this.parts = parts;
         this.groups = groups;
         this.pruneGroups();
@@ -159,20 +162,24 @@ class Room {
         this.pruneBans();
     }
 
-    add(socket, token, verifiedName = null) {
+    add(socket, token, identity = null) {
         this.pruneDeparted();
         const back = token && !this.isBanned(token) ? this.departed.get(token) : null;
 
-        const member = new Member(socket, this.takenNames(), verifiedName);
+        const member = new Member(socket, this.takenNames(), identity);
         if (back) {
             this.departed.delete(token);
             member.id = back.id;
             member.token = token;
             member.name = back.name;
             member.color = back.color;
-            member.role = back.role;
+            // Role comes from the fresh token, not from what it was: a demoted user
+            // must not keep edit rights for the whole grace period.
+            member.role = this.claimedRole(identity) ?? back.role;
         } else {
             member.color = this.freeColor();
+            const claimed = this.claimedRole(identity);
+            if (claimed) member.role = claimed;
         }
 
         this.members.set(member.id, member);
@@ -181,14 +188,33 @@ class Room {
             this.graceTimer = null;
         }
 
-        if (back?.wasOwner && !this.ownerId) {
+        if (back?.wasOwner && !this.ownerId && this.mayOwn(member)) {
             this.clearOwnerTimer();
             this.claimOwner(member);
-        } else if (!this.ownerId && !this.ownerTimer) {
+        } else if (!this.ownerId && !this.ownerTimer && this.mayOwn(member)) {
             this.claimOwner(member);
         }
 
         return { member, resumed: !!back };
+    }
+
+    /**
+     * A token minted for one map must not grant edit rights in another room, so the
+     * claim only counts when its map and team match this room's.
+     */
+    claimedRole(identity) {
+        if (!identity?.role) return null;
+        if (identity.mapName !== this.mapName) return null;
+        if ((identity.teamId ?? null) !== (this.teamId ?? null)) return null;
+
+        return identity.role === 'editor' ? ROLE_DEVELOPER : ROLE_SPECTATOR;
+    }
+
+    /** With no account behind the room, the old first-in-wins rule still applies. */
+    mayOwn(member) {
+        if (this.ownerUserId == null) return true;
+
+        return member.userId === this.ownerUserId;
     }
 
     claimOwner(member) {
@@ -205,7 +231,10 @@ class Room {
     promoteOldest() {
         this.ownerTimer = null;
         if (this.ownerId) return;
-        const next = [...this.members.values()].sort((a, b) => a.joinedAt - b.joinedAt)[0];
+        const next = [...this.members.values()]
+            .sort((a, b) => a.joinedAt - b.joinedAt)
+            .find((m) => this.mayOwn(m) && m.role === ROLE_DEVELOPER)
+            ?? [...this.members.values()].sort((a, b) => a.joinedAt - b.joinedAt).find((m) => this.mayOwn(m));
         if (!next) return;
 
         this.claimOwner(next);
@@ -337,14 +366,14 @@ class Room {
     }
 }
 
-export function createRoom(mapName, parts, groups = []) {
+export function createRoom(mapName, parts, groups = [], ownerUserId = null, teamId = null) {
     if (rooms.size >= config.maxRooms) return null;
     let code;
     do {
         code = randomCode();
     } while (rooms.has(code));
 
-    const room = new Room(code, mapName, parts, groups);
+    const room = new Room(code, mapName, parts, groups, ownerUserId, teamId);
     rooms.set(code, room);
 
     return room;

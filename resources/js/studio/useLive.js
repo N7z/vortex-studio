@@ -46,6 +46,9 @@ export default function useLive({
         if (changed) setPlayingIds([...map.keys()]);
     };
 
+    // Which map a token should be minted for. Only hosting knows it; a join by code
+    // does not, and the reconnect path reads it again on every attempt.
+    const scope = useRef({ map: null, team: null });
     const client = useRef(null);
     if (!client.current) {
         client.current = new LiveClient({
@@ -94,11 +97,12 @@ export default function useLive({
                 syncPlay([]);
             },
             onError: (message) => cbs.current.onError?.(message),
-            onIdentity: () => liveToken(),
+            onIdentity: () => liveToken(scope.current.map, scope.current.team),
         });
     }
 
-    const host = useCallback((mapName, parts, groups) => {
+    const host = useCallback((mapName, parts, groups, teamId = null) => {
+        scope.current = { map: mapName, team: teamId };
         client.current.create(mapName, parts, groups);
     }, []);
 

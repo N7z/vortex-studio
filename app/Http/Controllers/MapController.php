@@ -2,13 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Contracts\Database\Query\Builder;
+use App\Support\MapAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 class MapController extends Controller
 {
@@ -20,6 +18,8 @@ class MapController extends Controller
 
     private const MAX_MAPS_PER_OWNER = 50;
 
+    private const MAX_MAPS_PER_TEAM = 200;
+
     private const MAX_PARTS = 20_000;
 
     private const MAX_GROUPS = 2_000;
@@ -27,33 +27,24 @@ class MapController extends Controller
     /** Keys the editor writes / the example maps use; anything else is rejected. */
     private const PART_KEYS = ['_id', 'T', 'P', 'S', 'R', 'C', 'Tr', 'Shape', 'Sh', 'ItemId'];
 
-    /**
-     * Anonymous per-visitor identity: a random cookie, no login.
-     * Re-queued on every request so the cookie outlives the map TTL.
-     */
     private function token(Request $request): string
     {
-        $t = $request->cookie('studio_token');
-        if (! is_string($t) || ! preg_match('/^[A-Za-z0-9]{40}$/', $t)) {
-            $t = Str::random(40);
-        }
-        Cookie::queue('studio_token', $t, 60 * 24 * 7);
-
-        return $t;
+        return MapAccess::token($request);
     }
 
-    /**
-     * A signed-in visitor owns maps by account, everyone else by cookie. The cookie
-     * is issued either way, so signing out returns them to their anonymous maps.
-     */
-    private function scope(Request $request): Builder
+    /** The team a request is scoped to, or null for the caller's personal maps. */
+    private function teamId(Request $request): ?int
     {
-        $id = Auth::id();
-        $token = $this->token($request);
+        $raw = $request->query('team', $request->json('team_id'));
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+        abort_unless(is_numeric($raw), 400, 'bad team');
+        $id = (int) $raw;
+        // 404 rather than 403: a team you are not in should not be discoverable.
+        abort_unless(MapAccess::teamRole($id) !== null, 404);
 
-        return $id
-            ? DB::table('maps')->where('user_id', $id)
-            : DB::table('maps')->whereNull('user_id')->where('token', $token);
+        return $id;
     }
 
     /** Only anonymous maps expire; an account's maps are kept. */
@@ -61,6 +52,7 @@ class MapController extends Controller
     {
         DB::table('maps')
             ->whereNull('user_id')
+            ->whereNull('team_id')
             ->where('updated_at', '<', now()->subHours(self::TTL_HOURS))
             ->delete();
     }
@@ -103,10 +95,15 @@ class MapController extends Controller
     {
         self::prune();
 
-        $mine = $this->scope($request)
+        $mine = MapAccess::visible($request)
             ->orderByDesc('updated_at')
-            ->get(['name', 'updated_at'])
-            ->map(fn ($m) => ['name' => $m->name, 'modified' => strtotime($m->updated_at)]);
+            ->get(['name', 'updated_at', 'team_id', 'version'])
+            ->map(fn ($m) => [
+                'name' => $m->name,
+                'modified' => strtotime($m->updated_at),
+                'team_id' => $m->team_id,
+                'version' => (int) $m->version,
+            ]);
 
         $examples = collect(glob($this->examplesDir().DIRECTORY_SEPARATOR.'*.json'))
             ->map(fn ($f) => ['name' => basename($f, '.json')])
@@ -115,30 +112,47 @@ class MapController extends Controller
         return response()->json([
             'mine' => $mine,
             'examples' => $examples,
+            'teams' => $this->myTeams(),
             'ttl_hours' => self::TTL_HOURS,
             'account' => AccountController::current(),
         ]);
+    }
+
+    /** Teams the caller belongs to, with their own role, for the map-list switcher. */
+    private function myTeams(): array
+    {
+        if (! Auth::id()) {
+            return [];
+        }
+
+        return DB::table('team_members')
+            ->join('teams', 'teams.id', '=', 'team_members.team_id')
+            ->where('team_members.user_id', Auth::id())
+            ->orderBy('teams.name')
+            ->get(['teams.id', 'teams.name', 'team_members.role'])
+            ->map(fn ($t) => ['id' => $t->id, 'name' => $t->name, 'role' => $t->role])
+            ->all();
     }
 
     public function show(Request $request, string $name)
     {
         $name = $this->validName($name);
 
-        $row = $this->scope($request)->where('name', $name)->first();
+        $row = MapAccess::find($request, $name, $this->teamId($request));
         if ($row) {
-            return $this->document($row->data, $row->groups);
+            return $this->document($row->data, $row->groups, (int) $row->version);
         }
 
         $file = $this->examplesDir().DIRECTORY_SEPARATOR.$name.'.json';
         abort_unless(is_file($file), 404);
 
-        return $this->document(file_get_contents($file), null);
+        return $this->document(file_get_contents($file), null, 0);
     }
 
     /** Parts and groups travel together, so the stored JSON is wrapped rather than re-encoded. */
-    private function document(string $parts, ?string $groups)
+    private function document(string $parts, ?string $groups, int $version)
     {
-        return response('{"parts":'.$parts.',"groups":'.($groups ?: '[]').'}')
+        return response('{"parts":'.$parts.',"groups":'.($groups ?: '[]').',"version":'.$version.'}')
             ->header('Content-Type', 'application/json');
     }
 
@@ -169,21 +183,56 @@ class MapController extends Controller
 
         $token = $this->token($request);
         $id = Auth::id();
-        $exists = $this->scope($request)->where('name', $name)->exists();
-        abort_if(
-            ! $exists && $this->scope($request)->count() >= self::MAX_MAPS_PER_OWNER,
-            403,
-            'map limit reached',
-        );
+        $teamId = $this->teamId($request);
+        abort_if($teamId !== null && ! $id, 404);
 
-        DB::table('maps')->updateOrInsert(
-            $id ? ['user_id' => $id, 'name' => $name] : ['user_id' => null, 'token' => $token, 'name' => $name],
-            fn (bool $exists) => ['token' => $token, 'data' => $data, 'parts' => count($parts), 'updated_at' => now()]
-                + ($encodedGroups === null ? [] : ['groups' => $encodedGroups])
-                + ($exists ? [] : ['created_at' => now()]),
-        );
+        $row = MapAccess::find($request, $name, $teamId);
+        if ($row && ! MapAccess::canEdit($row)) {
+            abort(403, 'you can only view this map');
+        }
+        if (! $row && $teamId !== null && MapAccess::teamRole($teamId) === MapAccess::VIEWER) {
+            abort(403, 'you can only view this team');
+        }
 
-        return response()->json(['ok' => true]);
+        if (! $row) {
+            $count = $teamId === null
+                ? MapAccess::personal($request)->count()
+                : DB::table('maps')->where('team_id', $teamId)->count();
+            $limit = $teamId === null ? self::MAX_MAPS_PER_OWNER : self::MAX_MAPS_PER_TEAM;
+            abort_if($count >= $limit, 403, 'map limit reached');
+        }
+
+        $values = ['token' => $token, 'data' => $data, 'parts' => count($parts), 'updated_at' => now()]
+            + ($encodedGroups === null ? [] : ['groups' => $encodedGroups]);
+
+        if (! $row) {
+            DB::table('maps')->insert($values + [
+                'user_id' => $id, 'team_id' => $teamId, 'name' => $name,
+                'version' => 1, 'created_at' => now(),
+            ]);
+
+            return response()->json(['ok' => true, 'version' => 1]);
+        }
+
+        // Optimistic concurrency: a save built on an older copy is refused rather
+        // than silently overwriting whoever saved in between. A client that sends
+        // no version is trusted, which is what keeps the single-editor case simple.
+        $sent = $request->json('version');
+        $next = (int) $row->version + 1;
+        $q = DB::table('maps')->where('id', $row->id);
+        if (is_numeric($sent)) {
+            $q->where('version', (int) $sent);
+        }
+
+        if (! $q->update($values + ['version' => $next])) {
+            return response()->json([
+                'error' => 'stale',
+                'message' => 'someone else saved this map',
+                'version' => (int) DB::table('maps')->where('id', $row->id)->value('version'),
+            ], 409);
+        }
+
+        return response()->json(['ok' => true, 'version' => $next]);
     }
 
     /**

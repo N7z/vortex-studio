@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Support\MapAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -20,7 +21,9 @@ class AccountController extends Controller
     {
         $u = Auth::user();
 
-        return $u ? ['name' => $u->name, 'email' => $u->email, 'admin' => (bool) $u->is_admin] : null;
+        return $u
+            ? ['id' => $u->id, 'name' => $u->name, 'email' => $u->email, 'admin' => (bool) $u->is_admin]
+            : null;
     }
 
     public function me(): array
@@ -32,7 +35,12 @@ class AccountController extends Controller
      * A short-lived proof of username for the live server, which never talks to
      * Laravel. No secret configured means no proof, and members stay anonymous.
      */
-    public function liveToken(): array
+    /**
+     * The live server cannot ask this app anything, so the token is the whole
+     * authority: it carries who the user is and what they may do to one named map.
+     * The room never trusts a role or id the client states for itself.
+     */
+    public function liveToken(Request $request): array
     {
         $user = Auth::user();
         $secret = config('services.live.secret');
@@ -40,11 +48,35 @@ class AccountController extends Controller
             return ['token' => null];
         }
 
-        $name = rtrim(strtr(base64_encode($user->name), '+/', '-_'), '=');
-        $exp = time() + self::TOKEN_TTL;
-        $sig = hash_hmac('sha256', "$name.$exp", $secret);
+        $map = $request->query('map');
+        $map = is_string($map) && preg_match('/^[A-Za-z0-9_\-]{1,64}$/', $map) ? $map : null;
 
-        return ['token' => "$name.$exp.$sig"];
+        $teamId = $request->query('team');
+        $teamId = is_numeric($teamId) ? (int) $teamId : null;
+        if ($teamId !== null && MapAccess::teamRole($teamId) === null) {
+            $teamId = null;
+            $map = null;
+        }
+
+        // A role is only claimed for a map the caller really can edit. With no map
+        // named (joining by code) the token proves the name and nothing more.
+        $role = null;
+        if ($map !== null) {
+            $row = MapAccess::find($request, $map, $teamId);
+            $role = $row
+                ? (MapAccess::canEdit($row) ? MapAccess::EDITOR : MapAccess::VIEWER)
+                : (MapAccess::teamRole($teamId) === MapAccess::VIEWER ? MapAccess::VIEWER : MapAccess::EDITOR);
+        }
+
+        $payload = [
+            'v' => 2, 'u' => $user->id, 'n' => $user->name,
+            'm' => $map, 't' => $teamId, 'r' => $role,
+        ];
+        $encoded = rtrim(strtr(base64_encode(json_encode($payload)), '+/', '-_'), '=');
+        $exp = time() + self::TOKEN_TTL;
+        $sig = hash_hmac('sha256', "$encoded.$exp", $secret);
+
+        return ['token' => "$encoded.$exp.$sig"];
     }
 
     public function register(Request $request)

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import test from 'node:test';
 
-import { uniqueName, verifyName } from '../src/identity.js';
+import { uniqueName, verifyIdentity, verifyName } from '../src/identity.js';
 
 const SECRET = 'shared-with-laravel';
 
@@ -54,4 +54,35 @@ test('uniqueName steps aside for a name already in the room', () => {
     assert.equal(uniqueName('zpaulin', new Set()), 'zpaulin');
     assert.equal(uniqueName('zpaulin', new Set(['zpaulin'])), 'zpaulin (2)');
     assert.equal(uniqueName('zpaulin', new Set(['zpaulin', 'zpaulin (2)'])), 'zpaulin (3)');
+});
+
+const v2 = (over = {}) => JSON.stringify({
+    v: 2, u: 7, n: 'Ada', m: 'castle', t: 3, r: 'editor', ...over,
+});
+
+test('a v2 token carries the account, map and role', () => {
+    assert.deepEqual(verifyIdentity(sign(v2(), soon()), SECRET), {
+        userId: 7, name: 'Ada', mapName: 'castle', teamId: 3, role: 'editor',
+    });
+});
+
+test('a v1 token still proves the name and claims nothing else', () => {
+    assert.deepEqual(verifyIdentity(sign('Ada', soon()), SECRET), {
+        userId: null, name: 'Ada', mapName: null, teamId: null, role: null,
+    });
+});
+
+test('an expired v2 token is refused', () => {
+    const past = Math.floor(Date.now() / 1000) - 10;
+    assert.equal(verifyIdentity(sign(v2(), past), SECRET), null);
+});
+
+test('an unknown role is dropped rather than trusted', () => {
+    assert.equal(verifyIdentity(sign(v2({ r: 'admin' }), soon()), SECRET).role, null);
+});
+
+test('a tampered v2 payload is refused', () => {
+    const token = sign(v2(), soon());
+    const broken = `${token.slice(0, -1)}${token.endsWith('a') ? 'b' : 'a'}`;
+    assert.equal(verifyIdentity(broken, SECRET), null);
 });

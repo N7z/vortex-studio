@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { listMaps } from './api';
 import { listBackups, readBackup, deleteBackup } from './backup';
 import Account from './Account';
+import Teams from './Teams';
 
 const DISCLAIMER_KEY = 'studio_disclaimer_closed';
 
@@ -22,17 +23,20 @@ const ago = (ms) => {
 };
 
 export default function StartScreen({
-    onOpen, onCreate, onUpload, onRestore, onPasteRoblox, openName, joining, liveStatus, mobile,
+    onOpen, onCreate, onUpload, onRestore, onPasteRoblox, openName, openTeam, joining, liveStatus, mobile,
 }) {
     const [mine, setMine] = useState([]);
     const [examples, setExamples] = useState([]);
     const [ttl, setTtl] = useState(24);
     const [account, setAccount] = useState(null);
+    const [teams, setTeams] = useState([]);
     const [claimed, setClaimed] = useState(0);
     const [backups, setBackups] = useState(() => listBackups());
     const [disclaimer, setDisclaimer] = useState(() => !readClosed());
     const [error, setError] = useState('');
     const fileRef = useRef(null);
+
+    const personal = mine.filter((m) => !m.team_id);
 
     const restore = (name) => {
         const parts = readBackup(name);
@@ -56,6 +60,7 @@ export default function StartScreen({
                 setExamples(d.examples ?? []);
                 setTtl(d.ttl_hours ?? 24);
                 setAccount(d.account ?? null);
+                setTeams(d.teams ?? []);
             })
             .catch((e) => setError(String(e.message ?? e)));
 
@@ -67,11 +72,11 @@ export default function StartScreen({
         refresh();
     };
 
-    const create = () => {
+    const create = (teamId = null) => {
         const name = prompt('New map name (letters, digits, - and _):');
         if (!name) return;
         if (!/^[A-Za-z0-9_-]{1,64}$/.test(name)) { alert('Invalid name.'); return; }
-        onCreate(name);
+        onCreate(name, teamId);
     };
 
     const pickFile = () => fileRef.current?.click();
@@ -107,7 +112,7 @@ export default function StartScreen({
             </div>
             <div className="start-scroll">
                 <h1>Paulin Studio</h1>
-                <a onClick={create}>Create new project</a>
+                <a onClick={() => create(null)}>Create new project</a>
                 <a onClick={pickFile}>Upload a map (.json)</a>
                 {!mobile && <a onClick={onPasteRoblox}>Import a Roblox place</a>}
                 <input
@@ -124,7 +129,7 @@ export default function StartScreen({
                     </div>
                 )}
                 {error && <div style={{ color: '#e05252' }}>{error}</div>}
-                {mine.length > 0 && (
+                {personal.length > 0 && (
                     <>
                         <h2>
                             Your maps in the cloud
@@ -132,13 +137,37 @@ export default function StartScreen({
                                 {account ? 'kept with your account' : `kept ${ttl}h after each save`}
                             </span>
                         </h2>
-                        {mine.map((m) => (
-                            <a key={m.name} onClick={() => onOpen(m.name)}>
+                        {personal.map((m) => (
+                            <a key={m.name} onClick={() => onOpen(m.name, null)}>
                                 {m.name}.json
-                                {m.name === openName && <span className="ttl-note">open</span>}
+                                {m.name === openName && openTeam == null
+                                    && <span className="ttl-note">open</span>}
                             </a>
                         ))}
                     </>
+                )}
+                {teams.map((t) => {
+                    const rows = mine.filter((m) => m.team_id === t.id);
+                    if (!rows.length && t.role === 'viewer') return null;
+
+                    return (
+                        <React.Fragment key={t.id}>
+                            <h2>{t.name}<span className="ttl-note">team maps</span></h2>
+                            {t.role !== 'viewer' && (
+                                <a onClick={() => create(t.id)}>New map in {t.name}</a>
+                            )}
+                            {rows.map((m) => (
+                                <a key={m.name} onClick={() => onOpen(m.name, t.id)}>
+                                    {m.name}.json
+                                    {m.name === openName && openTeam === t.id
+                                        && <span className="ttl-note">open</span>}
+                                </a>
+                            ))}
+                        </React.Fragment>
+                    );
+                })}
+                {account && (
+                    <Teams teams={teams} me={account.id} onChanged={refresh} />
                 )}
                 {backups.length > 0 && (
                     <>

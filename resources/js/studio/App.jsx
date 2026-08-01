@@ -59,6 +59,7 @@ const GROUPS_DEBOUNCE_MS = 400;
 
 export default function App() {
     const [mapName, setMapName] = useState(null);
+    const [mapTeam, setMapTeam] = useState(null);
     const [parts, setParts] = useState([]);
     const [selectedIds, setSelectedIds] = useState([]);
     const [faces, setFaces] = useState({});
@@ -99,17 +100,25 @@ export default function App() {
     const groupsRef = useRef([]);
     groupsRef.current = groups;
     const loadedGroups = useRef(null);
+    const mapTeamRef = useRef(null);
+    mapTeamRef.current = mapTeam;
+    // The stored version this copy was built on; a save that does not match it is refused.
+    const versionRef = useRef(null);
+    const staleSeen = useRef(false);
 
     const flash = useCallback((msg) => {
         setStatus(msg);
         setTimeout(() => setStatus((s) => (s === msg ? '' : s)), 2500);
     }, []);
 
-    const resetDocument = (name, raw, isDirty, remoteGroups) => {
+    const resetDocument = (name, raw, isDirty, remoteGroups, teamId = null, version = null) => {
         const { parts: data, fixed } = repairParts(raw);
         if (fixed) flash(`Repaired ${fixed} part${fixed === 1 ? '' : 's'} the server would reject`);
         setParts(data);
         setMapName(name);
+        setMapTeam(teamId);
+        versionRef.current = version;
+        staleSeen.current = false;
         setActiveTab(name ? 'game' : 'home');
         setSelectedIds([]);
         setFaces({});
@@ -580,15 +589,15 @@ export default function App() {
         });
     };
 
-    const open = async (name) => {
+    const open = async (name, teamId = null) => {
         // Reloading the open map would throw away unsaved edits, so just show it.
-        if (name === mapName) {
+        if (name === mapName && teamId === mapTeamRef.current) {
             setActiveTab('game');
             return;
         }
         try {
-            const doc = await loadMap(name);
-            resetDocument(name, doc.parts, false, doc.groups);
+            const doc = await loadMap(name, teamId);
+            resetDocument(name, doc.parts, false, doc.groups, teamId, doc.version);
         } catch (e) {
             flash(String(e.message ?? e));
         }
@@ -667,13 +676,13 @@ export default function App() {
         setTimeout(() => URL.revokeObjectURL(a.href), 10000);
     };
 
-    const createNew = (name) => {
+    const createNew = (name, teamId = null) => {
         // Drain any leftover under this name: its indices would land on the new parts.
         takeLegacyGroups(name, []);
         resetDocument(name, [
             withNewId({ Tr: 0, P: [0, 0, 0], S: [200, 2, 200], R: [0, 0, 0], T: 'Part', Shape: 'Block', C: '7d7d85' }),
             withNewId(NEW_SPAWN),
-        ], true);
+        ], true, null, teamId, null);
     };
 
     const canSaveToServer = !!mapName && (!live.live || live.isOwner) && !viewing;
@@ -690,13 +699,21 @@ export default function App() {
         // is about to fail. A save also restarts the server-side 24h TTL for this map.
         const backed = writeBackup(mapName, snapshot);
         try {
-            await saveMap(mapName, snapshot, grouped);
+            const r = await saveMap(mapName, snapshot, grouped, mapTeamRef.current, versionRef.current);
+            versionRef.current = r.version ?? null;
             // Edits made while the request was in flight must stay dirty.
             if (partsRef.current === snapshot) dirty.current = false;
             liveRef.current.notifySaved();
             flash(auto === true ? 'Auto-saved' : `Saved ${mapName}.json`);
             return true;
         } catch (e) {
+            // A teammate saved in between. Never retry on its own: that would be the
+            // overwrite this check exists to prevent. Autosave says it once and stops.
+            if (e.stale) {
+                if (!staleSeen.current) flash('Someone else saved this map, reopen it to get their changes');
+                staleSeen.current = true;
+                return false;
+            }
             flash(backed
                 ? `Server save failed (${e.message ?? e}), kept a copy on this device`
                 : String(e.message ?? e));
@@ -715,7 +732,7 @@ export default function App() {
 
     const goLive = () => {
         if (!mapName) return;
-        live.host(mapName, partsRef.current, groups);
+        live.host(mapName, partsRef.current, groups, mapTeamRef.current);
         setTeamOpen(true);
     };
 
@@ -848,7 +865,7 @@ export default function App() {
         if (!viewing) return;
         loadMapAsAdmin(viewing)
             .then((m) => {
-                resetDocument(m.name, m.parts.map(withNewId), false);
+                resetDocument(m.name, m.parts, false, m.groups ?? []);
                 flash(`Viewing ${m.name} as admin, read-only`);
             })
             .catch((e) => flash(String(e.message ?? e)));
@@ -1009,7 +1026,7 @@ export default function App() {
             {activeTab === 'home' && (
                 <div className="home-tab">
                     <StartScreen
-                        onOpen={open} onCreate={createNew}
+                        onOpen={open} onCreate={createNew} openTeam={mapTeam}
                         onUpload={openUploaded} onRestore={restore}
                         onPasteRoblox={pasteRoblox}
                         openName={mapName}

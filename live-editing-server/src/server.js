@@ -2,7 +2,7 @@ import http from 'node:http';
 import { WebSocketServer } from 'ws';
 
 import { config, originAllowed } from './config.js';
-import { verifyName } from './identity.js';
+import { verifyIdentity } from './identity.js';
 import { normaliseCode } from './names.js';
 import { validPart } from './ops.js';
 import {
@@ -129,10 +129,14 @@ export function createLiveServer({ log = () => {} } = {}) {
         const groups = cleanGroups(msg.groups);
         if (!groups) return refuse(ws, 'bad group data');
 
-        const room = createRoom(mapName, parts, groups);
+        const who = verifyIdentity(msg.identity);
+        // The room belongs to the account that opened it, so a stranger joining
+        // first cannot take ownership of somebody's map.
+        const room = createRoom(mapName, parts, groups, who?.userId ?? null,
+            who?.mapName === mapName ? (who?.teamId ?? null) : null);
         if (!room) return refuse(ws, 'the server is at its room limit, try again later');
 
-        const { member } = room.add(ws, null, verifyName(msg.identity));
+        const { member } = room.add(ws, null, who);
         log(`room ${room.code} created for ${mapName} by ${member.name}`);
         welcome(ws, room, member, false);
     }
@@ -145,7 +149,7 @@ export function createLiveServer({ log = () => {} } = {}) {
         const token = typeof msg.token === 'string' ? msg.token : null;
         if (room.isBanned(token)) return refuse(ws, 'the owner removed you from this session');
 
-        const { member, resumed } = room.add(ws, token, verifyName(msg.identity));
+        const { member, resumed } = room.add(ws, token, verifyIdentity(msg.identity));
         log(`room ${room.code}: ${member.name} ${resumed ? 'reconnected' : 'joined'} (${room.members.size} present)`);
         welcome(ws, room, member, resumed);
     }

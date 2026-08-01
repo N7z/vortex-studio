@@ -14,7 +14,16 @@ const equal = (a, b) => {
     return x.length === y.length && crypto.timingSafeEqual(x, y);
 };
 
-export function verifyName(token, secret = config.liveSecret, now = Date.now()) {
+const clean = (name) => (typeof name === 'string'
+    ? name.replace(/\s+/g, ' ').trim().slice(0, MAX_NAME)
+    : '');
+
+/**
+ * Returns { userId, name, mapName, teamId, role } or null. A payload that is not
+ * JSON is a v1 token and proves the display name only, so an older tab keeps
+ * working through a deploy instead of being locked out.
+ */
+export function verifyIdentity(token, secret = config.liveSecret, now = Date.now()) {
     if (typeof token !== 'string' || !secret) return null;
 
     const parts = token.split('.');
@@ -26,16 +35,43 @@ export function verifyName(token, secret = config.liveSecret, now = Date.now()) 
     const expected = crypto.createHmac('sha256', secret).update(`${encoded}.${exp}`).digest('hex');
     if (!equal(sig, expected)) return null;
 
-    let name;
+    let raw;
     try {
-        name = Buffer.from(encoded, 'base64url').toString('utf8');
+        raw = Buffer.from(encoded, 'base64url').toString('utf8');
     } catch {
         return null;
     }
 
-    name = name.replace(/\s+/g, ' ').trim().slice(0, MAX_NAME);
+    let claim = null;
+    if (raw.startsWith('{')) {
+        try {
+            claim = JSON.parse(raw);
+        } catch {
+            return null;
+        }
+    }
 
-    return name || null;
+    if (!claim || claim.v !== 2) {
+        const name = clean(raw);
+
+        return name ? { userId: null, name, mapName: null, teamId: null, role: null } : null;
+    }
+
+    const name = clean(claim.n);
+    if (!name) return null;
+
+    return {
+        userId: Number.isInteger(claim.u) ? claim.u : null,
+        name,
+        mapName: typeof claim.m === 'string' ? claim.m : null,
+        teamId: Number.isInteger(claim.t) ? claim.t : null,
+        role: claim.r === 'editor' || claim.r === 'viewer' ? claim.r : null,
+    };
+}
+
+/** Kept for callers that only want the display name. */
+export function verifyName(token, secret = config.liveSecret, now = Date.now()) {
+    return verifyIdentity(token, secret, now)?.name ?? null;
 }
 
 export function uniqueName(name, taken) {

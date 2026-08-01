@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import test, { after, before } from 'node:test';
+import crypto from 'node:crypto';
 import { WebSocket } from 'ws';
 
 process.env.OWNER_GRACE_SECONDS = '1';
+process.env.LIVE_SECRET = 'test-secret';
 const { createLiveServer } = await import('../src/server.js');
 
 let live;
@@ -730,4 +732,70 @@ test('a malformed group op is refused', async () => {
     assert.match((await owner.next('error')).message, /needs ids/);
 
     owner.ws.close();
+});
+
+
+const token2 = (over = {}) => {
+    const claim = JSON.stringify({
+        v: 2, u: 1, n: 'Ada', m: 'testmap', t: null, r: 'editor', ...over,
+    });
+    const encoded = Buffer.from(claim, 'utf8').toString('base64url');
+    const exp = Math.floor(Date.now() / 1000) + 300;
+    const sig = crypto.createHmac('sha256', 'test-secret').update(`${encoded}.${exp}`).digest('hex');
+
+    return `${encoded}.${exp}.${sig}`;
+};
+
+test('a stranger joining first does not become owner of an account map', async () => {
+    const c = new Client();
+    await c.open;
+    c.send({
+        t: 'create', mapName: 'testmap', parts: [part('a')], identity: token2({ u: 42 }),
+    });
+    const hi = await c.next('welcome');
+    assert.equal(hi.you.owner, true);
+
+    // The owner leaves; the room keeps its account, so an anonymous joiner cannot take it.
+    c.ws.close();
+    const { c: other, welcome } = await guest(hi.code);
+    assert.equal(welcome.you.owner, false);
+    assert.equal(welcome.you.role, 'spectator');
+
+    other.ws.close();
+});
+
+test('an editor token grants developer, a viewer token does not', async () => {
+    const c = new Client();
+    await c.open;
+    c.send({ t: 'create', mapName: 'testmap', parts: [part('a')], identity: token2({ u: 1 }) });
+    const hi = await c.next('welcome');
+
+    const ed = new Client();
+    await ed.open;
+    ed.send({ t: 'join', code: hi.code, identity: token2({ u: 2, n: 'Bo' }) });
+    assert.equal((await ed.next('welcome')).you.role, 'developer');
+
+    const vw = new Client();
+    await vw.open;
+    vw.send({ t: 'join', code: hi.code, identity: token2({ u: 3, n: 'Cy', r: 'viewer' }) });
+    assert.equal((await vw.next('welcome')).you.role, 'spectator');
+
+    c.ws.close();
+    ed.ws.close();
+    vw.ws.close();
+});
+
+test('a token minted for another map grants nothing here', async () => {
+    const c = new Client();
+    await c.open;
+    c.send({ t: 'create', mapName: 'testmap', parts: [part('a')], identity: token2({ u: 1 }) });
+    const hi = await c.next('welcome');
+
+    const other = new Client();
+    await other.open;
+    other.send({ t: 'join', code: hi.code, identity: token2({ u: 9, n: 'Dee', m: 'someone-else' }) });
+    assert.equal((await other.next('welcome')).you.role, 'spectator');
+
+    c.ws.close();
+    other.ws.close();
 });
