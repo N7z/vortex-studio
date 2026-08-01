@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { StreamLanguage } from '@codemirror/language';
 import { lua } from '@codemirror/legacy-modes/mode/lua';
@@ -84,6 +84,8 @@ const COMPLETIONS = [
     },
 ];
 
+const BASIC_SETUP = { autocompletion: false, tabSize: 4 };
+
 const ICON_OPTIONS = ICON_NAMES.map((n) => ({ label: n, type: 'variable' }));
 
 function iconComplete(context) {
@@ -110,17 +112,42 @@ export default function ScriptTab({ tab, visible, onChange, onSave, onDelete, on
     const [confirming, setConfirming] = useState(false);
     const [help, setHelp] = useState(false);
 
+    const handlers = useRef({});
+    handlers.current = { onChange, onSave, error };
+
     const save = async () => {
         setBusy(true);
-        const err = await onSave();
+        const err = await handlers.current.onSave();
         setBusy(false);
         setError(err);
     };
+    const saveRef = useRef();
+    saveRef.current = save;
 
     const extensions = useMemo(() => [
         ...BASE_EXTENSIONS,
-        Prec.highest(keymap.of([{ key: 'Mod-s', preventDefault: true, run: () => { save(); return true; } }])),
-    ], [onSave]);
+        Prec.highest(keymap.of([{
+            key: 'Mod-s',
+            preventDefault: true,
+            run: () => { saveRef.current(); return true; },
+        }])),
+    ], []);
+
+    const change = useCallback((v) => {
+        handlers.current.onChange(v);
+        if (handlers.current.error !== null) setError(null);
+    }, []);
+
+    const editor = useMemo(() => (
+        <CodeMirror
+            value={tab.src}
+            onChange={change}
+            extensions={extensions}
+            theme={oneDark}
+            height="100%"
+            basicSetup={BASIC_SETUP}
+        />
+    ), [tab.src, change, extensions]);
 
     const reset = async () => {
         setBusy(true);
@@ -160,16 +187,7 @@ export default function ScriptTab({ tab, visible, onChange, onSave, onDelete, on
                 </button>
             </div>
             <div className="script-body">
-                <div className="script-editor">
-                    <CodeMirror
-                        value={tab.src}
-                        onChange={(v) => { onChange(v); setError(null); }}
-                        extensions={extensions}
-                        theme={oneDark}
-                        height="100%"
-                        basicSetup={{ autocompletion: false, tabSize: 4 }}
-                    />
-                </div>
+                <div className="script-editor">{editor}</div>
                 {help && <ScriptHelp />}
             </div>
         </div>
