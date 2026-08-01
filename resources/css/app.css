@@ -1425,29 +1425,6 @@ a.tool-btn { text-decoration: none; }
 
 /* ---------- teams ---------- */
 
-.team-cards { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 6px; }
-.team-card {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-width: 190px;
-    padding: 12px 14px;
-    border: 1px solid #26262e;
-    border-radius: 8px;
-    background: #14141a;
-    color: #ddd;
-    font: inherit;
-    font-size: 14px;
-    text-align: left;
-    cursor: pointer;
-    transition: border-color 120ms, background 120ms;
-}
-.team-card:hover { border-color: #3a3a44; background: #17171e; }
-.team-card-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.team-card-new { color: #6e6e78; border-style: dashed; }
-.team-card-new:hover { color: #5b8dd6; border-color: #5b8dd6; }
-.team-card-plus { font-size: 16px; line-height: 1; }
-
 .role-pill {
     margin-left: auto;
     padding: 2px 8px;
@@ -1754,3 +1731,24 @@ a.tool-btn { text-decoration: none; }
 }
 .user-pop .account { box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5); }
 
+
+.team-list { list-style: none; display: flex; flex-direction: column; }
+.team-list li + li { border-top: 1px solid #1f1f27; }
+.team-list button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 11px 8px;
+    border: none;
+    border-radius: 5px;
+    background: none;
+    color: #ddd;
+    font: inherit;
+    font-size: 14px;
+    text-align: left;
+    cursor: pointer;
+}
+.team-list button:hover { background: #1d1d24; }
+.team-list-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.team-list-go { color: #55555f; font-size: 16px; line-height: 1; }

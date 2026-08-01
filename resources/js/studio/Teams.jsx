@@ -226,23 +226,31 @@ export default function Teams({ teams, me, onChanged, onClose }) {
         <>
             <Modal
                 title="Teams"
-                subtitle="A team's maps can be opened and saved by everyone in it."
+                subtitle="Everyone in a team can open and save its maps."
                 onClose={onClose}
-            >
-
-            <div className="team-cards">
-                {teams.map((t) => (
-                    <button type="button" className="team-card" key={t.id} onClick={() => setManaging(t.id)}>
-                        <span className="team-card-name">{t.name}</span>
-                        <span className={`role-pill role-${t.role}`}>{ROLE_LABEL[t.role] ?? t.role}</span>
+                footer={(
+                    <button type="button" className="btn btn-go" onClick={() => setCreating(true)}>
+                        New team
                     </button>
-                ))}
-                <button type="button" className="team-card team-card-new" onClick={() => setCreating(true)}>
-                    <span className="team-card-plus">+</span>
-                    New team
-                </button>
-            </div>
-
+                )}
+            >
+                {teams.length === 0 ? (
+                    <p className="modal-text">You are not in a team yet.</p>
+                ) : (
+                    <ul className="team-list">
+                        {teams.map((t) => (
+                            <li key={t.id}>
+                                <button type="button" onClick={() => setManaging(t.id)}>
+                                    <span className="team-list-name">{t.name}</span>
+                                    <span className={`role-pill role-${t.role}`}>
+                                        {ROLE_LABEL[t.role] ?? t.role}
+                                    </span>
+                                    <span className="team-list-go">›</span>
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                )}
             </Modal>
 
             {creating && <CreateTeam onClose={() => setCreating(false)} onDone={onChanged} />}
