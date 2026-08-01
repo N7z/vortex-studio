@@ -139,7 +139,7 @@ end
 local function build(part, values, counting)
     if Model == nil or Model.count < 1 then return counting and 0 or {} end
     if Model.count > MAX_VOXELS then
-        error("that model has " .. Model.count .. " voxels, too many to sculpt: lower Detail")
+        error("that model has " .. Model.count .. " voxels, too many to build: lower Detail")
     end
 
     local size = clamp(tonumber(values.size) or 1, 0.05, 50)

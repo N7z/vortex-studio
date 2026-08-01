@@ -10,7 +10,7 @@ import gapFillSrc from './gapfill.lua?raw';
 import imageMakerSrc from './imagemaker.lua?raw';
 import mirrorSrc from './mirror.lua?raw';
 import scatterSrc from './scatter.lua?raw';
-import sculptSrc from './sculpt.lua?raw';
+import modelSrc from './model.lua?raw';
 import stairsSrc from './stairs.lua?raw';
 import terrainSrc from './terrain.lua?raw';
 import textSrc from './text.lua?raw';
@@ -23,7 +23,7 @@ const BUNDLED = [
     { id: 'imagemaker', src: imageMakerSrc },
     { id: 'mirror', src: mirrorSrc },
     { id: 'scatter', src: scatterSrc },
-    { id: 'sculpt', src: sculptSrc },
+    { id: 'model', src: modelSrc },
     { id: 'stairs', src: stairsSrc },
     { id: 'terrain', src: terrainSrc },
     { id: 'text', src: textSrc },
@@ -306,7 +306,21 @@ export function deleteUserPlugin(id) {
     localStorage.setItem(STORE_KEY, JSON.stringify(userPlugins().filter((p) => p.id !== id)));
 }
 
+// The Model plugin shipped as `sculpt` for a few days. An edited copy is keyed by
+// that id, so it is carried over once rather than silently orphaned.
+function renameSculpt() {
+    const list = userPlugins();
+    const old = list.find((p) => p.id === 'sculpt');
+    if (!old || list.some((p) => p.id === 'model')) return;
+    try {
+        localStorage.setItem(STORE_KEY, JSON.stringify(
+            list.filter((p) => p.id !== 'sculpt').concat({ id: 'model', src: old.src }),
+        ));
+    } catch { /* the builtin still loads */ }
+}
+
 export async function loadPlugins() {
+    renameSculpt();
     const out = [];
     const stored = userPlugins();
     for (const { id, src } of BUNDLED) {
