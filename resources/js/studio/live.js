@@ -96,6 +96,13 @@ export class LiveClient {
         this.connect();
     }
 
+    openTeam(mapName, parts, groups = [], teamId = null) {
+        this.intent = {
+            t: 'open', mapName, parts, groups, teamId,
+        };
+        this.connect();
+    }
+
     join(code) {
         this.code = code;
         this.token = readToken(code);
@@ -211,7 +218,8 @@ export class LiveClient {
                 this.lastView = '';
                 this.lastPlay = 'off';
                 writeToken(msg.code, msg.you.token);
-                showRoomInUrl(msg.code);
+                // A team room has no shareable code, so it never goes in the address bar.
+                showRoomInUrl(msg.teamMap ? null : msg.code);
                 this.handlers.onWelcome?.(msg);
 
                 return;

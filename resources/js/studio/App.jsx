@@ -17,7 +17,7 @@ import {
     loadPlugins, stripId, compilePlugin, saveUserPlugin, deleteUserPlugin,
     userPluginSource, isBuiltin, resetBuiltin,
 } from './plugins';
-import { loadMap, loadMapAsAdmin, saveMap } from './api';
+import { listTeams, loadMap, loadMapAsAdmin, saveMap } from './api';
 import { writeBackup } from './backup';
 import {
     addOp, applyOp, fillPart, invertOp, patchOp, removeOp, repairParts, stripIds,
@@ -61,6 +61,7 @@ const GROUPS_DEBOUNCE_MS = 400;
 export default function App() {
     const [mapName, setMapName] = useState(null);
     const [mapTeam, setMapTeam] = useState(null);
+    const [teams, setTeams] = useState([]);
     const [parts, setParts] = useState([]);
     const [selectedIds, setSelectedIds] = useState([]);
     const [faces, setFaces] = useState({});
@@ -108,6 +109,13 @@ export default function App() {
     const staleSeen = useRef(false);
     const { dialogs, confirm, ask } = useDialogs();
 
+    // Only the id travels with a map, so the names are looked up once and again
+    // whenever one turns up that this list does not know.
+    useEffect(() => {
+        if (mapTeam != null && teams.some((t) => t.id === mapTeam)) return;
+        listTeams().then((d) => setTeams(d.teams ?? []));
+    }, [mapTeam]);
+
     const flash = useCallback((msg) => {
         setStatus(msg);
         setTimeout(() => setStatus((s) => (s === msg ? '' : s)), 2500);
@@ -119,6 +127,7 @@ export default function App() {
         setParts(data);
         setMapName(name);
         setMapTeam(teamId);
+        mapTeamRef.current = teamId;
         versionRef.current = version;
         staleSeen.current = false;
         setActiveTab(name ? 'game' : 'home');
@@ -133,6 +142,8 @@ export default function App() {
         history.current = [];
         future.current = [];
         dirty.current = isDirty || fixed > 0 || legacy.length > 0;
+
+        return { parts: data, groups: next };
     };
 
     const live = useLive({
@@ -144,21 +155,25 @@ export default function App() {
                 setGroups(msg.groups ?? []);
                 setSelectedIds((cur) => cur.filter((id) => alive.has(id)));
             } else {
-                setTeamOpen(true);
-                resetDocument(msg.mapName, msg.parts, false, msg.groups ?? []);
+                // A team map is always in session, so the panel is not news.
+                if (mapTeamRef.current == null) setTeamOpen(true);
+                resetDocument(msg.mapName, msg.parts, false, msg.groups ?? [],
+                    mapTeamRef.current, versionRef.current);
             }
-            flash(msg.resumed
-                ? `Back in session ${msg.code}`
-                : `Live session ${msg.code} as ${msg.you.name}`);
+            if (mapTeamRef.current != null) {
+                flash(msg.resumed ? 'Back with the team' : `Editing with the team as ${msg.you.name}`);
+            } else {
+                flash(msg.resumed
+                    ? `Back in session ${msg.code}`
+                    : `Live session ${msg.code} as ${msg.you.name}`);
+            }
         },
         // Own ops are applied again when they echo back, not skipped: the room's order
         // is the authoritative one, and re-running an op that was already applied
         // optimistically is what makes two people editing the same part agree on who won.
         onOp: (msg) => {
             setParts((ps) => applyOp(ps, msg.op));
-            // Only the owner has anything to persist, so only the owner's copy goes
-            // dirty. Marking a spectator's would warn them about losing work on close.
-            if (liveRef.current?.isOwner) dirty.current = true;
+            if (liveRef.current?.canEdit) dirty.current = true;
         },
         onSnapshot: (msg) => {
             setParts(msg.parts);
@@ -173,7 +188,7 @@ export default function App() {
         },
         onGroupOp: (msg) => {
             setGroups((gs) => applyGroupOp(gs, msg.op));
-            if (liveRef.current?.isOwner) dirty.current = true;
+            if (liveRef.current?.canEdit) dirty.current = true;
         },
         onError: (message) => {
             setJoining(null);
@@ -597,9 +612,13 @@ export default function App() {
             setActiveTab('game');
             return;
         }
+        if (liveRef.current.live) liveRef.current.leave();
         try {
             const doc = await loadMap(name, teamId);
-            resetDocument(name, doc.parts, false, doc.groups, teamId, doc.version);
+            const ready = resetDocument(name, doc.parts, false, doc.groups, teamId, doc.version);
+            // A team map is collaborative by default: everyone who opens it lands in
+            // the same room, so there is no code to pass around.
+            if (teamId != null) liveRef.current.openTeam(name, ready.parts, ready.groups, teamId);
         } catch (e) {
             flash(String(e.message ?? e));
         }
@@ -687,18 +706,20 @@ export default function App() {
     const createNew = (name, teamId = null) => {
         // Drain any leftover under this name: its indices would land on the new parts.
         takeLegacyGroups(name, []);
-        resetDocument(name, [
+        if (liveRef.current.live) liveRef.current.leave();
+        const ready = resetDocument(name, [
             withNewId({ Tr: 0, P: [0, 0, 0], S: [200, 2, 200], R: [0, 0, 0], T: 'Part', Shape: 'Block', C: '7d7d85' }),
             withNewId(NEW_SPAWN),
         ], true, null, teamId, null);
+        if (teamId != null) liveRef.current.openTeam(name, ready.parts, ready.groups, teamId);
     };
 
-    const canSaveToServer = !!mapName && (!live.live || live.isOwner) && !viewing;
+    const canSaveToServer = !!mapName && (!live.live || live.canEdit) && !viewing;
 
     const save = useCallback(async (auto) => {
         if (!mapName) return false;
-        if (liveRef.current.live && !liveRef.current.isOwner) {
-            if (auto !== true) flash('The session owner saves this map');
+        if (liveRef.current.live && !liveRef.current.canEdit) {
+            if (auto !== true) flash('You are a spectator in this session');
             return false;
         }
         const snapshot = partsRef.current;
@@ -1108,6 +1129,8 @@ export default function App() {
                             onGoLive={goLive}
                             onLeave={leaveSession}
                             playing={playing}
+                            teamMap={mapTeam != null}
+                            teamName={teams.find((t) => t.id === mapTeam)?.name ?? null}
                             onClose={() => setTeamOpen(false)}
                         />
                     )}

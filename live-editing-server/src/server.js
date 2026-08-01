@@ -6,7 +6,7 @@ import { verifyIdentity } from './identity.js';
 import { normaliseCode } from './names.js';
 import { validPart } from './ops.js';
 import {
-    ROLE_DEVELOPER, ROLE_SPECTATOR, cleanGroups, createRoom, getRoom, roomStats,
+    ROLE_DEVELOPER, ROLE_SPECTATOR, cleanGroups, createRoom, findTeamRoom, getRoom, roomStats,
 } from './rooms.js';
 
 const HELLO_TIMEOUT_MS = 15_000;
@@ -105,6 +105,7 @@ export function createLiveServer({ log = () => {} } = {}) {
             parts: room.parts,
             groups: room.groups,
             lastSavedAt: room.lastSavedAt,
+            teamMap: room.teamId != null,
             resumed,
             you: {
                 id: member.id,
@@ -141,6 +142,57 @@ export function createLiveServer({ log = () => {} } = {}) {
         welcome(ws, room, member, false);
     }
 
+    /**
+     * Join the team's room for this map, or start it. The token is the only proof
+     * of membership, so a map/team it does not name cannot be opened this way.
+     */
+    function handleOpen(ws, msg) {
+        const mapName = typeof msg.mapName === 'string' ? msg.mapName.slice(0, 64) : '';
+        if (!/^[A-Za-z0-9_-]{1,64}$/.test(mapName)) return refuse(ws, 'bad map name');
+
+        // With no shared secret nothing can be verified, so the client is taken at
+        // its word. That is a dev-only mode; production sets LIVE_SECRET.
+        const who = config.liveSecret
+            ? verifyIdentity(msg.identity)
+            : {
+                userId: null,
+                name: null,
+                mapName,
+                teamId: Number.isInteger(msg.teamId) ? msg.teamId : null,
+                role: 'editor',
+            };
+
+        const teamId = who?.teamId ?? null;
+        if (!who || teamId == null || who.mapName !== mapName || !who.role) {
+            return refuse(ws, 'you cannot open a live session for that map');
+        }
+
+        const existing = findTeamRoom(mapName, teamId);
+        if (existing) {
+            if (existing.members.size >= config.maxMembersPerRoom) return refuse(ws, 'that session is full');
+            const token = typeof msg.token === 'string' ? msg.token : null;
+            if (existing.isBanned(token)) return refuse(ws, 'the owner removed you from this session');
+
+            const { member, resumed } = existing.add(ws, token, who);
+            log(`room ${existing.code}: ${member.name} ${resumed ? 'reconnected' : 'joined'} the team map ${mapName}`);
+
+            return welcome(ws, existing, member, resumed);
+        }
+
+        const parts = cleanParts(msg.parts);
+        if (!parts) return refuse(ws, 'bad map data');
+        const groups = cleanGroups(msg.groups);
+        if (!groups) return refuse(ws, 'bad group data');
+
+        const room = createRoom(mapName, parts, groups, who.userId, teamId);
+        if (!room) return refuse(ws, 'the server is at its room limit, try again later');
+
+        const { member } = room.add(ws, null, who);
+        log(`room ${room.code} opened for team map ${mapName} by ${member.name}`);
+
+        return welcome(ws, room, member, false);
+    }
+
     function handleJoin(ws, msg) {
         const room = getRoom(normaliseCode(msg.code));
         if (!room) return refuse(ws, 'no live session with that code');
@@ -149,7 +201,14 @@ export function createLiveServer({ log = () => {} } = {}) {
         const token = typeof msg.token === 'string' ? msg.token : null;
         if (room.isBanned(token)) return refuse(ws, 'the owner removed you from this session');
 
-        const { member, resumed } = room.add(ws, token, verifyIdentity(msg.identity));
+        const who = verifyIdentity(msg.identity);
+        // A team room is reached by opening the map, never by passing its code on:
+        // otherwise the link in the address bar would show the map to anyone.
+        if (room.teamId != null && config.liveSecret && !room.claimedRole(who)) {
+            return refuse(ws, 'that session belongs to a team you are not in');
+        }
+
+        const { member, resumed } = room.add(ws, token, who);
         log(`room ${room.code}: ${member.name} ${resumed ? 'reconnected' : 'joined'} (${room.members.size} present)`);
         welcome(ws, room, member, resumed);
     }
@@ -213,6 +272,7 @@ export function createLiveServer({ log = () => {} } = {}) {
         const ctx = sockets.get(ws);
         if (!ctx) {
             if (msg.t === 'create') return handleCreate(ws, msg);
+            if (msg.t === 'open') return handleOpen(ws, msg);
             if (msg.t === 'join') return handleJoin(ws, msg);
 
             return fail(ws, 'join a session first');

@@ -10,6 +10,9 @@ log(`live editing server on :${config.port}`);
 log(config.allowAnyOrigin
     ? 'origins: any (development only)'
     : `origins: ${[...config.allowedOrigins].join(', ')}`);
+log(config.liveSecret
+    ? 'identity: verified against LIVE_SECRET'
+    : 'identity: UNVERIFIED, any client may claim any team (development only, set LIVE_SECRET)');
 
 for (const sig of ['SIGINT', 'SIGTERM']) {
     process.on(sig, async () => {

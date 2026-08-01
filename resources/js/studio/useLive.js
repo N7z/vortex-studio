@@ -106,6 +106,11 @@ export default function useLive({
         client.current.create(mapName, parts, groups);
     }, []);
 
+    const openTeam = useCallback((mapName, parts, groups, teamId) => {
+        scope.current = { map: mapName, team: teamId };
+        client.current.openTeam(mapName, parts, groups, teamId);
+    }, []);
+
     const join = useCallback((joinCode) => {
         client.current.join(joinCode);
     }, []);
@@ -157,6 +162,7 @@ export default function useLive({
         sendOp,
         sendGroups,
         sendGroupOp,
+        openTeam,
         sendSelection,
         sendView,
         sendPlay,

@@ -41,7 +41,9 @@ function Member({ member, isMe, canManage, onRole, onKick, testing }) {
     );
 }
 
-export default function TeamPanel({ live, onGoLive, onLeave, onClose, playing }) {
+export default function TeamPanel({
+    live, onGoLive, onLeave, onClose, playing, teamMap, teamName,
+}) {
     const testers = live.playingIds ?? [];
     const [copied, setCopied] = useState(false);
     const [link, setLink] = useState(null);
@@ -89,7 +91,10 @@ export default function TeamPanel({ live, onGoLive, onLeave, onClose, playing })
     return (
         <div className="team-panel" style={style}>
             <div className="team-head" onPointerDown={onPointerDown}>
-                <span className="team-title">Team Create</span>
+                <span className="team-title">
+                    Team Create
+                    {teamName && <span className="team-title-name">{teamName}</span>}
+                </span>
                 <button className="team-x" onClick={onClose} title="Hide">×</button>
             </div>
 
@@ -147,16 +152,18 @@ export default function TeamPanel({ live, onGoLive, onLeave, onClose, playing })
                         <>
                             {saved && <span className="team-hint">{saved}</span>}
 
-                            <div className="team-foot">
-                                <button className="team-foot-btn" onClick={copy} title="Copy the invite link">
-                                    <LinkIcon />
-                                    {copied ? 'Copied' : 'Copy link'}
-                                </button>
-                                <button className="team-foot-btn danger" onClick={leave}>
-                                    <LeaveIcon />
-                                    Leave
-                                </button>
-                            </div>
+                            {!teamMap && (
+                                <div className="team-foot">
+                                    <button className="team-foot-btn" onClick={copy} title="Copy the invite link">
+                                        <LinkIcon />
+                                        {copied ? 'Copied' : 'Copy link'}
+                                    </button>
+                                    <button className="team-foot-btn danger" onClick={leave}>
+                                        <LeaveIcon />
+                                        Leave
+                                    </button>
+                                </div>
+                            )}
                         </>
                     )}
                 </div>

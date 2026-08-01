@@ -66,18 +66,23 @@ one copy and both sides run it.
 ## Member names and `LIVE_SECRET`
 
 A member is normally given a random `Adjective Animal` name. A signed-in studio user
-gets their account name instead, and because this process never talks to Laravel, the
-name has to arrive with proof: `GET /account/live-token` returns
-`base64url(name).expiry.hmac_sha256(name.expiry, LIVE_SECRET)`, valid for 5 minutes,
-and the client passes it as `identity` on `create`/`join`.
+gets their account name instead, and because this process never talks to Laravel, it
+has to arrive with proof: `GET /account/live-token?map=NAME&team=ID` returns
+`base64url(json).expiry.hmac_sha256(payload.expiry, LIVE_SECRET)`, valid for 5 minutes,
+and the client passes it as `identity` on `create`/`join`/`open`. The payload carries
+the account id, the name, and the one map and team the caller may edit.
 
 **Set the same `LIVE_SECRET` in this `.env` and in the studio's `.env`.** Without it,
 nothing verifies and every member keeps a random name, which is the safe failure: a
 name that cannot be proven is never shown. The client refetches the token on every
 connection attempt, since a reconnect can happen long after the first join.
 
-Note this proves *the name*, not authorisation. Roles are still granted by the room
-owner, and the token cannot be replayed into a different room to gain anything.
+For a **team map** the token is the whole authorisation: `open` joins or starts the
+one room for that map and team, and a token naming a different map grants nothing.
+
+**Without `LIVE_SECRET` the server cannot verify anything, so `open` takes the client
+at its word and anyone may claim any team.** That is a development convenience and the
+boot log says so out loud. Production must set it.
 
 ## Roles
 

@@ -210,8 +210,12 @@ class Room {
         return identity.role === 'editor' ? ROLE_DEVELOPER : ROLE_SPECTATOR;
     }
 
-    /** With no account behind the room, the old first-in-wins rule still applies. */
+    /**
+     * A team room outlives whoever opened it, so any of its editors may take it on.
+     * A personal room stays with its account, or a stranger could claim someone's map.
+     */
     mayOwn(member) {
+        if (this.teamId != null) return member.role === ROLE_DEVELOPER;
         if (this.ownerUserId == null) return true;
 
         return member.userId === this.ownerUserId;
@@ -381,6 +385,16 @@ export function createRoom(mapName, parts, groups = [], ownerUserId = null, team
 
 export function getRoom(code) {
     return rooms.get(code) ?? null;
+}
+
+/**
+ * The one room a team map may have. Everyone who opens that map lands in it, so
+ * there is no code to pass around and no second room to split the team across.
+ */
+export function findTeamRoom(mapName, teamId) {
+    if (teamId == null) return null;
+
+    return [...rooms.values()].find((r) => r.teamId === teamId && r.mapName === mapName) ?? null;
 }
 
 export function roomStats() {

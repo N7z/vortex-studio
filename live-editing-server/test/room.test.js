@@ -799,3 +799,161 @@ test('a token minted for another map grants nothing here', async () => {
     c.ws.close();
     other.ws.close();
 });
+
+// Rooms are keyed by map and team and outlive each test, so every test needs its own.
+let teamSeq = 100;
+const nextTeam = () => ++teamSeq;
+
+const teamToken = (over = {}) => token2({ r: 'editor', ...over });
+
+async function openTeam(team, over = {}, parts = [part('a')]) {
+    const c = new Client();
+    await c.open;
+    c.send({
+        t: 'open', mapName: 'testmap', parts, groups: [], identity: teamToken({ t: team, ...over }),
+    });
+
+    return c;
+}
+
+test('the first to open a team map starts the room and the next one lands in it', async () => {
+    const team = nextTeam();
+    const a = await openTeam(team, { u: 1 });
+    const first = await a.next('welcome');
+    assert.equal(first.you.owner, true);
+    assert.equal(first.you.role, 'developer');
+
+    const b = await openTeam(team, { u: 2, n: 'Bo' }, [part('zzz')]);
+    const second = await b.next('welcome');
+
+    assert.equal(second.code, first.code);
+    assert.equal(second.you.owner, false);
+    assert.equal(second.you.role, 'developer');
+    // The room's map wins, not whatever the joiner happened to be holding.
+    assert.deepEqual(second.parts.map((p) => p._id), ['a']);
+
+    a.ws.close();
+    b.ws.close();
+});
+
+test('an edit by one team member reaches the other with no code passed around', async () => {
+    const team = nextTeam();
+    const a = await openTeam(team, { u: 1 });
+    await a.next('welcome');
+    const b = await openTeam(team, { u: 2, n: 'Bo' });
+    await b.next('welcome');
+
+    b.send({ t: 'op', op: { t: 'add', items: [{ part: part('new') }] } });
+    const seen = await a.next('op');
+    assert.deepEqual(seen.op.items[0].part._id, 'new');
+
+    a.ws.close();
+    b.ws.close();
+});
+
+test('a viewer opening a team map lands as a spectator', async () => {
+    const team = nextTeam();
+    const a = await openTeam(team, { u: 1 });
+    await a.next('welcome');
+
+    const v = await openTeam(team, { u: 3, n: 'Cy', r: 'viewer' });
+    assert.equal((await v.next('welcome')).you.role, 'spectator');
+
+    a.ws.close();
+    v.ws.close();
+});
+
+test('a token for another team or another map cannot open the room', async () => {
+    const team = nextTeam();
+    const a = await openTeam(team, { u: 1 });
+    await a.next('welcome');
+
+    const other = new Client();
+    await other.open;
+    other.send({
+        t: 'open', mapName: 'testmap', parts: [part('a')], identity: teamToken({ t: team, u: 5, m: 'another-map' }),
+    });
+    assert.match((await other.next('error')).message, /cannot open a live session/);
+    assert.equal(await other.closed, 4004);
+
+    const noTeam = new Client();
+    await noTeam.open;
+    noTeam.send({
+        t: 'open', mapName: 'testmap', parts: [part('a')], identity: token2({ u: 6, r: 'editor' }),
+    });
+    assert.match((await noTeam.next('error')).message, /cannot open a live session/);
+
+    a.ws.close();
+});
+
+test('the team room outlives the member who opened it', async () => {
+    const team = nextTeam();
+    const a = await openTeam(team, { u: 1 });
+    const first = await a.next('welcome');
+    const b = await openTeam(team, { u: 2, n: 'Bo' });
+    await b.next('welcome');
+
+    a.ws.close();
+
+    const c = await openTeam(team, { u: 4, n: 'Di' });
+    const back = await c.next('welcome');
+    assert.equal(back.code, first.code);
+    assert.equal(back.you.role, 'developer');
+    assert.deepEqual(back.parts.map((p) => p._id), ['a']);
+
+    b.ws.close();
+    c.ws.close();
+});
+
+test('with no shared secret the client is taken at its word', async () => {
+    const secret = process.env.LIVE_SECRET;
+    const { config } = await import('../src/config.js');
+    config.liveSecret = '';
+    try {
+        const c = new Client();
+        await c.open;
+        c.send({
+            t: 'open', mapName: 'testmap', parts: [part('a')], groups: [], teamId: nextTeam(),
+        });
+        const hi = await c.next('welcome');
+        assert.equal(hi.you.role, 'developer');
+        c.ws.close();
+    } finally {
+        config.liveSecret = secret ?? 'test-secret';
+    }
+});
+
+test('with no team id there is still nothing to open', async () => {
+    const { config } = await import('../src/config.js');
+    const secret = config.liveSecret;
+    config.liveSecret = '';
+    try {
+        const c = new Client();
+        await c.open;
+        c.send({ t: 'open', mapName: 'testmap', parts: [part('a')], groups: [] });
+        assert.match((await c.next('error')).message, /cannot open a live session/);
+    } finally {
+        config.liveSecret = secret;
+    }
+});
+
+test('a team room cannot be reached by passing its code around', async () => {
+    const team = nextTeam();
+    const a = await openTeam(team, { u: 1 });
+    const hi = await a.next('welcome');
+    assert.equal(hi.teamMap, true);
+
+    const stranger = new Client();
+    await stranger.open;
+    stranger.send({ t: 'join', code: hi.code });
+    assert.match((await stranger.next('error')).message, /belongs to a team/);
+    assert.equal(await stranger.closed, 4004);
+
+    const member = new Client();
+    await member.open;
+    member.send({ t: 'join', code: hi.code, identity: teamToken({ t: team, u: 9, n: 'Ev' }) });
+    assert.equal((await member.next('welcome')).you.role, 'developer');
+
+    a.ws.close();
+    member.ws.close();
+});
