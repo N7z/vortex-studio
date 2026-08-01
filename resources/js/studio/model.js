@@ -111,11 +111,20 @@ export function voxelize(object, res, maxRes = MAX_RES) {
         }
     };
 
+    const normalMatrix = new THREE.Matrix3();
+    const na = new THREE.Vector3();
+    const nb = new THREE.Vector3();
+    const nc = new THREE.Vector3();
+
     for (const mesh of meshes) {
         const { rgb, sample } = materialOf(mesh);
         const geo = mesh.geometry;
         const pos = geo.attributes.position;
         const uv = sample ? geo.attributes.uv : null;
+        // The artist's own normals, which on a smooth-shaded model describe the
+        // surface the mesh stands for rather than the triangles it is made of.
+        const nrm = geo.attributes.normal;
+        normalMatrix.getNormalMatrix(mesh.matrixWorld);
         const index = geo.index;
         const faces = index ? index.count / 3 : pos.count / 3;
 
@@ -130,6 +139,11 @@ export function voxelize(object, res, maxRes = MAX_RES) {
             // Built from the world-space corners, so it needs no normal matrix.
             face.copy(e1.subVectors(b, a).cross(e2.subVectors(c, a)));
             if (face.lengthSq() > 0) face.normalize();
+            if (nrm) {
+                na.fromBufferAttribute(nrm, i0).applyMatrix3(normalMatrix);
+                nb.fromBufferAttribute(nrm, i1).applyMatrix3(normalMatrix);
+                nc.fromBufferAttribute(nrm, i2).applyMatrix3(normalMatrix);
+            }
 
             let colour = rgb;
             if (uv) {
@@ -155,6 +169,14 @@ export function voxelize(object, res, maxRes = MAX_RES) {
                         a.y * w0 + b.y * w1 + c.y * w2,
                         a.z * w0 + b.z * w1 + c.z * w2,
                     );
+                    if (nrm) {
+                        face.set(
+                            na.x * w0 + nb.x * w1 + nc.x * w2,
+                            na.y * w0 + nb.y * w1 + nc.y * w2,
+                            na.z * w0 + nb.z * w1 + nc.z * w2,
+                        );
+                        if (face.lengthSq() > 0) face.normalize();
+                    }
                     put(
                         (p.x - box.min.x) * scale,
                         (p.y - box.min.y) * scale,

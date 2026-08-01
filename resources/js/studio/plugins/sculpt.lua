@@ -188,30 +188,56 @@ local function build(part, values, counting)
             local nx, ny, nz = sx[i], sy[i], sz[i]
             local square = is_flat(i)
 
+            local anx, any, anz = math.abs(nx), math.abs(ny), math.abs(nz)
             local ax, ay, az = 0, 0, 0
-            local bx, by, bz = math.abs(nx), math.abs(ny), math.abs(nz)
-            if bx <= by and bx <= bz then ax = 1
-            elseif by <= bz then ay = 1
-            else az = 1 end
+            local bx, by, bz = 0, 0, 0
+            if anx <= any and anx <= anz then
+                ax = 1
+                if any <= anz then by = 1 else bz = 1 end
+            elseif any <= anz then
+                ay = 1
+                if anx <= anz then bx = 1 else bz = 1 end
+            else
+                az = 1
+                if anx <= any then bx = 1 else by = 1 end
+            end
 
-            local run, last = 1, i
-            if merge > 0 then
-                while run < MAX_RUN do
-                    local j = at(xs[i] + ax * run, ys[i] + ay * run, zs[i] + az * run)
-                    if not (j and skin[j] and not taken[j] and cs[j] == cs[i]) then break end
-                    if sx[j] * nx + sy[j] * ny + sz[j] * nz < agree then break end
-                    if is_flat(j) ~= square then break end
-                    last = j
-                    run = run + 1
+            local x0, y0, z0 = xs[i], ys[i], zs[i]
+            local function fits(j)
+                return j and skin[j] and not taken[j] and cs[j] == cs[i]
+                    and sx[j] * nx + sy[j] * ny + sz[j] * nz >= agree
+                    and is_flat(j) == square
+            end
+
+            local run = 1
+            while run < MAX_RUN and fits(at(x0 + ax * run, y0 + ay * run, z0 + az * run)) do
+                run = run + 1
+            end
+
+            local rows = 1
+            while rows < MAX_RUN do
+                local whole = true
+                for k = 0, run - 1 do
+                    if not fits(at(x0 + ax * k + bx * rows, y0 + ay * k + by * rows,
+                        z0 + az * k + bz * rows)) then
+                        whole = false
+                        break
+                    end
+                end
+                if not whole then break end
+                rows = rows + 1
+            end
+
+            for r = 0, rows - 1 do
+                for k = 0, run - 1 do
+                    taken[at(x0 + ax * k + bx * r, y0 + ay * k + by * r, z0 + az * k + bz * r)] = true
                 end
             end
-            for k = 0, run - 1 do
-                taken[at(xs[i] + ax * k, ys[i] + ay * k, zs[i] + az * k)] = true
-            end
 
-            local cx = ox + ((xs[i] + xs[last]) / 2 + 0.5) * size
-            local cy = base + ((ys[i] + ys[last]) / 2 + 0.5) * size
-            local cz = oz + ((zs[i] + zs[last]) / 2 + 0.5) * size
+            local spanA, spanB = run - 1, rows - 1
+            local cx = ox + (x0 + (ax * spanA + bx * spanB) / 2 + 0.5) * size
+            local cy = base + (y0 + (ay * spanA + by * spanB) / 2 + 0.5) * size
+            local cz = oz + (z0 + (az * spanA + bz * spanB) / 2 + 0.5) * size
 
             if made >= limit then return done() end
             if square then
@@ -219,9 +245,9 @@ local function build(part, values, counting)
                     T = "Part",
                     P = { round(cx), round(cy), round(cz) },
                     S = {
-                        round(size + ax * (run - 1) * size),
-                        round(size + ay * (run - 1) * size),
-                        round(size + az * (run - 1) * size),
+                        round(size * (1 + ax * spanA + bx * spanB)),
+                        round(size * (1 + ay * spanA + by * spanB)),
+                        round(size * (1 + az * spanA + bz * spanB)),
                     },
                     R = { 0, 0, 0 },
                     C = cs[i],
@@ -245,7 +271,7 @@ local function build(part, values, counting)
                         round(cy + ny * push),
                         round(cz + nz * push),
                     },
-                    S = { round((run - 1) * size + cover), round(thick), round(cover) },
+                    S = { round(spanA * size + cover), round(thick), round(spanB * size + cover) },
                     R = { rx, ry, rz },
                     C = cs[i],
                     Tr = 0,
