@@ -1753,3 +1753,5 @@ a.tool-btn { text-decoration: none; }
     animation: modal-rise 140ms ease-out;
 }
 .user-pop .account { box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5); }
+
+.menubar-right { margin-left: auto; }

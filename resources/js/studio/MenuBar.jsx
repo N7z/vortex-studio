@@ -72,6 +72,7 @@ export default function MenuBar({
     teamOpen, onToggleTeam,
     statsOpen, onToggleStats,
     plugins, activePluginId, onTogglePlugin, onNewPlugin, mobile,
+    account, onTeams,
 }) {
     const [openMenu, setOpenMenu] = useState(null);
     const robloxRef = useRef(null);
@@ -177,6 +178,9 @@ export default function MenuBar({
                     onClose={() => setOpenMenu(null)}
                 />
             ))}
+            {account && (
+                <button className="menu-title menubar-right" onClick={onTeams}>Teams</button>
+            )}
             {openMenu && <div className="help-backdrop menu-backdrop" onClick={() => setOpenMenu(null)} />}
             {pop === 'gfx' && (
                 <>

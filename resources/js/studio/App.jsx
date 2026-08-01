@@ -5,6 +5,7 @@ import MobileBar from './MobileBar';
 import TouchControls from './play/TouchControls';
 import useIsMobile from './useIsMobile';
 import StartScreen from './StartScreen';
+import Teams from './Teams';
 import Explorer from './Explorer';
 import Properties from './Properties';
 import Viewport from './Viewport';
@@ -128,6 +129,7 @@ export default function App() {
     const [claimed, setClaimed] = useState(0);
     // Bumped when signing in or out, so the start screen refetches what is visible.
     const [accountSeq, setAccountSeq] = useState(0);
+    const [teamsOpen, setTeamsOpen] = useState(false);
     const mapCap = unlimited ? Infinity : MAX_MAP_PARTS;
     const pluginCap = unlimited ? Infinity : MAX_PLUGIN_PARTS;
     const resCap = unlimited ? 512 : MAX_RES;
@@ -1058,6 +1060,17 @@ export default function App() {
         <div className={mobile ? 'studio mobile' : 'studio'}>
             {dialogs}
             <Busy label={busy} />
+            {teamsOpen && (
+                <Teams
+                    teams={teams}
+                    me={account?.id}
+                    onChanged={() => {
+                        listTeams().then((d) => setTeams(d.teams ?? []));
+                        setAccountSeq((n) => n + 1);
+                    }}
+                    onClose={() => setTeamsOpen(false)}
+                />
+            )}
             {updateReady && !updateHidden && (
                 <UpdateNotice
                     warning={dirty.current && !canSaveToServer && !live.live
@@ -1087,6 +1100,7 @@ export default function App() {
                 statsOpen={statsOpen} onToggleStats={() => setStatsOpen((o) => !o)}
                 plugins={plugins} activePluginId={activePluginId}
                 onTogglePlugin={togglePlugin} onNewPlugin={openNewPluginTab}
+                account={account} onTeams={() => setTeamsOpen(true)}
             />
             {mobile ? (
                 <MobileBar

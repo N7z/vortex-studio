@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { deleteMap, listMaps, renameMap } from './api';
 import { listBackups, readBackup, deleteBackup } from './backup';
-import Teams from './Teams';
 import useDialogs from '../ui/useDialogs';
 import MoveMap from './MoveMap';
 
@@ -243,22 +242,10 @@ export default function StartScreen({
                             <span className="scope-count">{s.count}</span>
                         </button>
                     ))}
-                    {account && (
-                        <button
-                            type="button"
-                            className={scope === 'teams' ? 'scope on' : 'scope'}
-                            onClick={() => setScope('teams')}
-                        >
-                            <span className="scope-label">Teams</span>
-                        </button>
-                    )}
                 </nav>
 
                 <main className="scope-main">
-                    {scope === 'teams' ? (
-                        <Teams teams={teams} me={account?.id} onChanged={refresh} />
-                    ) : (
-                        <>
+                    <>
                             <div className="scope-bar">
                                 {canCreate && (
                                     <button type="button" className="btn btn-go" onClick={create}>New map</button>
@@ -360,8 +347,7 @@ export default function StartScreen({
                                     ))}
                                 </div>
                             )}
-                        </>
-                    )}
+                    </>
                 </main>
             </div>
 

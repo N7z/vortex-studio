@@ -216,7 +216,7 @@ function ManageTeam({ team, me, onClose, onChanged }) {
     );
 }
 
-export default function Teams({ teams, me, onChanged }) {
+export default function Teams({ teams, me, onChanged, onClose }) {
     const [creating, setCreating] = useState(false);
     const [managing, setManaging] = useState(null);
 
@@ -224,7 +224,11 @@ export default function Teams({ teams, me, onChanged }) {
 
     return (
         <>
-            <h2>Teams</h2>
+            <Modal
+                title="Teams"
+                subtitle="A team's maps can be opened and saved by everyone in it."
+                onClose={onClose}
+            >
 
             <div className="team-cards">
                 {teams.map((t) => (
@@ -238,6 +242,8 @@ export default function Teams({ teams, me, onChanged }) {
                     New team
                 </button>
             </div>
+
+            </Modal>
 
             {creating && <CreateTeam onClose={() => setCreating(false)} onDone={onChanged} />}
             {open && (
