@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-export const MAX_RES = 64;
+export const MAX_RES = 160;
 
 const hex = (n) => n.toString(16).padStart(2, '0');
 

@@ -18,6 +18,7 @@ class Member {
         this.socket = socket;
         this.userId = identity?.userId ?? null;
         this.owns = false;
+        this.cap = null;
         this.name = (identity?.name && uniqueName(identity.name, taken)) || randomName(taken);
         this.role = ROLE_SPECTATOR;
         this.joinedAt = now();
@@ -96,6 +97,10 @@ class Room {
         this.members = new Map();
         this.departed = new Map();
         this.banned = new Map();
+        // A token lives in the browser, so a kick keyed only on it is undone by
+        // clearing storage. These last as long as the room does.
+        this.bannedUsers = new Set();
+        this.roles = new Map();
         this.ownerId = null;
         this.createdAt = now();
         this.lastSavedAt = null;
@@ -159,8 +164,32 @@ class Room {
         if (!member) return;
 
         this.banned.set(member.token, now());
+        if (member.userId != null) this.bannedUsers.add(member.userId);
         this.departed.delete(member.token);
         this.pruneBans();
+    }
+
+    isUserBanned(identity) {
+        return identity?.userId != null && this.bannedUsers.has(identity.userId);
+    }
+
+    /**
+     * A role the owner set by hand outlives a reconnect, and never rises above what
+     * the token allows: a team viewer promoted in-room would be editing a map the
+     * team says they may only look at.
+     */
+    roleFor(identity) {
+        const claimed = this.claimedRole(identity);
+        const set = identity?.userId != null ? this.roles.get(identity.userId) : null;
+        if (!set) return claimed;
+        if (set === ROLE_DEVELOPER && claimed !== ROLE_DEVELOPER) return claimed;
+
+        return set;
+    }
+
+    noteRole(member, role) {
+        if (member.userId == null) return;
+        this.roles.set(member.userId, role);
     }
 
     add(socket, token, identity = null) {
@@ -169,6 +198,7 @@ class Room {
 
         const member = new Member(socket, this.takenNames(), identity);
         member.owns = this.claimsOwnership(identity);
+        member.cap = this.claimedRole(identity);
         if (back) {
             this.departed.delete(token);
             member.id = back.id;
@@ -177,10 +207,10 @@ class Room {
             member.color = back.color;
             // Role comes from the fresh token, not from what it was: a demoted user
             // must not keep edit rights for the whole grace period.
-            member.role = this.claimedRole(identity) ?? back.role;
+            member.role = this.roleFor(identity) ?? back.role;
         } else {
             member.color = this.freeColor();
-            const claimed = this.claimedRole(identity);
+            const claimed = this.roleFor(identity);
             if (claimed) member.role = claimed;
         }
 

@@ -171,7 +171,9 @@ export function createLiveServer({ log = () => {} } = {}) {
         if (existing) {
             if (existing.members.size >= config.maxMembersPerRoom) return refuse(ws, 'that session is full');
             const token = typeof msg.token === 'string' ? msg.token : null;
-            if (existing.isBanned(token)) return refuse(ws, 'the owner removed you from this session');
+            if (existing.isBanned(token) || existing.isUserBanned(who)) {
+                return refuse(ws, 'the owner removed you from this session');
+            }
 
             const { member, resumed } = existing.add(ws, token, who);
             log(`room ${existing.code}: ${member.name} ${resumed ? 'reconnected' : 'joined'} the team map ${mapName}`);
@@ -202,6 +204,7 @@ export function createLiveServer({ log = () => {} } = {}) {
         if (room.isBanned(token)) return refuse(ws, 'the owner removed you from this session');
 
         const who = verifyIdentity(msg.identity);
+        if (room.isUserBanned(who)) return refuse(ws, 'the owner removed you from this session');
         // A team room is reached by opening the map, never by passing its code on:
         // otherwise the link in the address bar would show the map to anyone.
         if (room.teamId != null && config.liveSecret && !room.claimedRole(who)) {
@@ -227,7 +230,12 @@ export function createLiveServer({ log = () => {} } = {}) {
         }
         if (target.role === msg.role) return;
 
+        if (msg.role === ROLE_DEVELOPER && room.teamId != null && target.cap === ROLE_SPECTATOR) {
+            return fail(member.socket, 'the team only lets them view this map');
+        }
+
         target.role = msg.role;
+        room.noteRole(target, msg.role);
         if (msg.role === ROLE_SPECTATOR) target.selection = [];
         log(`room ${room.code}: ${target.name} is now ${target.role}`);
         room.send(target, { t: 'you', role: target.role, owner: false });

@@ -118,3 +118,38 @@
     resize: vertical;
 }
 .modal textarea:focus { outline: none; border-color: var(--accent, #5b8dd6); }
+
+.busy-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(6, 6, 9, 0.18);
+}
+.busy {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 20px;
+    background: var(--surface, #14141a);
+    border: 1px solid var(--line, #26262e);
+    border-radius: 8px;
+    color: var(--ink, #ddd);
+    font-size: 13px;
+}
+.spinner {
+    width: 16px;
+    height: 16px;
+    flex: none;
+    border: 2px solid #2f2f38;
+    border-top-color: var(--accent, #5b8dd6);
+    border-radius: 50%;
+    animation: spin 700ms linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+    .spinner { animation-duration: 2s; }
+}

@@ -33,6 +33,7 @@ import { decodeImage, imageMeta } from './image';
 import { buildVoxels, loadModel } from './model';
 import { convertRoblox, importSummary } from './roblox';
 import useDialogs from '../ui/useDialogs';
+import Busy from '../ui/Busy';
 import {
     applyGroupOp, newGroupId, pruneGroups, takeLegacyGroups, ungroupIds,
 } from './groups';
@@ -50,13 +51,17 @@ const NEW_SPAWN = {
 };
 
 
-const MAX_PLUGIN_PARTS = 20000;
+const MAX_PLUGIN_PARTS = 60000;
 
-const MAX_MAP_PARTS = 20000;
+const MAX_MAP_PARTS = 60000;
 
 const MAX_SELECTION_PARTS = 256;
 
 const GROUPS_DEBOUNCE_MS = 400;
+
+// Heavy work in the same tick as setBusy paints nothing, so the spinner is given a
+// frame of its own first.
+const paint = () => new Promise((r) => requestAnimationFrame(() => r()));
 
 export default function App() {
     const [mapName, setMapName] = useState(null);
@@ -108,6 +113,7 @@ export default function App() {
     const versionRef = useRef(null);
     const staleSeen = useRef(false);
     const { dialogs, confirm, ask } = useDialogs();
+    const [busy, setBusy] = useState(null);
 
     // Only the id travels with a map, so the names are looked up once and again
     // whenever one turns up that this list does not know.
@@ -196,6 +202,14 @@ export default function App() {
         },
         onNotice: (message) => {
             flash(message);
+            setTeamOpen(false);
+            resetDocument(null, [], false);
+        },
+        // A team map only exists inside its session, so being turned away means the
+        // map goes too. A personal map keeps its unsaved work and just stays offline.
+        onRefused: (message) => {
+            flash(message ?? 'That session turned you away.');
+            if (mapTeamRef.current == null) return;
             setTeamOpen(false);
             resetDocument(null, [], false);
         },
@@ -478,15 +492,20 @@ export default function App() {
     const pickModel = async (ctrlId, file) => {
         if (!activePlugin) return;
         const plugin = activePlugin;
+        setBusy(`Reading ${file.name}...`);
+        await paint();
         try {
-            flash(`Reading ${file.name}...`);
             const object = await loadModel(file);
             const entry = { object, name: file.name };
             loadedModels.current[`${plugin.id}:${ctrlId}`] = entry;
+            setBusy(`Building blocks from ${file.name}...`);
+            await paint();
             await voxelise(plugin, ctrlId, entry, activeValues);
             flash(`${file.name} ready`);
         } catch (e) {
             flash(`Could not read ${file.name}: ${e.message ?? e}`);
+        } finally {
+            setBusy(null);
         }
     };
 
@@ -504,6 +523,8 @@ export default function App() {
 
     const pluginButton = async (btnId) => {
         if (!activePlugin || !selectedParts.length) return;
+        setBusy(`Running ${activePlugin.name}...`);
+        await paint();
         try {
             const parts = [];
             const updates = [];
@@ -529,7 +550,11 @@ export default function App() {
                 }
                 if (capped) break;
             }
-            if (capped) flash(`Stopped at ${MAX_MAP_PARTS} parts, the most a map can hold`);
+            // The voxel plugin emits bottom-up, so a silent cap beheads the model.
+            if (capped) {
+                flash(`Too big: stopped at ${MAX_MAP_PARTS} parts, so the top is missing. `
+                    + 'Lower the Detail and run it again.');
+            }
             if (updates.length) {
                 edit(transformOp(updates));
                 if (!parts.length) {
@@ -553,6 +578,8 @@ export default function App() {
             }
         } catch (e) {
             flash(String(e.message ?? e));
+        } finally {
+            setBusy(null);
         }
     };
 
@@ -613,6 +640,7 @@ export default function App() {
             return;
         }
         if (liveRef.current.live) liveRef.current.leave();
+        setBusy(`Loading ${name}.json...`);
         try {
             const doc = await loadMap(name, teamId);
             const ready = resetDocument(name, doc.parts, false, doc.groups, teamId, doc.version);
@@ -621,6 +649,8 @@ export default function App() {
             if (teamId != null) liveRef.current.openTeam(name, ready.parts, ready.groups, teamId);
         } catch (e) {
             flash(String(e.message ?? e));
+        } finally {
+            setBusy(null);
         }
     };
 
@@ -972,6 +1002,7 @@ export default function App() {
     return (
         <div className={mobile ? 'studio mobile' : 'studio'}>
             {dialogs}
+            <Busy label={busy} />
             {updateReady && !updateHidden && (
                 <UpdateNotice
                     warning={dirty.current && !canSaveToServer && !live.live

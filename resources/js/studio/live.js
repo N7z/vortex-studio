@@ -72,6 +72,7 @@ export class LiveClient {
         this.ws = null;
         this.identity = null;
         this.intent = null;
+        this.lastError = null;
         this.code = null;
         this.token = null;
         this.attempt = 0;
@@ -181,12 +182,18 @@ export class LiveClient {
             // 4003 kicked, 4004 the room refused us. Neither is worth retrying, and
             // retrying a room that no longer exists would loop forever.
             if (this.closing || e.code === 4003 || e.code === 4004) {
-                if (e.code === 4004 && this.code) {
-                    writeToken(this.code, null);
-                    showRoomInUrl(null);
-                    this.code = null;
-                    this.token = null;
+                if (e.code === 4004) {
+                    if (this.code) {
+                        writeToken(this.code, null);
+                        showRoomInUrl(null);
+                        this.code = null;
+                        this.token = null;
+                    }
+                    // Being turned away is not the same as losing the connection:
+                    // leaving the map open would look like an editable offline copy.
+                    this.handlers.onRefused?.(this.lastError);
                 }
+                this.lastError = null;
                 this.handlers.onStatus?.('offline');
                 this.handlers.onGone?.();
 
@@ -250,6 +257,7 @@ export class LiveClient {
 
                 return this.handlers.onKicked?.(msg);
             case 'error':
+                this.lastError = msg.message;
                 return this.handlers.onError?.(msg.message);
             default:
                 return undefined;

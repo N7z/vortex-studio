@@ -42,11 +42,10 @@ export const config = {
     ownerGraceMs: num('OWNER_GRACE_SECONDS', 20) * 1000,
     maxRooms: num('MAX_ROOMS', 200),
     maxMembersPerRoom: num('MAX_MEMBERS_PER_ROOM', 16),
-    maxParts: num('MAX_PARTS', 20_000),
+    maxParts: num('MAX_PARTS', 60_000),
     maxGroups: num('MAX_GROUPS', 2_000),
-    // Matches MapController::MAX_BYTES: a create message carries a whole map, and
-    // persisted part ids add ~20 bytes per part.
-    maxMessageBytes: num('MAX_MESSAGE_BYTES', 2_500_000),
+    // Matches MapController::MAX_BYTES: a create message carries a whole map.
+    maxMessageBytes: num('MAX_MESSAGE_BYTES', 8_000_000),
     heartbeatMs: num('HEARTBEAT_SECONDS', 25) * 1000,
     banMs: num('BAN_SECONDS', 3600) * 1000,
     maxBansPerRoom: num('MAX_BANS_PER_ROOM', 200),

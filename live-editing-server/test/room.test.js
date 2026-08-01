@@ -994,3 +994,63 @@ test('an editor cannot kick or change roles in a team room', async () => {
     a.ws.close();
     b.ws.close();
 });
+
+test('a kicked team member cannot come back by clearing its token', async () => {
+    const team = nextTeam();
+    const boss = await openTeam(team, { u: 1, n: 'Boss', r: 'owner' });
+    const hi = await boss.next('welcome');
+    const bad = await openTeam(team, { u: 7, n: 'Bad' });
+    const them = await bad.next('welcome');
+
+    boss.send({ t: 'kick', memberId: them.you.id });
+    assert.equal(await bad.closed, 4003);
+
+    // A fresh client with no stored token, but the same account.
+    const again = await openTeam(team, { u: 7, n: 'Bad' });
+    assert.match((await again.next('error')).message, /removed you/);
+    assert.equal(await again.closed, 4004);
+
+    // Somebody else from the team is unaffected.
+    const ok = await openTeam(team, { u: 8, n: 'Fine' });
+    assert.equal((await ok.next('welcome')).code, hi.code);
+
+    boss.ws.close();
+    ok.ws.close();
+});
+
+test('a demotion to spectator survives a reconnect', async () => {
+    const team = nextTeam();
+    const boss = await openTeam(team, { u: 1, n: 'Boss', r: 'owner' });
+    await boss.next('welcome');
+    const ed = await openTeam(team, { u: 2, n: 'Ed' });
+    const you = await ed.next('welcome');
+    assert.equal(you.you.role, 'developer');
+
+    boss.send({ t: 'role', memberId: you.you.id, role: 'spectator' });
+    assert.equal((await ed.next('you')).role, 'spectator');
+    ed.ws.close();
+
+    const back = await openTeam(team, { u: 2, n: 'Ed' });
+    assert.equal((await back.next('welcome')).you.role, 'spectator');
+
+    boss.ws.close();
+    back.ws.close();
+});
+
+test('a team viewer cannot be promoted to developer in the room', async () => {
+    const team = nextTeam();
+    const boss = await openTeam(team, { u: 1, n: 'Boss', r: 'owner' });
+    await boss.next('welcome');
+    const viewer = await openTeam(team, { u: 3, n: 'Vi', r: 'viewer' });
+    const you = await viewer.next('welcome');
+    assert.equal(you.you.role, 'spectator');
+
+    boss.send({ t: 'role', memberId: you.you.id, role: 'developer' });
+    assert.match((await boss.next('error')).message, /only lets them view/);
+
+    viewer.send({ t: 'op', op: { t: 'add', items: [{ part: part('nope') }] } });
+    assert.match((await viewer.next('error')).message, /spectator/);
+
+    boss.ws.close();
+    viewer.ws.close();
+});

@@ -188,3 +188,22 @@ it('clears groups when an empty list is sent', function () {
     asToken()->putJson('/api/maps/m', ['parts' => [IPART], 'groups' => []])->assertOk();
     asToken()->getJson('/api/maps/m')->assertOk()->assertJson(['groups' => []]);
 });
+
+it('accepts a map far larger than the old twenty thousand part cap', function () {
+    $parts = [];
+    for ($i = 0; $i < 30000; $i++) {
+        $parts[] = ['_id' => "p$i", 'T' => 'Part', 'P' => [$i, 0, 0], 'S' => [1, 1, 1], 'R' => [0, 0, 0]];
+    }
+
+    asToken()->putJson('/api/maps/big', ['parts' => $parts])->assertOk();
+    expect(DB::table('maps')->where('name', 'big')->value('parts'))->toBe(30000);
+});
+
+it('still refuses a map past the new cap', function () {
+    $parts = [];
+    for ($i = 0; $i < 60001; $i++) {
+        $parts[] = ['T' => 'Part', 'P' => [0, 0, 0], 'S' => [1, 1, 1], 'R' => [0, 0, 0]];
+    }
+
+    $this->putJson('/api/maps/toobig', ['parts' => $parts])->assertStatus(400);
+});

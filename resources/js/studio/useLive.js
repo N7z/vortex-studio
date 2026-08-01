@@ -5,7 +5,7 @@ import { LiveClient } from './live';
 const EMPTY = [];
 
 export default function useLive({
-    onWelcome, onOp, onSnapshot, onGroups, onError, onNotice,
+    onWelcome, onOp, onSnapshot, onGroups, onError, onNotice, onRefused,
 }) {
     const [status, setStatus] = useState('offline');
     const [code, setCode] = useState(null);
@@ -14,7 +14,9 @@ export default function useLive({
     const [lastSavedAt, setLastSavedAt] = useState(null);
 
     const cbs = useRef({});
-    cbs.current = { onWelcome, onOp, onSnapshot, onGroups, onError, onNotice };
+    cbs.current = {
+        onWelcome, onOp, onSnapshot, onGroups, onError, onNotice, onRefused,
+    };
 
     const playRef = useRef(new Map());
     const meId = useRef(null);
@@ -97,6 +99,7 @@ export default function useLive({
                 syncPlay([]);
             },
             onError: (message) => cbs.current.onError?.(message),
+            onRefused: (message) => cbs.current.onRefused?.(message),
             onIdentity: () => liveToken(scope.current.map, scope.current.team),
         });
     }

@@ -12,7 +12,7 @@ plugin = {
     },
 }
 
-local MAX_PARTS = 4000
+local MAX_PARTS = 50000
 
 local function clamp(v, lo, hi)
     v = tonumber(v) or lo

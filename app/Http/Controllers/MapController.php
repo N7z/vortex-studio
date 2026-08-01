@@ -12,15 +12,15 @@ class MapController extends Controller
 {
     public const TTL_HOURS = 24;
 
-    // Raised with persisted part ids: they add ~20 bytes per part, so a full
-    // 20k-part map that used to fit would start failing to save.
-    private const MAX_BYTES = 2_500_000;
+    // A part measures ~115 bytes with its id, so this is MAX_PARTS with headroom
+    // for groups. Raising one without the other silently caps the map at the lower.
+    private const MAX_BYTES = 8_000_000;
 
     private const MAX_MAPS_PER_OWNER = 50;
 
     private const MAX_MAPS_PER_TEAM = 200;
 
-    private const MAX_PARTS = 20_000;
+    private const MAX_PARTS = 60_000;
 
     private const MAX_GROUPS = 2_000;
 
@@ -73,7 +73,7 @@ class MapController extends Controller
         return response()->json(Cache::remember('studio_stats', 60, function () {
             self::prune();
 
-            // Never select `data`: a map is up to 2 MB and there is no bound on rows.
+            // Never select `data`: a map is megabytes and there is no bound on rows.
             $agg = DB::table('maps')->selectRaw(
                 'count(*) as maps, count(distinct token) as sessions, coalesce(sum(parts), 0) as parts, max(updated_at) as last_save',
             )->first();
