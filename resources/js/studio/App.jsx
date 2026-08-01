@@ -171,12 +171,12 @@ export default function App() {
         setPartLimit(unlimited ? Number.MAX_SAFE_INTEGER : MAX_PLUGIN_PARTS);
     }, [unlimited]);
 
-    useEffect(() => onPluginPrint(flash), [flash]);
-
     const flash = useCallback((msg) => {
         setStatus(msg);
         setTimeout(() => setStatus((s) => (s === msg ? '' : s)), 2500);
     }, []);
+
+    useEffect(() => onPluginPrint(flash), [flash]);
 
     const resetDocument = (name, raw, isDirty, remoteGroups, teamId = null, version = null) => {
         const { parts: data, fixed } = repairParts(raw);
