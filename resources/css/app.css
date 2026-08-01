@@ -1511,8 +1511,6 @@ a.tool-btn { text-decoration: none; }
 .member-x:hover { color: #e05252; }
 .member-x:disabled { opacity: 0.4; cursor: default; }
 
-.map-row { display: flex; align-items: center; margin-bottom: 10px; }
-.map-row a { margin-bottom: 0; }
 .map-move {
     margin-left: 12px;
     padding: 1px 8px;
@@ -1536,3 +1534,125 @@ a.tool-btn { text-decoration: none; }
     font-weight: 400;
     color: #8f8f98;
 }
+
+/* ---------- start screen layout ---------- */
+
+.start-top {
+    display: flex;
+    align-items: flex-start;
+    gap: 24px;
+    padding: 24px 34px 18px;
+}
+.start-top h1 { flex: 1; font-size: 24px; font-weight: 400; color: #eee; margin: 0; }
+.start-account { width: 300px; flex: none; }
+.start-error { margin: 0 34px 12px; color: #e05252; font-size: 13px; }
+
+.start-body {
+    position: absolute;
+    inset: 86px 0 0;
+    display: flex;
+    gap: 28px;
+    padding: 0 34px 90px;
+    min-height: 0;
+}
+.scopes {
+    width: 190px;
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow-y: auto;
+}
+.scope {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border: none;
+    border-left: 2px solid transparent;
+    border-radius: 0 4px 4px 0;
+    background: none;
+    color: #8f8f98;
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+}
+.scope:hover { background: #16161c; color: #ddd; }
+.scope.on { background: #17171e; border-left-color: #5b8dd6; color: #eee; }
+.scope-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scope-count { font-size: 11px; color: #55555f; }
+.scope.on .scope-count { color: #8f8f98; }
+
+.scope-main { flex: 1; min-width: 0; overflow-y: auto; }
+.scope-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; }
+.scope-search {
+    margin-left: auto;
+    width: 180px;
+    padding: 6px 9px;
+    background: #101014;
+    border: 1px solid #2c2c33;
+    border-radius: 5px;
+    color: #ddd;
+    font: inherit;
+    font-size: 12px;
+}
+.scope-search:focus { outline: none; border-color: #5b8dd6; }
+.scope-note { color: #6e6e78; font-size: 12px; margin-bottom: 14px; }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.card {
+    position: relative;
+    border: 1px solid #26262e;
+    border-radius: 8px;
+    background: #14141a;
+    transition: border-color 120ms, background 120ms;
+}
+.card:hover { border-color: #3a3a44; background: #17171e; }
+.card-open {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 100%;
+    padding: 14px;
+    border: none;
+    background: none;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.card-name { color: #ddd; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-when { color: #6e6e78; font-size: 11px; }
+.card-tag {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: #1d2740;
+    color: #7ba7e0;
+    font-size: 10px;
+}
+.card-move, .card-x {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    padding: 1px 7px;
+    border: 1px solid #26262e;
+    border-radius: 3px;
+    background: #14141a;
+    color: #6e6e78;
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 120ms;
+}
+.card:hover .card-move, .card:hover .card-x, .card-move:focus, .card-x:focus { opacity: 1; }
+.card-move:hover { color: #5b8dd6; border-color: #5b8dd6; }
+.card-x:hover { color: #e05252; border-color: #e05252; }
+
+.start-body.mobile { flex-direction: column; gap: 14px; inset: 86px 0 0; padding: 0 18px 90px; }
+.start-body.mobile .scopes { width: auto; flex-direction: row; overflow-x: auto; gap: 6px; }
+.start-body.mobile .scope { border-left: none; border-bottom: 2px solid transparent; border-radius: 4px; }
+.start-body.mobile .scope.on { border-left: none; border-bottom-color: #5b8dd6; }
