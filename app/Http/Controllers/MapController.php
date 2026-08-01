@@ -54,18 +54,19 @@ class MapController extends Controller
             return null;
         }
 
-        // Only a bucket gives an absolute URL. A local disk's own /storage route
-        // serves from a private root and answers 403, so the app serves it instead.
-        try {
-            $url = self::thumbDisk()->url(self::thumbPath($row->thumb_key));
-            if (str_starts_with($url, 'http')) {
-                return $url;
+        // A bucket addresses itself, so its own URL is the right one. A local disk
+        // would build one from APP_URL, which breaks the moment the port differs, so
+        // the app serves those from a path relative to whatever host is being used.
+        $name = config('filesystems.thumbs', 'public');
+        if (config("filesystems.disks.$name.driver") !== 'local') {
+            try {
+                return self::thumbDisk()->url(self::thumbPath($row->thumb_key));
+            } catch (\Throwable) {
+                // No public URL, so fall through to serving it here.
             }
-        } catch (\Throwable) {
-            // No public URL at all, which the fallback below covers.
         }
 
-        return url("/api/thumbs/{$row->thumb_key}.webp");
+        return "/api/thumbs/{$row->thumb_key}.webp";
     }
 
     public function thumb(string $key)
