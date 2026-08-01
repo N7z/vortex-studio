@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { listMaps } from './api';
+import { deleteMap, listMaps, renameMap } from './api';
 import { listBackups, readBackup, deleteBackup } from './backup';
 import Account from './Account';
 import Teams from './Teams';
@@ -41,6 +41,7 @@ export default function StartScreen({
     const [scope, setScope] = useState(null);
     const [query, setQuery] = useState('');
     const [moving, setMoving] = useState(null);
+    const [menu, setMenu] = useState(null);
     const fileRef = useRef(null);
     const { dialogs, notice, confirm, ask } = useDialogs();
 
@@ -147,6 +148,48 @@ export default function StartScreen({
 
         return personal.filter((m) => match(m.name));
     }, [scope, query, examples, backups, mine, personal, team]);
+
+    // Examples are read-only fixtures, and a device backup is not a stored map.
+    const canManage = scope !== 'examples' && scope !== 'device'
+        && (scope === 'personal' || team?.role !== 'viewer');
+
+    const rename = async (m) => {
+        setMenu(null);
+        const to = await ask({
+            title: `Rename ${m.name}`,
+            label: 'New name',
+            value: m.name,
+            validate: (v) => (/^[A-Za-z0-9_-]{1,64}$/.test(v)
+                ? '' : 'Use only letters, digits, - and _ (up to 64 characters).'),
+            confirmLabel: 'Rename',
+        });
+        if (!to || to === m.name) return;
+        try {
+            await renameMap(m.name, m.team_id ?? null, to);
+            refresh();
+        } catch (e) {
+            notice({ title: 'That map could not be renamed', body: String(e.message ?? e) });
+        }
+    };
+
+    const remove = async (m) => {
+        setMenu(null);
+        const yes = await confirm({
+            title: `Delete ${m.name}.json?`,
+            body: team
+                ? 'It goes for everyone in this team, and cannot be undone.'
+                : 'This cannot be undone. Any copy kept in this browser stays.',
+            confirmLabel: 'Delete map',
+            danger: true,
+        });
+        if (!yes) return;
+        try {
+            await deleteMap(m.name, m.team_id ?? null);
+            refresh();
+        } catch (e) {
+            notice({ title: 'That map could not be deleted', body: String(e.message ?? e) });
+        }
+    };
 
     const canCreate = scope === 'personal' || (team && team.role !== 'viewer');
     const canMove = !!account && (scope === 'personal'
@@ -289,14 +332,42 @@ export default function StartScreen({
                                                     ×
                                                 </button>
                                             )}
-                                            {scope !== 'device' && scope !== 'examples' && canMove && (
-                                                <button
-                                                    type="button"
-                                                    className="card-move"
-                                                    onClick={() => setMoving(m)}
-                                                >
-                                                    Move
-                                                </button>
+                                            {canManage && (
+                                                <div className="card-menu">
+                                                    <button
+                                                        type="button"
+                                                        className="card-dots"
+                                                        title="More"
+                                                        onClick={() => setMenu(menu === m.name ? null : m.name)}
+                                                    >
+                                                        ⋯
+                                                    </button>
+                                                    {menu === m.name && (
+                                                        <>
+                                                            <div className="menu-shade" onClick={() => setMenu(null)} />
+                                                            <div className="menu-pop">
+                                                                <button type="button" onClick={() => rename(m)}>
+                                                                    Rename
+                                                                </button>
+                                                                {canMove && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => { setMenu(null); setMoving(m); }}
+                                                                    >
+                                                                        Move
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    type="button"
+                                                                    className="danger"
+                                                                    onClick={() => remove(m)}
+                                                                >
+                                                                    Delete
+                                                                </button>
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                </div>
                                             )}
                                         </div>
                                     ))}

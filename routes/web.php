@@ -19,6 +19,7 @@ Route::prefix('account')->group(function () {
     Route::post('/logout', [AccountController::class, 'logout']);
 });
 Route::get('/api/stats', [MapController::class, 'stats'])->middleware('throttle:30,1');
+Route::get('/api/thumbs/examples/{name}.webp', [MapController::class, 'exampleThumb']);
 Route::get('/api/thumbs/{key}.webp', [MapController::class, 'thumb'])->where('key', '[a-f0-9]{32}');
 
 Route::middleware('throttle:60,1')->group(function () {
@@ -27,6 +28,7 @@ Route::middleware('throttle:60,1')->group(function () {
     Route::put('/api/maps/{name}', [MapController::class, 'save']);
     Route::patch('/api/maps/{name}', [MapController::class, 'move']);
     Route::put('/api/maps/{name}/thumb', [MapController::class, 'putThumb']);
+    Route::delete('/api/maps/{name}', [MapController::class, 'destroy']);
 
     Route::get('/api/teams', [TeamController::class, 'index']);
     Route::post('/api/teams', [TeamController::class, 'store']);

@@ -69,6 +69,19 @@ class MapController extends Controller
         return "/api/thumbs/{$row->thumb_key}.webp";
     }
 
+    public function exampleThumb(string $name)
+    {
+        $name = $this->validName($name);
+        $path = "thumbs/examples/$name.webp";
+        $disk = self::thumbDisk();
+        abort_unless($disk->exists($path), 404);
+
+        return response($disk->get($path), 200, [
+            'Content-Type' => 'image/webp',
+            'Cache-Control' => 'public, max-age=86400',
+        ]);
+    }
+
     public function thumb(string $key)
     {
         abort_unless(preg_match('/^[a-f0-9]{32}$/', $key), 404);
@@ -197,8 +210,20 @@ class MapController extends Controller
                 'thumb' => self::thumbUrl($m),
             ]);
 
+        $disk = self::thumbDisk();
+        $remote = config('filesystems.disks.'.config('filesystems.thumbs', 'public').'.driver') !== 'local';
         $examples = collect(glob($this->examplesDir().DIRECTORY_SEPARATOR.'*.json'))
-            ->map(fn ($f) => ['name' => basename($f, '.json')])
+            ->map(function ($f) use ($disk, $remote) {
+                $name = basename($f, '.json');
+                $path = "thumbs/examples/$name.webp";
+
+                return [
+                    'name' => $name,
+                    'thumb' => $disk->exists($path)
+                        ? ($remote ? $disk->url($path) : "/api/thumbs/examples/$name.webp")
+                        : null,
+                ];
+            })
             ->values();
 
         return response()->json([
@@ -247,6 +272,13 @@ class MapController extends Controller
         abort_unless($id, 401, 'sign in first');
 
         $from = $this->teamId($request);
+
+        // Rename travels on the same request: both are "where does this map live".
+        $rename = $request->json('to_name');
+        if ($rename !== null) {
+            return $this->rename($request, $name, $from, (string) $rename);
+        }
+
         $raw = $request->json('to_team');
         $to = $raw === null || $raw === '' ? null : (int) $raw;
         abort_if($to !== null && ! is_numeric($raw), 400, 'bad team');
@@ -284,6 +316,49 @@ class MapController extends Controller
         ]);
 
         return response()->json(['ok' => true, 'team_id' => $to]);
+    }
+
+    private function rename(Request $request, string $name, ?int $team, string $to)
+    {
+        $to = $this->validName($to);
+        $row = MapAccess::find($request, $name, $team);
+        abort_unless($row, 404);
+        abort_unless(MapAccess::canEdit($row), 403, 'you can only view this map');
+        abort_if($to === $name, 422, 'that is already its name');
+        abort_if(
+            MapAccess::find($request, $to, $team) !== null,
+            422,
+            'a map called that is already here',
+        );
+
+        DB::table('maps')->where('id', $row->id)->update(['name' => $to, 'updated_at' => now()]);
+
+        return response()->json(['ok' => true, 'name' => $to]);
+    }
+
+    public function destroy(Request $request, string $name)
+    {
+        $name = $this->validName($name);
+        $team = $this->teamId($request);
+        $row = MapAccess::find($request, $name, $team);
+        abort_unless($row, 404);
+        abort_unless(MapAccess::canEdit($row), 403, 'you can only view this map');
+
+        // Deleting a team map takes it from everyone in the team.
+        if ($team !== null) {
+            abort_unless(
+                MapAccess::teamRole($team) === MapAccess::OWNER,
+                403,
+                'only the team owner can delete a team map',
+            );
+        }
+
+        if ($row->thumb_key) {
+            self::thumbDisk()->delete(self::thumbPath($row->thumb_key));
+        }
+        DB::table('maps')->where('id', $row->id)->delete();
+
+        return response()->json(['ok' => true]);
     }
 
     /** Parts and groups travel together, so the stored JSON is wrapped rather than re-encoded. */

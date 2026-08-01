@@ -110,7 +110,8 @@ export default function App() {
     partsRef.current = parts;
     const groupsRef = useRef([]);
     groupsRef.current = groups;
-    const loadedGroups = useRef(null);
+    const loadedGroups = useRef(groups);
+    const mapNameRef = useRef(null);
     const mapTeamRef = useRef(null);
     mapTeamRef.current = mapTeam;
     // The stored version this copy was built on; a save that does not match it is refused.
@@ -153,6 +154,7 @@ export default function App() {
         if (fixed) flash(`Repaired ${fixed} part${fixed === 1 ? '' : 's'} the server would reject`);
         setParts(data);
         setMapName(name);
+        mapNameRef.current = name;
         setMapTeam(teamId);
         mapTeamRef.current = teamId;
         versionRef.current = version;
@@ -646,7 +648,7 @@ export default function App() {
     // installed is the load itself, and pruneGroups returns its input unchanged
     // when nothing was pruned, so identity is enough to tell an edit apart.
     useEffect(() => {
-        if (groups !== loadedGroups.current) dirty.current = true;
+        if (mapName && groups !== loadedGroups.current) dirty.current = true;
     }, [groups]);
 
     const changeGraphics = (patch) => {
@@ -957,7 +959,7 @@ export default function App() {
 
     useEffect(() => {
         const onBeforeUnload = (e) => {
-            if (dirty.current) {
+            if (dirty.current && mapNameRef.current) {
                 e.preventDefault();
                 e.returnValue = '';
             }

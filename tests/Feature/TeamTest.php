@@ -392,3 +392,42 @@ it('refuses a move that would break the destination quota', function () {
 
     $this->actingAs($a)->patchJson('/api/maps/castle', ['to_team' => $team])->assertStatus(403);
 });
+
+it('renames a map and refuses a name already in use', function () {
+    $a = User::factory()->create();
+    $this->actingAs($a)->putJson('/api/maps/old', ['parts' => [TPART]])->assertOk();
+    $this->actingAs($a)->putJson('/api/maps/taken', ['parts' => [TPART]])->assertOk();
+
+    $this->actingAs($a)->patchJson('/api/maps/old', ['to_name' => 'fresh'])->assertOk();
+    expect(DB::table('maps')->where('name', 'fresh')->exists())->toBeTrue();
+
+    $this->actingAs($a)->patchJson('/api/maps/fresh', ['to_name' => 'taken'])->assertStatus(422);
+    $this->actingAs($a)->patchJson('/api/maps/fresh', ['to_name' => 'bad name!'])->assertStatus(400);
+});
+
+it('deletes a map and lets only the team owner delete a team one', function () {
+    $a = User::factory()->create();
+    $b = User::factory()->create();
+    $team = makeTeam($a);
+    addTo($team, $a, $b);
+
+    $this->actingAs($a)->putJson('/api/maps/gone', ['parts' => [TPART]])->assertOk();
+    $this->actingAs($a)->deleteJson('/api/maps/gone')->assertOk();
+    expect(DB::table('maps')->where('name', 'gone')->exists())->toBeFalse();
+
+    $this->actingAs($a)->putJson("/api/maps/shared?team=$team", ['parts' => [TPART]])->assertOk();
+    $this->actingAs($b)->deleteJson("/api/maps/shared?team=$team")->assertStatus(403);
+    $this->actingAs($a)->deleteJson("/api/maps/shared?team=$team")->assertOk();
+    expect(DB::table('maps')->count())->toBe(0);
+});
+
+it('keeps one team map from renaming onto another', function () {
+    $a = User::factory()->create();
+    $team = makeTeam($a);
+    $this->actingAs($a)->putJson("/api/maps/one?team=$team", ['parts' => [TPART]])->assertOk();
+    $this->actingAs($a)->putJson("/api/maps/two?team=$team", ['parts' => [TPART]])->assertOk();
+
+    $this->actingAs($a)->patchJson("/api/maps/one?team=$team", ['to_name' => 'two'])->assertStatus(422);
+    // The same name is free in your own space, so the move is unaffected.
+    $this->actingAs($a)->putJson('/api/maps/two', ['parts' => [TPART]])->assertOk();
+});

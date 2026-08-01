@@ -102,6 +102,29 @@ export async function putThumb(name, team, blob) {
     return r.ok;
 }
 
+export async function renameMap(name, team, to) {
+    const r = await fetch(mapUrl(name, team), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf },
+        body: JSON.stringify({ to_name: to }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.message || 'that map could not be renamed');
+
+    return d;
+}
+
+export async function deleteMap(name, team) {
+    const r = await fetch(mapUrl(name, team), {
+        method: 'DELETE',
+        headers: { Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.message || 'that map could not be deleted');
+
+    return d;
+}
+
 export const listTeams = () => fetch('/api/teams', { headers: { Accept: 'application/json' } })
     .then((r) => (r.ok ? r.json() : { teams: [] }))
     .catch(() => ({ teams: [] }));
