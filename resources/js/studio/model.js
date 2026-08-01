@@ -81,14 +81,30 @@ export function voxelize(object, res, maxRes = MAX_RES) {
         z: Math.max(Math.ceil(span.z * scale), 1),
     };
     const cells = new Map();
+    // The face normal of every triangle that landed in a cell, summed. This is the
+    // real surface direction; recovering one from the filled cells afterwards can
+    // only ever approximate it, and on a fine grid it is mostly rasterisation noise.
+    const norms = new Map();
     const a = new THREE.Vector3();
     const b = new THREE.Vector3();
     const c = new THREE.Vector3();
     const p = new THREE.Vector3();
+    const e1 = new THREE.Vector3();
+    const e2 = new THREE.Vector3();
+    const face = new THREE.Vector3();
 
     const slot = (v, n) => Math.min(Math.max(Math.floor(v), 0), n - 1);
     const put = (x, y, z, rgb) => {
-        cells.set((slot(y, dim.y) * dim.z + slot(z, dim.z)) * dim.x + slot(x, dim.x), rgb);
+        const key = (slot(y, dim.y) * dim.z + slot(z, dim.z)) * dim.x + slot(x, dim.x);
+        cells.set(key, rgb);
+        const n = norms.get(key);
+        if (n) {
+            n[0] += face.x;
+            n[1] += face.y;
+            n[2] += face.z;
+        } else {
+            norms.set(key, [face.x, face.y, face.z]);
+        }
     };
 
     for (const mesh of meshes) {
@@ -106,6 +122,10 @@ export function voxelize(object, res, maxRes = MAX_RES) {
             a.fromBufferAttribute(pos, i0).applyMatrix4(mesh.matrixWorld);
             b.fromBufferAttribute(pos, i1).applyMatrix4(mesh.matrixWorld);
             c.fromBufferAttribute(pos, i2).applyMatrix4(mesh.matrixWorld);
+
+            // Built from the world-space corners, so it needs no normal matrix.
+            face.copy(e1.subVectors(b, a).cross(e2.subVectors(c, a)));
+            if (face.lengthSq() > 0) face.normalize();
 
             let colour = rgb;
             if (uv) {
@@ -142,7 +162,7 @@ export function voxelize(object, res, maxRes = MAX_RES) {
         }
     }
 
-    return { dim, cells };
+    return { dim, cells, norms };
 }
 
 export function fillInside(grid) {
@@ -192,8 +212,12 @@ export function fillInside(grid) {
     return grid;
 }
 
+// A normal component is a byte, 128 meaning zero. A cell with no triangle in it -
+// the inside of a filled model - encodes as (0, 0, 0) and reads back as "unknown".
+const nhex = (v) => hex(Math.min(255, Math.max(0, Math.round(v * 127) + 128)));
+
 export function encode(grid) {
-    const { dim, cells } = grid;
+    const { dim, cells, norms } = grid;
     const keys = [...cells.keys()].sort((p, q) => p - q);
     const out = [];
     for (const key of keys) {
@@ -202,7 +226,13 @@ export function encode(grid) {
         const z = rest % dim.z;
         const y = (rest - z) / dim.z;
         const [r, g, b] = cells.get(key);
-        out.push(hex(x) + hex(y) + hex(z) + hex(r) + hex(g) + hex(b));
+        const n = norms?.get(key);
+        const len = n ? Math.hypot(n[0], n[1], n[2]) : 0;
+        const s = len > 1e-9 ? 1 / len : 0;
+        out.push(
+            hex(x) + hex(y) + hex(z) + hex(r) + hex(g) + hex(b)
+            + nhex(n ? n[0] * s : 0) + nhex(n ? n[1] * s : 0) + nhex(n ? n[2] * s : 0),
+        );
     }
     return { w: dim.x, h: dim.y, d: dim.z, count: keys.length, data: out.join('') };
 }

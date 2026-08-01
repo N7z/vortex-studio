@@ -3,14 +3,14 @@ plugin = {
     icon = Icons.Gem,
     ui = {
         { id = "model", type = "model", label = "Model", res = "res", solid = "solid" },
-        { id = "res", type = "number", label = "Detail", default = 32 },
+        { id = "res", type = "number", label = "Detail", default = 48 },
         { id = "size", type = "number", label = "Block size", default = 1 },
-        { id = "solid", type = "checkbox", label = "Fill the inside", default = true },
+        { id = "solid", type = "checkbox", label = "Fill the inside", default = false },
         { id = "smooth", type = "number", label = "Smoothing", default = 2 },
-        { id = "thick", type = "number", label = "Shell thickness", default = 0.6 },
-        { id = "cover", type = "number", label = "Plate overlap", default = 1.5 },
-        { id = "core", type = "checkbox", label = "Keep a solid core", default = true },
-        { id = "flat", type = "number", label = "Keep flat faces square", default = 0.97 },
+        { id = "thick", type = "number", label = "Shell thickness", default = 0.5 },
+        { id = "cover", type = "number", label = "Plate overlap", default = 1.7 },
+        { id = "core", type = "checkbox", label = "Keep a solid core", default = false },
+        { id = "flat", type = "number", label = "Keep flat faces square", default = 0.985 },
         { id = "ground", type = "checkbox", label = "Sit on the selected part", default = true },
         { id = "build", type = "button", label = "Sculpt model" },
     },
@@ -52,38 +52,43 @@ local function build(part, values)
     end
 
     local size = clamp(tonumber(values.size) or 1, 0.05, 50)
-    local radius = math.floor(clamp(tonumber(values.smooth) or 2, 1, 3))
-    local thick = clamp(tonumber(values.thick) or 0.6, 0.1, 2) * size
-    local cover = clamp(tonumber(values.cover) or 1.5, 1, 3) * size
-    local flat = clamp(tonumber(values.flat) or 0.97, 0, 1)
-    local core = values.core ~= false
+    local radius = math.floor(clamp(tonumber(values.smooth) or 2, 0, 4))
+    local thick = clamp(tonumber(values.thick) or 0.5, 0.1, 2) * size
+    local cover = clamp(tonumber(values.cover) or 1.7, 1, 4) * size
+    local flat = clamp(tonumber(values.flat) or 0.985, 0, 1)
+    local core = values.core == true
     local base = values.ground ~= false and (part.P[2] + part.S[2] / 2) or part.P[2]
 
     local W, D = Model.w, Model.d
     local ox = part.P[1] - W * size / 2
     local oz = part.P[3] - D * size / 2
 
-    local solid = {}
+    local slot = {}
     local xs, ys, zs, cs = {}, {}, {}, {}
+    local nxs, nys, nzs = {}, {}, {}
     for i = 1, Model.count do
-        local x, y, z, colour = Model.at(i)
+        local x, y, z, colour, nx, ny, nz = Model.at(i)
         xs[i], ys[i], zs[i], cs[i] = x, y, z, colour
-        solid[(y * D + z) * W + x] = true
+        nxs[i], nys[i], nzs[i] = nx, ny, nz
+        slot[(y * D + z) * W + x] = i
     end
 
-    local function filled(x, y, z)
-        return solid[(y * D + z) * W + x] == true
+    local function at(x, y, z)
+        return slot[(y * D + z) * W + x]
     end
 
-    -- Every empty cell in the neighbourhood pulls the normal towards itself, weighted
-    -- by 1/distance^2, so the direction is the local surface's, not the voxel grid's.
-    local offsets = {}
+    -- The mesh's own normals are exact but carry the tessellation's jitter, so each
+    -- one is averaged with its neighbours' inside a ball. Only neighbours already
+    -- facing the same way join in: without that the average reaches across a thin
+    -- wall or around a crease and tilts a plate into its own model.
+    local AGREE = 0.4
+    local ball = {}
     for dx = -radius, radius do
         for dy = -radius, radius do
             for dz = -radius, radius do
                 local d2 = dx * dx + dy * dy + dz * dz
-                if d2 > 0 and d2 <= radius * radius + 0.001 then
-                    offsets[#offsets + 1] = { dx, dy, dz, 1 / (d2 * math.sqrt(d2)) }
+                if d2 <= radius * radius + 0.001 then
+                    ball[#ball + 1] = { dx, dy, dz, 1 / (1 + d2) }
                 end
             end
         end
@@ -94,31 +99,49 @@ local function build(part, values)
 
     for i = 1, Model.count do
         local x, y, z = xs[i], ys[i], zs[i]
-        local buried = filled(x + 1, y, z) and filled(x - 1, y, z)
-            and filled(x, y + 1, z) and filled(x, y - 1, z)
-            and filled(x, y, z + 1) and filled(x, y, z - 1)
+        local buried = at(x + 1, y, z) and at(x - 1, y, z)
+            and at(x, y + 1, z) and at(x, y - 1, z)
+            and at(x, y, z + 1) and at(x, y, z - 1)
 
         if not buried then
-            local nx, ny, nz = 0, 0, 0
-            for k = 1, #offsets do
-                local o = offsets[k]
-                if not filled(x + o[1], y + o[2], z + o[3]) then
-                    nx = nx + o[1] * o[4]
-                    ny = ny + o[2] * o[4]
-                    nz = nz + o[3] * o[4]
+            local ax, ay, az = nxs[i], nys[i], nzs[i]
+            local nx, ny, nz = ax, ay, az
+            if ax * ax + ay * ay + az * az > 0.01 then
+                for k = 1, #ball do
+                    local o = ball[k]
+                    local j = at(x + o[1], y + o[2], z + o[3])
+                    if j and j ~= i and nxs[j] * ax + nys[j] * ay + nzs[j] * az > AGREE then
+                        nx = nx + nxs[j] * o[4]
+                        ny = ny + nys[j] * o[4]
+                        nz = nz + nzs[j] * o[4]
+                    end
                 end
             end
 
             local len = math.sqrt(nx * nx + ny * ny + nz * nz)
+            -- No mesh normal here, or the neighbourhood cancelled out: fall back to
+            -- which way the empty space lies, which is all a filled cell can say.
+            if len < 0.05 then
+                nx, ny, nz = 0, 0, 0
+                for k = 1, #ball do
+                    local o = ball[k]
+                    if not at(x + o[1], y + o[2], z + o[3]) then
+                        nx = nx + o[1] * o[4]
+                        ny = ny + o[2] * o[4]
+                        nz = nz + o[3] * o[4]
+                    end
+                end
+                len = math.sqrt(nx * nx + ny * ny + nz * nz)
+            end
+
             if len > 1e-6 then
                 nx, ny, nz = nx / len, ny / len, nz / len
                 local cx = ox + (x + 0.5) * size
                 local cy = base + (y + 0.5) * size
                 local cz = oz + (z + 0.5) * size
-                local biggest = math.max(math.abs(nx), math.abs(ny), math.abs(nz))
 
                 if #out >= limit then return out end
-                if biggest >= flat then
+                if math.max(math.abs(nx), math.abs(ny), math.abs(nz)) >= flat then
                     -- Square-on to an axis already: a plate here would only add seams.
                     out[#out + 1] = {
                         T = "Part",
@@ -156,24 +179,23 @@ local function build(part, values)
     local i = 1
     while i <= Model.count do
         local x, y, z = xs[i], ys[i], zs[i]
-        local buried = filled(x + 1, y, z) and filled(x - 1, y, z)
-            and filled(x, y + 1, z) and filled(x, y - 1, z)
-            and filled(x, y, z + 1) and filled(x, y, z - 1)
-        if not buried then
+        local function buried_at(j)
+            local bx, by, bz = xs[j], ys[j], zs[j]
+            return at(bx + 1, by, bz) and at(bx - 1, by, bz)
+                and at(bx, by + 1, bz) and at(bx, by - 1, bz)
+                and at(bx, by, bz + 1) and at(bx, by, bz - 1)
+        end
+        if not buried_at(i) then
             i = i + 1
         else
             local run = 1
             while i + run <= Model.count do
-                local nx2, ny2, nz2 = xs[i + run], ys[i + run], zs[i + run]
-                if ny2 ~= y or nz2 ~= z or nx2 ~= x + run or cs[i + run] ~= cs[i] then break end
-                if not (filled(nx2 + 1, ny2, nz2) and filled(nx2 - 1, ny2, nz2)
-                    and filled(nx2, ny2 + 1, nz2) and filled(nx2, ny2 - 1, nz2)
-                    and filled(nx2, ny2, nz2 + 1) and filled(nx2, ny2, nz2 - 1)) then
-                    break
-                end
+                local j = i + run
+                if ys[j] ~= y or zs[j] ~= z or xs[j] ~= x + run or cs[j] ~= cs[i] then break end
+                if not buried_at(j) then break end
                 run = run + 1
             end
-            if #out >= maxParts() then return out end
+            if #out >= limit then return out end
             out[#out + 1] = {
                 T = "Part",
                 P = {

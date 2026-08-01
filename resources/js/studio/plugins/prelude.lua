@@ -181,13 +181,17 @@ function __set_model(w, h, d, count, data)
         return
     end
     local m = { w = math.floor(w), h = math.floor(h), d = math.floor(d), count = math.floor(count) }
+    -- x, y, z, colour, then the surface normal, which is 0,0,0 where there is none.
     function m.at(i)
         if i < 1 or i > m.count then return nil end
-        local o = (i - 1) * 12
+        local o = (i - 1) * 18
         return tonumber(data:sub(o + 1, o + 2), 16),
             tonumber(data:sub(o + 3, o + 4), 16),
             tonumber(data:sub(o + 5, o + 6), 16),
-            data:sub(o + 7, o + 12)
+            data:sub(o + 7, o + 12),
+            (tonumber(data:sub(o + 13, o + 14), 16) - 128) / 127,
+            (tonumber(data:sub(o + 15, o + 16), 16) - 128) / 127,
+            (tonumber(data:sub(o + 17, o + 18), 16) - 128) / 127
     end
     Model = m
 end
