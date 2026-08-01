@@ -13,7 +13,7 @@ return new class extends Migration
             $table->unsignedBigInteger('bytes')->default(0);
         });
 
-        DB::statement('update maps set bytes = coalesce('.$this->byteLength('data').', 0)');
+        $this->backfillBytes();
 
         if ($this->partial()) {
             DB::statement(
@@ -47,6 +47,26 @@ return new class extends Migration
         Schema::table('maps', function (Blueprint $table) {
             $table->dropColumn('bytes');
         });
+    }
+
+    /** Chunked: a row is megabytes and Postgres rewrites each one, so a single
+     * statement would hold locks and dead tuples over the whole table. VACUUM after. */
+    private function backfillBytes(): void
+    {
+        $length = $this->byteLength('data');
+        $id = 0;
+
+        while (true) {
+            $ids = DB::table('maps')->where('id', '>', $id)->orderBy('id')->limit(200)->pluck('id');
+            if ($ids->isEmpty()) {
+                break;
+            }
+
+            DB::statement(
+                'update maps set bytes = coalesce('.$length.', 0) where id in ('.$ids->implode(',').')',
+            );
+            $id = $ids->last();
+        }
     }
 
     private function spentIndexes(): array

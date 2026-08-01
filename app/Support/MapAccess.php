@@ -36,14 +36,32 @@ class MapAccess
         return $t;
     }
 
+    /** @var array<int, array<int, string>> user_id => team_id => role */
+    private static array $memberships = [];
+
+    /** @return array<int, string> team_id => role */
+    private static function memberships(): array
+    {
+        $id = Auth::id();
+        if (! $id) {
+            return [];
+        }
+
+        return self::$memberships[$id] ??= DB::table('team_members')
+            ->where('user_id', $id)
+            ->pluck('role', 'team_id')
+            ->all();
+    }
+
+    public static function forgetMemberships(): void
+    {
+        self::$memberships = [];
+    }
+
     /** Team ids the signed-in user belongs to. Empty for a guest. */
     public static function teamIds(): array
     {
-        $id = Auth::id();
-
-        return $id
-            ? DB::table('team_members')->where('user_id', $id)->pluck('team_id')->all()
-            : [];
+        return array_keys(self::memberships());
     }
 
     /** Everything the caller may open: their own maps plus every team they are in. */
@@ -126,10 +144,7 @@ class MapAccess
         }
 
         if ($map->team_id) {
-            $member = DB::table('team_members')
-                ->where('team_id', $map->team_id)->where('user_id', Auth::id())->first();
-
-            return $member ? $member->role : null;
+            return self::memberships()[$map->team_id] ?? null;
         }
 
         return self::OWNER;
@@ -147,9 +162,6 @@ class MapAccess
             return self::OWNER;
         }
 
-        $member = DB::table('team_members')
-            ->where('team_id', $teamId)->where('user_id', Auth::id())->first();
-
-        return $member ? $member->role : null;
+        return self::memberships()[$teamId] ?? null;
     }
 }

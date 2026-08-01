@@ -91,6 +91,7 @@ class TeamController extends Controller
             return $id;
         });
 
+        MapAccess::forgetMemberships();
         Audit::log('team.create', $id, ['name' => $data['name']], $id);
 
         return response()->json(['id' => $id, 'name' => $data['name'], 'role' => MapAccess::OWNER], 201);
@@ -148,6 +149,7 @@ class TeamController extends Controller
             'role' => $data['role'] ?? MapAccess::EDITOR,
             'created_at' => now(), 'updated_at' => now(),
         ]);
+        MapAccess::forgetMemberships();
         Audit::log('team.member_add', $user->id, [
             'name' => $user->name, 'role' => $data['role'] ?? MapAccess::EDITOR,
         ], $team);
@@ -165,6 +167,7 @@ class TeamController extends Controller
             ->where('team_id', $team)->where('user_id', $user)
             ->update(['role' => $data['role'], 'updated_at' => now()]);
         abort_unless($changed, 404);
+        MapAccess::forgetMemberships();
         Audit::log('team.member_role', $user, ['role' => $data['role']], $team);
 
         return response()->json(['ok' => true]);
@@ -204,6 +207,7 @@ class TeamController extends Controller
             DB::table('teams')->where('id', $team)->delete();
         });
 
+        MapAccess::forgetMemberships();
         Audit::log('team.delete', $team, ['moved' => $maps->count()], $team);
 
         return response()->json(['ok' => true, 'moved' => $maps->count()]);
@@ -236,6 +240,7 @@ class TeamController extends Controller
         $gone = DB::table('team_members')
             ->where('team_id', $team)->where('user_id', $user)->delete();
         abort_unless($gone, 404);
+        MapAccess::forgetMemberships();
         Audit::log($user === $this->me() ? 'team.member_leave' : 'team.member_remove', $user, [], $team);
 
         return response()->json(['ok' => true]);

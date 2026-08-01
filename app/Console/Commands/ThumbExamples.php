@@ -2,6 +2,8 @@
 
 namespace App\Console\Commands;
 
+use App\Http\Controllers\MapController;
+use App\Support\Cached;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
 
@@ -52,6 +54,10 @@ class ThumbExamples extends Command
             $path = "thumbs/examples/$name.webp";
             Storage::disk()->put($path, $png);
             $this->line(sprintf('%-24s %5d parts  %6.1f KB', $name, count($parts), strlen($png) / 1024));
+        }
+
+        foreach ([':remote', ':local'] as $suffix) {
+            Cached::forget(MapController::EXAMPLES_KEY.$suffix);
         }
 
         $this->info('written to the '.config('filesystems.default').' disk, under thumbs/examples');

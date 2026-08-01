@@ -4,12 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Support\Audit;
+use App\Support\Cached;
 use App\Support\MapAccess;
 use App\Support\MapHistory;
 use App\Support\Stats;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class AdminController extends Controller
@@ -28,7 +28,7 @@ class AdminController extends Controller
         // Only plain arrays are cached: a serialized Collection can come back as an
         // incomplete class and then encodes as a JSON object, which the charts read
         // as "not a list" and refuse to render.
-        return ['me' => Auth::id()] + Cache::remember('admin_overview', 60, fn () => [
+        return ['me' => Auth::id()] + Cached::remember('admin_overview', 60, fn () => [
             'totals' => Stats::totals(),
             'history' => DB::table('daily_stats')
                 ->where('day', '>=', $this->since())
@@ -90,10 +90,13 @@ class AdminController extends Controller
         $row = DB::table('maps')->where('id', $id)->first(['name', 'data']);
         abort_unless($row, 404);
 
-        return response()->json([
-            'name' => $row->name,
-            'parts' => json_decode((string) $row->data, true) ?: [],
-        ]);
+        $parts = trim((string) $row->data);
+        if ($parts === '' || $parts[0] !== '[') {
+            $parts = '[]';
+        }
+
+        return response('{"name":'.json_encode($row->name).',"parts":'.$parts.'}')
+            ->header('Content-Type', 'application/json');
     }
 
     public function deleteMap(Request $request, int $id)
@@ -110,7 +113,7 @@ class AdminController extends Controller
             DB::table('maps')->where('id', $id)->update(['deleted_at' => now()]);
         }
         Audit::log($purge ? 'admin.map_purge' : 'admin.map_delete', $id, ['name' => $row->name]);
-        Cache::forget('admin_overview');
+        Cached::forget('admin_overview');
 
         return response()->json(['deleted' => true, 'purged' => $purge]);
     }
@@ -122,7 +125,7 @@ class AdminController extends Controller
 
         DB::table('maps')->where('id', $id)->update(['deleted_at' => null, 'updated_at' => now()]);
         Audit::log('admin.map_restore', $id, ['name' => $row->name]);
-        Cache::forget('admin_overview');
+        Cached::forget('admin_overview');
 
         return response()->json(['restored' => true]);
     }
@@ -167,7 +170,7 @@ class AdminController extends Controller
             $user->delete();
         });
         Audit::log('admin.user_delete', $user->id, ['name' => $user->name]);
-        Cache::forget('admin_overview');
+        Cached::forget('admin_overview');
 
         return response()->json(['deleted' => true]);
     }

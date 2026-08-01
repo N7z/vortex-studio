@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\BlockBanned;
 use App\Http\Middleware\EnsureAdmin;
+use App\Http\Middleware\FreshMemberships;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -17,7 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Nothing is exempt: the api routes authenticate by cookie, and reads are
         // never checked anyway.
         $middleware->validateCsrfTokens(except: []);
-        $middleware->web(append: [BlockBanned::class]);
+        $middleware->web(prepend: [FreshMemberships::class], append: [BlockBanned::class]);
         $middleware->alias(['admin' => EnsureAdmin::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -3,11 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Support\Audit;
+use App\Support\Cached;
 use App\Support\MapAccess;
 use App\Support\MapHistory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -228,9 +228,35 @@ class MapController extends Controller
         return resource_path('maps');
     }
 
+    public const EXAMPLES_KEY = 'studio_examples';
+
+    private static function examples(): array
+    {
+        $disk = self::thumbDisk();
+        $remote = self::thumbsAreRemote();
+
+        return Cached::remember(self::EXAMPLES_KEY.($remote ? ':remote' : ':local'), 600, function () use ($disk, $remote) {
+            return collect(glob(resource_path('maps').DIRECTORY_SEPARATOR.'*.json'))
+                ->map(function ($f) use ($disk, $remote) {
+                    $name = basename($f, '.json');
+                    $path = "thumbs/examples/$name.webp";
+
+                    return [
+                        'name' => $name,
+                        'title' => self::EXAMPLE_TITLES[$name] ?? $name,
+                        'thumb' => $disk->exists($path)
+                            ? ($remote ? $disk->url($path) : "/api/thumbs/examples/$name.webp")
+                            : null,
+                    ];
+                })
+                ->values()
+                ->all();
+        });
+    }
+
     public function stats()
     {
-        return response()->json(Cache::remember('studio_stats', 60, function () {
+        return response()->json(Cached::remember('studio_stats', 60, function () {
             // Never select `data`: a map is megabytes and there is no bound on rows.
             $agg = DB::table('maps')->selectRaw(
                 'count(*) as maps, count(distinct token) as sessions, coalesce(sum(parts), 0) as parts, max(updated_at) as last_save',
@@ -261,26 +287,9 @@ class MapController extends Controller
                 'thumb' => self::thumbUrl($m),
             ]);
 
-        $disk = self::thumbDisk();
-        $remote = self::thumbsAreRemote();
-        $examples = collect(glob($this->examplesDir().DIRECTORY_SEPARATOR.'*.json'))
-            ->map(function ($f) use ($disk, $remote) {
-                $name = basename($f, '.json');
-                $path = "thumbs/examples/$name.webp";
-
-                return [
-                    'name' => $name,
-                    'title' => self::EXAMPLE_TITLES[$name] ?? $name,
-                    'thumb' => $disk->exists($path)
-                        ? ($remote ? $disk->url($path) : "/api/thumbs/examples/$name.webp")
-                        : null,
-                ];
-            })
-            ->values();
-
         return response()->json([
             'mine' => $mine,
-            'examples' => $examples,
+            'examples' => self::examples(),
             'teams' => $this->myTeams(),
             'ttl_hours' => self::TTL_HOURS,
             'account' => AccountController::current(),
