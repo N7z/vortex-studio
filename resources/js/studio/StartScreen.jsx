@@ -3,6 +3,7 @@ import { deleteMap, listMaps, renameMap } from './api';
 import { listBackups, readBackup, deleteBackup } from './backup';
 import useDialogs from '../ui/useDialogs';
 import MoveMap from './MoveMap';
+import UserMenu from './UserMenu';
 
 const DISCLAIMER_KEY = 'studio_disclaimer_closed';
 
@@ -26,7 +27,7 @@ const ago = (ms) => {
 
 export default function StartScreen({
     onOpen, onCreate, onUpload, onRestore, onPasteRoblox, openName, openTeam, joining, liveStatus, mobile,
-    accountSeq, onAccountSeen,
+    accountSeq, onAccountSeen, onAccountChange, claimed,
 }) {
     const [mine, setMine] = useState([]);
     const [examples, setExamples] = useState([]);
@@ -219,6 +220,14 @@ export default function StartScreen({
 
             <header className="start-top">
                 <h1>Paulin Studio</h1>
+                {mobile && (
+                    <UserMenu
+                        account={account}
+                        ttl={ttl}
+                        claimed={claimed}
+                        onChange={onAccountChange}
+                    />
+                )}
             </header>
 
             {joining && (

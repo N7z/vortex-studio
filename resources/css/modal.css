@@ -153,3 +153,10 @@
 @media (prefers-reduced-motion: reduce) {
     .spinner { animation-duration: 2s; }
 }
+
+/* Anything under 16px makes iOS Safari zoom the page on focus. */
+@media (pointer: coarse) {
+    .modal-backdrop { padding: 14px; align-items: flex-start; padding-top: 8vh; }
+    .modal input, .modal select, .modal textarea { padding: 11px 12px; font-size: 16px; }
+    .btn { padding: 10px 16px; }
+}

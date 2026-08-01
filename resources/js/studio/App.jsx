@@ -1102,7 +1102,7 @@ export default function App() {
                 onTogglePlugin={togglePlugin} onNewPlugin={openNewPluginTab}
                 account={account} onTeams={() => setTeamsOpen(true)}
             />
-            {mobile ? (
+            {mobile ? (mapName && activeTab === 'game' && (
                 <MobileBar
                     tool={tool} setTool={setTool}
                     snap={snap} setSnap={setSnap}
@@ -1119,7 +1119,7 @@ export default function App() {
                     onPlay={() => { setSelectedIds([]); setPlaying(true); }}
                     onStop={() => setPlaying(false)}
                 />
-            ) : (
+            )) : (
             <Toolbar
                 tool={tool} setTool={setTool}
                 snap={snap} setSnap={setSnap}
@@ -1168,6 +1168,8 @@ export default function App() {
                     <StartScreen
                         onOpen={open} onCreate={createNew} openTeam={mapTeam}
                         account={account} accountSeq={accountSeq}
+                        ttl={accountTtl} claimed={claimed}
+                        onAccountChange={accountChanged}
                         onAccountSeen={(a, t) => { setAccount(a); setAccountTtl(t); }}
                         onUpload={openUploaded} onRestore={restore}
                         onPasteRoblox={pasteRoblox}

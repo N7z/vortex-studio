@@ -710,13 +710,6 @@ a.tool-btn { text-decoration: none; }
     inset: 0;
     background: #101014;
 }
-.start-scroll {
-    position: absolute;
-    inset: 0;
-    padding: 28px 34px 90px;
-    overflow-y: auto;
-}
-.start h1 { font-size: 28px; font-weight: 400; color: #eee; margin-bottom: 26px; }
 .start a { display: block; color: #5b8dd6; margin-bottom: 10px; cursor: pointer; font-size: 15px; text-decoration: none; }
 .start a:hover { text-decoration: underline; }
 .start h2 { font-size: 14px; font-weight: 400; color: #aaa; margin: 26px 0 12px; }
@@ -736,14 +729,6 @@ a.tool-btn { text-decoration: none; }
     cursor: pointer;
 }
 .start .forget:hover { color: #e05252; }
-
-.account-corner {
-    position: absolute;
-    top: 28px;
-    right: 34px;
-    z-index: 2;
-    width: 300px;
-}
 
 .account {
     padding: 10px 12px;
@@ -821,12 +806,6 @@ a.tool-btn { text-decoration: none; }
 .account-error { margin: 2px 0 8px; color: #e05252; }
 .account-note { margin-top: 10px; color: #6e6e78; }
 .account-claimed { margin-top: 8px; color: #6ea86e; font-size: 12px; line-height: 1.5; }
-
-/* No corner to spare, and .start-scroll is inset:0 so the card cannot join the flow. */
-@media (max-width: 720px) {
-    .account-corner { left: 34px; right: 34px; width: auto; }
-    .start-scroll { padding-top: 150px; }
-}
 
 .start-footer {
     position: absolute;
@@ -914,17 +893,18 @@ a.tool-btn { text-decoration: none; }
 .studio.mobile .arch-head { cursor: default; }
 
 .studio.mobile .start { display: flex; flex-direction: column; }
-.studio.mobile .start-scroll { position: static; flex: 1; min-height: 0; padding: 4px 18px 18px; }
-.studio.mobile .start h1 { font-size: 22px; margin-bottom: 18px; }
-.studio.mobile .account-corner { position: static; width: auto; padding: 14px 18px 0; }
+.studio.mobile .start-top { gap: 12px; padding: 12px 14px 10px; }
+.studio.mobile .start-top h1 { font-size: 19px; margin: 0; }
+.studio.mobile .start-error { margin: 0 14px 10px; }
 .studio.mobile .start-footer {
     position: static;
     flex: none;
     max-width: none;
-    margin: 0 18px 14px;
+    margin: 0 14px 12px;
 }
 .studio.mobile .toolbar { display: none; }
 .studio.mobile .menubar { height: 34px; }
+.studio.mobile .menu-title { padding: 0 8px; }
 .studio.mobile .tabbar { overflow-x: auto; }
 .studio.mobile .credit { display: none; }
 
@@ -1629,10 +1609,35 @@ a.tool-btn { text-decoration: none; }
 .card-move:hover { color: #5b8dd6; border-color: #5b8dd6; }
 .card-x:hover { color: #e05252; border-color: #e05252; }
 
-.start-body.mobile { flex-direction: column; gap: 14px; inset: 86px 0 0; padding: 0 18px 90px; }
-.start-body.mobile .scopes { width: auto; flex-direction: row; overflow-x: auto; gap: 6px; }
-.start-body.mobile .scope { border-left: none; border-bottom: 2px solid transparent; border-radius: 4px; }
+.start-body.mobile {
+    position: static;
+    flex: 1;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 14px 8px;
+}
+.start-body.mobile .scopes {
+    width: auto;
+    flex: none;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 6px;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+}
+.start-body.mobile .scopes::-webkit-scrollbar { display: none; }
+.start-body.mobile .scope {
+    flex: none;
+    padding: 9px 12px;
+    border-left: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 4px;
+}
 .start-body.mobile .scope.on { border-left: none; border-bottom-color: #5b8dd6; }
+.start-body.mobile .scope-bar { flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.start-body.mobile .scope-bar .btn { flex: 1; min-width: 120px; padding: 10px 12px; text-align: center; }
+.start-body.mobile .scope-search { margin-left: 0; width: 100%; padding: 9px; }
 
 .cards { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 .card-open { padding: 10px; gap: 6px; }
@@ -1671,6 +1676,13 @@ a.tool-btn { text-decoration: none; }
 }
 .card:hover .card-dots, .card-dots:focus, .card-menu:has(.menu-pop) .card-dots { opacity: 1; }
 .card-dots:hover { color: #eee; border-color: #3a3a44; }
+
+/* Nothing hovers on a touch screen, so the per-card actions have to stay out. */
+@media (pointer: coarse) {
+    .card-dots, .card-x, .card-move { opacity: 1; }
+    .card-dots { padding: 4px 10px; line-height: 20px; }
+    .card-x { padding: 4px 10px; }
+}
 
 .menu-shade { position: fixed; inset: 0; z-index: 60; }
 .menu-pop {
@@ -1730,6 +1742,11 @@ a.tool-btn { text-decoration: none; }
     animation: modal-rise 140ms ease-out;
 }
 .user-pop .account { box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5); }
+
+.studio.mobile .start-top .user-menu .tool-btn { height: 34px; padding: 0 10px; }
+.studio.mobile .user-pop { width: min(320px, calc(100vw - 28px)); }
+.studio.mobile .user-pop .account { font-size: 13px; }
+.studio.mobile .account-form input, .studio.mobile .account-go { padding: 11px 10px; font-size: 16px; }
 
 
 .team-list { list-style: none; display: flex; flex-direction: column; }
