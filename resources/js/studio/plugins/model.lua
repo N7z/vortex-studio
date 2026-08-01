@@ -1,6 +1,6 @@
 plugin = {
     name = "Model",
-    version = "2.1",
+    version = "2.2",
     icon = Icons.Gem,
     ui = {
         { id = "model", type = "model", label = "Model", res = "res", solid = "solid" },
@@ -28,6 +28,10 @@ local AGREE = 0.4
 -- of the same red do not.
 local BUCKET = 8
 local MAX_PALETTE = 64
+-- Two palette entries closer than this are the same colour twice. Spending a slot
+-- on the second costs one the model has little of and could not spare, like a gold
+-- button on a red and blue suit.
+local APART = 40 * 40
 local NEIGHBOURS = {
     { 1, 0, 0 }, { -1, 0, 0 }, { 0, 1, 0 }, { 0, -1, 0 }, { 0, 0, 1 }, { 0, 0, -1 },
 }
@@ -111,15 +115,42 @@ local function palettise(cs, count, want)
     table.sort(keys, function(a, b) return pop[a] > pop[b] end)
     want = math.min(want, #keys)
 
-    local pal = {}
-    for i = 1, want do
+    local mean = {}
+    for i = 1, #keys do
         local s, n = sum[keys[i]], pop[keys[i]]
-        pal[i] = {
+        mean[i] = {
             math.floor(s[1] / n + 0.5),
             math.floor(s[2] / n + 0.5),
             math.floor(s[3] / n + 0.5),
         }
     end
+
+    -- Most populous first, but skipping anything too near a colour already kept,
+    -- then filling what is left over with the most populous of the rest.
+    local pal, kept = {}, {}
+    for pass = 1, 2 do
+        for i = 1, #keys do
+            if #pal >= want then break end
+            if not kept[i] then
+                local m, ok = mean[i], true
+                if pass == 1 then
+                    for k = 1, #pal do
+                        local p = pal[k]
+                        local dr, dg, db = m[1] - p[1], m[2] - p[2], m[3] - p[3]
+                        if dr * dr + dg * dg + db * db < APART then
+                            ok = false
+                            break
+                        end
+                    end
+                end
+                if ok then
+                    pal[#pal + 1] = m
+                    kept[i] = true
+                end
+            end
+        end
+    end
+    want = #pal
 
     -- Once per distinct colour, not once per voxel.
     local seen = {}
@@ -154,7 +185,7 @@ local function prepared(radius, want, clean)
         return cache
     end
 
-    local W, D = Model.w, Model.d
+    local W, H, D = Model.w, Model.h, Model.d
     local slot = {}
     local xs, ys, zs, cs = {}, {}, {}, {}
     local nxs, nys, nzs = {}, {}, {}
@@ -165,7 +196,11 @@ local function prepared(radius, want, clean)
         slot[(y * D + z) * W + x] = i
     end
 
+    -- Bounds checked, or a neighbour one past an edge wraps round to the far side
+    -- of the grid. The voxels are normalised to the model's bounding box, so every
+    -- model touches all six faces and every one of them was reading a stranger.
     local function at(x, y, z)
+        if x < 0 or y < 0 or z < 0 or x >= W or y >= H or z >= D then return nil end
         return slot[(y * D + z) * W + x]
     end
 

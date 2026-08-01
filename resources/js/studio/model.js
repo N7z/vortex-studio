@@ -10,6 +10,10 @@ const chex = (n) => n.toString(16).padStart(3, '0');
 
 const MAX_TEX = 2048;
 const ALPHA_CUT = 128;
+// Two surfaces within this much of a cell, measured along the normal, are the same
+// surface. Clothing sits a hair above the body it covers, so at a fine resolution
+// both land in one cell and averaging them makes a colour neither of them is.
+const DEPTH_EPS = 0.15;
 const GREY = [170, 170, 170];
 
 const SRGB_TO_LINEAR = new Float32Array(256);
@@ -162,13 +166,10 @@ export function voxelize(object, res, maxRes = MAX_RES) {
         y: Math.max(Math.ceil(span.y * scale), 1),
         z: Math.max(Math.ceil(span.z * scale), 1),
     };
-    // Summed in linear light, averaged at the end. Keeping only the last triangle
-    // to land in a cell let a back face win, which is where the speckle came from.
+    // Per cell: colour summed in linear light, the sample count, the depth of the
+    // outermost surface seen, and the summed normal. Colour and normal are averaged
+    // over the samples at that depth only; anything further in is hidden behind it.
     const acc = new Map();
-    // The face normal of every triangle that landed in a cell, summed. This is the
-    // real surface direction; recovering one from the filled cells afterwards can
-    // only ever approximate it, and on a fine grid it is mostly rasterisation noise.
-    const norms = new Map();
     const a = new THREE.Vector3();
     const b = new THREE.Vector3();
     const c = new THREE.Vector3();
@@ -180,23 +181,27 @@ export function voxelize(object, res, maxRes = MAX_RES) {
     const slot = (v, n) => Math.min(Math.max(Math.floor(v), 0), n - 1);
     const put = (x, y, z, r, g, bl) => {
         const key = (slot(y, dim.y) * dim.z + slot(z, dim.z)) * dim.x + slot(x, dim.x);
+        // Where the sample's own tangent plane sits. Two shells with the same normal
+        // differ here by how far out they are, so the larger value is the outer one.
+        const t = x * face.x + y * face.y + z * face.z;
         const cell = acc.get(key);
-        if (cell) {
-            cell[0] += r;
-            cell[1] += g;
-            cell[2] += bl;
-            cell[3] += 1;
-        } else {
-            acc.set(key, [r, g, bl, 1]);
+        if (!cell) {
+            acc.set(key, [r, g, bl, 1, t, face.x, face.y, face.z]);
+            return;
         }
-        const n = norms.get(key);
-        if (n) {
-            n[0] += face.x;
-            n[1] += face.y;
-            n[2] += face.z;
-        } else {
-            norms.set(key, [face.x, face.y, face.z]);
+        if (t > cell[4] + DEPTH_EPS) {
+            acc.set(key, [r, g, bl, 1, t, face.x, face.y, face.z]);
+            return;
         }
+        if (t < cell[4] - DEPTH_EPS) return;
+        cell[0] += r;
+        cell[1] += g;
+        cell[2] += bl;
+        cell[3] += 1;
+        if (t > cell[4]) cell[4] = t;
+        cell[5] += face.x;
+        cell[6] += face.y;
+        cell[7] += face.z;
     };
 
     const normalMatrix = new THREE.Matrix3();
@@ -338,9 +343,11 @@ export function voxelize(object, res, maxRes = MAX_RES) {
     }
 
     const cells = new Map();
+    const norms = new Map();
     for (const [key, cell] of acc) {
         const w = cell[3] || 1;
         cells.set(key, [byte(cell[0] / w), byte(cell[1] / w), byte(cell[2] / w)]);
+        norms.set(key, [cell[5], cell[6], cell[7]]);
     }
 
     let source = 'flat';
