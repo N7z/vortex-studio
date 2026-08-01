@@ -19,7 +19,7 @@ Route::prefix('account')->group(function () {
     Route::post('/logout', [AccountController::class, 'logout']);
 });
 Route::get('/api/stats', [MapController::class, 'stats'])->middleware('throttle:30,1');
-Route::get('/api/thumbs/{id}.webp', [MapController::class, 'thumb'])->whereNumber('id');
+Route::get('/api/thumbs/{key}.webp', [MapController::class, 'thumb'])->where('key', '[a-f0-9]{32}');
 
 Route::middleware('throttle:60,1')->group(function () {
     Route::get('/api/maps', [MapController::class, 'index']);

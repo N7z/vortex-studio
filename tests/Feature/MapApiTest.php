@@ -227,25 +227,26 @@ it('lets an admin save past the part and byte caps', function () {
 });
 
 it('stores and serves a map thumbnail', function () {
-    Storage::fake('local');
+    Storage::fake('public');
     asToken()->putJson('/api/maps/shot', [PART])->assertOk();
 
     $webp = 'RIFF'.pack('V', 20).'WEBPVP8 '.str_repeat("\0", 12);
     asToken()->call('PUT', '/api/maps/shot/thumb', [], tokenCookie(), [], ['CONTENT_TYPE' => 'image/webp'], $webp)
         ->assertOk();
 
-    $id = DB::table('maps')->where('name', 'shot')->value('id');
-    Storage::disk('local')->assertExists("thumbs/$id.webp");
+    $key = DB::table('maps')->where('name', 'shot')->value('thumb_key');
+    expect($key)->toMatch('/^[a-f0-9]{32}$/');
+    Storage::disk('public')->assertExists("thumbs/$key.webp");
 
-    // A disk with public URLs serves it directly; one without falls back to the app.
     $listed = asToken()->getJson('/api/maps')->json('mine.0.thumb');
-    expect($listed)->toContain("thumbs/$id.webp")->toContain('?v=');
+    expect($listed)->toContain("thumbs/$key.webp");
 
-    $this->get("/api/thumbs/$id.webp")->assertOk()->assertHeader('content-type', 'image/webp');
+    // The app can always serve it, whatever the disk exposes.
+    $this->get("/api/thumbs/$key.webp")->assertOk()->assertHeader('content-type', 'image/webp');
 });
 
 it('refuses a thumbnail that is not a webp', function () {
-    Storage::fake('local');
+    Storage::fake('public');
     asToken()->putJson('/api/maps/shot', [PART])->assertOk();
 
     asToken()->call('PUT', '/api/maps/shot/thumb', [], tokenCookie(), [], ['CONTENT_TYPE' => 'image/webp'], '<?php echo 1;')
@@ -255,4 +256,24 @@ it('refuses a thumbnail that is not a webp', function () {
 it('lists no thumbnail before one is stored', function () {
     asToken()->putJson('/api/maps/shot', [PART])->assertOk();
     expect(asToken()->getJson('/api/maps')->json('mine.0.thumb'))->toBeNull();
+});
+
+it('gives every thumbnail an unguessable name and drops the old one', function () {
+    Storage::fake('public');
+    asToken()->putJson('/api/maps/shot', [PART])->assertOk();
+    $webp = 'RIFF'.pack('V', 20).'WEBPVP8 '.str_repeat(' ', 12);
+    $put = fn () => asToken()->call('PUT', '/api/maps/shot/thumb', [], tokenCookie(), [], ['CONTENT_TYPE' => 'image/webp'], $webp);
+
+    $put()->assertOk();
+    $first = DB::table('maps')->where('name', 'shot')->value('thumb_key');
+    $put()->assertOk();
+    $second = DB::table('maps')->where('name', 'shot')->value('thumb_key');
+
+    expect($second)->not->toBe($first);
+    Storage::disk('public')->assertMissing("thumbs/$first.webp");
+    Storage::disk('public')->assertExists("thumbs/$second.webp");
+
+    // The id is never part of the name, so a map is not enumerable.
+    $id = DB::table('maps')->where('name', 'shot')->value('id');
+    $this->get("/api/thumbs/$id.webp")->assertNotFound();
 });

@@ -36,12 +36,12 @@ class MapController extends Controller
 
     private static function thumbDisk()
     {
-        return Storage::disk(config('filesystems.thumbs', 'local'));
+        return Storage::disk(config('filesystems.thumbs', 'public'));
     }
 
-    private static function thumbPath(int $id): string
+    private static function thumbPath(string $key): string
     {
-        return "thumbs/$id.webp";
+        return "thumbs/$key.webp";
     }
 
     /**
@@ -50,29 +50,35 @@ class MapController extends Controller
      */
     private static function thumbUrl(?object $row): ?string
     {
-        if (! $row?->thumb_at) {
+        if (! $row?->thumb_key) {
             return null;
         }
-        $stamp = strtotime($row->thumb_at);
 
+        // Only a bucket gives an absolute URL. A local disk's own /storage route
+        // serves from a private root and answers 403, so the app serves it instead.
         try {
-            return self::thumbDisk()->url(self::thumbPath($row->id))."?v=$stamp";
+            $url = self::thumbDisk()->url(self::thumbPath($row->thumb_key));
+            if (str_starts_with($url, 'http')) {
+                return $url;
+            }
         } catch (\Throwable) {
-            return url("/api/thumbs/{$row->id}.webp")."?v=$stamp";
+            // No public URL at all, which the fallback below covers.
         }
+
+        return url("/api/thumbs/{$row->thumb_key}.webp");
     }
 
-    public function thumb(int $id)
+    public function thumb(string $key)
     {
-        $row = DB::table('maps')->where('id', $id)->first(['id', 'thumb_at']);
-        abort_unless($row?->thumb_at, 404);
+        abort_unless(preg_match('/^[a-f0-9]{32}$/', $key), 404);
 
         $disk = self::thumbDisk();
-        $path = self::thumbPath($id);
+        $path = self::thumbPath($key);
         abort_unless($disk->exists($path), 404);
 
         return response($disk->get($path), 200, [
             'Content-Type' => 'image/webp',
+            // The name changes whenever the picture does, so this never goes stale.
             'Cache-Control' => 'public, max-age=31536000, immutable',
         ]);
     }
@@ -94,8 +100,15 @@ class MapController extends Controller
             'thumbnail must be a webp',
         );
 
-        self::thumbDisk()->put(self::thumbPath($row->id), $body, 'public');
-        DB::table('maps')->where('id', $row->id)->update(['thumb_at' => now()]);
+        $disk = self::thumbDisk();
+        // A new name every time, so a cached URL can never show a stale picture and
+        // the old file does not linger.
+        $key = bin2hex(random_bytes(16));
+        $disk->put(self::thumbPath($key), $body, 'public');
+        if ($row->thumb_key) {
+            $disk->delete(self::thumbPath($row->thumb_key));
+        }
+        DB::table('maps')->where('id', $row->id)->update(['thumb_key' => $key, 'thumb_at' => now()]);
 
         return response()->json(['ok' => true]);
     }
@@ -174,7 +187,7 @@ class MapController extends Controller
 
         $mine = MapAccess::visible($request)
             ->orderByDesc('updated_at')
-            ->get(['id', 'name', 'updated_at', 'team_id', 'version', 'thumb_at'])
+            ->get(['id', 'name', 'updated_at', 'team_id', 'version', 'thumb_key'])
             ->map(fn ($m) => [
                 'name' => $m->name,
                 'modified' => strtotime($m->updated_at),

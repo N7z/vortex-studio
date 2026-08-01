@@ -236,11 +236,11 @@ export default function StartScreen({
                                 {scope === 'personal' && (
                                     <>
                                         <button type="button" className="btn" onClick={() => fileRef.current?.click()}>
-                                            Upload .json
+                                            Upload Vortex Map
                                         </button>
                                         {!mobile && (
                                             <button type="button" className="btn" onClick={onPasteRoblox}>
-                                                Import Roblox
+                                                Import Roblox Map
                                             </button>
                                         )}
                                     </>
