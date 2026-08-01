@@ -123,6 +123,11 @@ export default function App() {
     const [busy, setBusy] = useState(null);
     // An admin is trusted with maps of any size, so nothing here caps them.
     const [unlimited, setUnlimited] = useState(false);
+    const [account, setAccount] = useState(null);
+    const [accountTtl, setAccountTtl] = useState(24);
+    const [claimed, setClaimed] = useState(0);
+    // Bumped when signing in or out, so the start screen refetches what is visible.
+    const [accountSeq, setAccountSeq] = useState(0);
     const mapCap = unlimited ? Infinity : MAX_MAP_PARTS;
     const pluginCap = unlimited ? Infinity : MAX_PLUGIN_PARTS;
     const resCap = unlimited ? 512 : MAX_RES;
@@ -136,8 +141,18 @@ export default function App() {
 
     useEffect(() => {
         loadAccount()
-            .then((d) => setUnlimited(!!d.account?.admin))
+            .then((d) => {
+                setAccount(d.account ?? null);
+                setUnlimited(!!d.account?.admin);
+            })
             .catch(() => setUnlimited(false));
+    }, []);
+
+    const accountChanged = useCallback((next, moved) => {
+        setAccount(next);
+        setUnlimited(!!next?.admin);
+        setClaimed(moved ?? 0);
+        setAccountSeq((n) => n + 1);
     }, []);
 
     useEffect(() => {
@@ -1109,6 +1124,8 @@ export default function App() {
                 playing={playing}
                 onPlay={() => { setSelectedIds([]); setPlaying(true); }}
                 onStop={() => setPlaying(false)}
+                account={account} ttl={accountTtl} claimed={claimed}
+                onAccountChange={accountChanged}
             />
             )}
             <TabBar
@@ -1136,6 +1153,8 @@ export default function App() {
                 <div className="home-tab">
                     <StartScreen
                         onOpen={open} onCreate={createNew} openTeam={mapTeam}
+                        account={account} accountSeq={accountSeq}
+                        onAccountSeen={(a, t) => { setAccount(a); setAccountTtl(t); }}
                         onUpload={openUploaded} onRestore={restore}
                         onPasteRoblox={pasteRoblox}
                         openName={mapName}

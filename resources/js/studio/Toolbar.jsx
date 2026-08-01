@@ -1,4 +1,5 @@
 import React from 'react';
+import UserMenu from './UserMenu';
 import {
     SelectIcon, MoveIcon, RotateIcon, ScaleIcon, TeamIcon,
     UndoIcon, RedoIcon, PartIcon, SpawnIcon, CopyIcon, PasteIcon, DuplicateIcon,
@@ -29,6 +30,7 @@ export default function Toolbar({
     onSave, canSave, graphics, onGraphics,
     live, teamOpen, onToggleTeam, hasMap,
     playing, onPlay, onStop,
+    account, ttl, claimed, onAccountChange,
 }) {
     const numInput = (key) => (e) => {
         const v = parseFloat(e.target.value);
@@ -149,6 +151,9 @@ export default function Toolbar({
                     <TeamIcon />
                     {live?.live ? `Team ${live.members.length}` : 'Team'}
                 </button>
+            </Group>
+            <Group label="Account" className="account-group">
+                <UserMenu account={account} ttl={ttl} onChange={onAccountChange} claimed={claimed} />
             </Group>
         </div>
     );

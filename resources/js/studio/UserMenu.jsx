@@ -27,7 +27,8 @@ export default function UserMenu({ account, ttl, onChange, claimed }) {
         <div className="user-menu" ref={box}>
             <button
                 type="button"
-                className={open ? 'user-btn on' : 'user-btn'}
+                className={`tool-btn wide ${open ? 'active' : ''}`}
+                title={account ? `Signed in as ${account.name}` : 'Sign in to keep your maps'}
                 onClick={() => setOpen((o) => !o)}
             >
                 <span className="user-face">{account ? initials(account.name) : '?'}</span>

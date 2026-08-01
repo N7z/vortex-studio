@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { deleteMap, listMaps, renameMap } from './api';
 import { listBackups, readBackup, deleteBackup } from './backup';
-import UserMenu from './UserMenu';
 import Teams from './Teams';
 import useDialogs from '../ui/useDialogs';
 import MoveMap from './MoveMap';
@@ -28,13 +27,13 @@ const ago = (ms) => {
 
 export default function StartScreen({
     onOpen, onCreate, onUpload, onRestore, onPasteRoblox, openName, openTeam, joining, liveStatus, mobile,
+    accountSeq, onAccountSeen,
 }) {
     const [mine, setMine] = useState([]);
     const [examples, setExamples] = useState([]);
     const [ttl, setTtl] = useState(24);
     const [account, setAccount] = useState(null);
     const [teams, setTeams] = useState([]);
-    const [claimed, setClaimed] = useState(0);
     const [backups, setBackups] = useState(() => listBackups());
     const [disclaimer, setDisclaimer] = useState(() => !readClosed());
     const [error, setError] = useState('');
@@ -53,19 +52,15 @@ export default function StartScreen({
             setTtl(d.ttl_hours ?? 24);
             setAccount(d.account ?? null);
             setTeams(d.teams ?? []);
+            onAccountSeen?.(d.account ?? null, d.ttl_hours ?? 24);
             // Examples are the only useful thing to click with nothing of your own,
             // and they leave the way as soon as there is a first map.
             setScope((s) => s ?? (rows.length ? 'personal' : 'examples'));
         })
         .catch((e) => setError(String(e.message ?? e)));
 
-    useEffect(() => { refresh(); }, []);
-
-    const accountChanged = (next, moved) => {
-        setAccount(next);
-        setClaimed(moved);
-        refresh();
-    };
+    // Signing in from the toolbar changes which maps and teams there are.
+    useEffect(() => { refresh(); }, [accountSeq]);
 
     const team = scope?.startsWith('team:') ? teams.find((t) => `team:${t.id}` === scope) : null;
     const teamId = team?.id ?? null;
@@ -225,7 +220,6 @@ export default function StartScreen({
 
             <header className="start-top">
                 <h1>Paulin Studio</h1>
-                <UserMenu account={account} ttl={ttl} onChange={accountChanged} claimed={claimed} />
             </header>
 
             {joining && (
