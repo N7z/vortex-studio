@@ -149,6 +149,7 @@ export default function App() {
     const thumbAt = useRef(0);
     const { dialogs, confirm, ask } = useDialogs();
     const [busy, setBusy] = useState(null);
+    const [building, setBuilding] = useState(null);
     // An admin is trusted with maps of any size, so nothing here caps them.
     const [unlimited, setUnlimited] = useState(false);
     const [account, setAccount] = useState(null);
@@ -1183,7 +1184,12 @@ export default function App() {
     return (
         <div className={mobile ? 'studio mobile' : 'studio'}>
             {dialogs}
-            <Busy label={busy} />
+            <Busy
+                label={busy ?? (building == null ? null : {
+                    label: 'Building the map...',
+                    progress: building,
+                })}
+            />
             {teamsOpen && (
                 <Teams
                     teams={teams}
@@ -1318,6 +1324,7 @@ export default function App() {
                         faces={faces}
                         showFaces={!!activePlugin?.usesFaces}
                         statsRef={statsRef}
+                        onBuild={setBuilding}
                         tool={tool}
                         snap={snap}
                         canEdit={canEdit}

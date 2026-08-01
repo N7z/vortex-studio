@@ -78,6 +78,11 @@ export default function StatsPanel({ parts, selectedIds, groups, mapName, statsR
                     <>
                         <Row label="FPS" value={n(render.fps)} />
                         <Row
+                            label="Viewport CPU"
+                            value={`${render.cpu ?? 0} ms`}
+                            hint="Main-thread time inside the viewport's own frame. If this is well under the frame time, the cost is elsewhere on the page"
+                        />
+                        <Row
                             label="Draw calls"
                             value={n(render.calls)}
                             hint="Without batching this would be roughly one per part, or three with studs"

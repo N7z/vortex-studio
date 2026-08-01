@@ -107,6 +107,23 @@ function makeShirtTexture() {
 
 const MIN_BATCH = 16;
 
+const CHUNK_MIN = 400;
+const BUILD_SYNC = 20000;
+const BUILD_SLICE = 40;
+const BUILD_SHOW = 400;
+const PER_CELL = 2000;
+const CELL_MIN = 4;
+
+const instColors = new Map();
+const instColor = (hex) => {
+    let c = instColors.get(hex);
+    if (!c) {
+        c = new THREE.Color(`#${hex}`);
+        instColors.set(hex, c);
+    }
+    return c;
+};
+
 const FACE_DIRS = [
     [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
 ];
@@ -157,7 +174,7 @@ const readTransform = (m) => ({
 export default function Viewport({
     parts, selectedIds, setSelectedId, selectMany, tool, snap, onTransform, onTransformMany,
     mapName, graphics, preview, spawnRef, busyRef, canEdit = true, peers, onView,
-    faces, showFaces = false, statsRef,
+    faces, showFaces = false, statsRef, onBuild,
     playing = false, onExitPlay, onPlayError, touchRef, playRef, onPlayState, members = [], thumbRef,
     flags = EMPTY,
 }) {
@@ -332,10 +349,12 @@ export default function Viewport({
 
         const proxies = new THREE.Group();
         proxies.matrixWorldAutoUpdate = false;
+        proxies.visible = false;
         scene.add(proxies);
         const refreshProxies = () => proxies.updateMatrixWorld(true);
 
         const batches = new Map();
+        const bumped = new Set();
 
         const dropBatch = (inst) => {
             scene.remove(inst);
@@ -345,7 +364,7 @@ export default function Viewport({
         const syncBatches = () => {
             const c = ctx.current;
             if (!c) return;
-            const members = new Map();
+            const groups = new Map();
             c.solidList = [];
             c.selectList = [];
             const park = (mesh, drawn) => {
@@ -366,7 +385,7 @@ export default function Viewport({
 
                 const set = mesh.userData.set;
                 const key = set && !set.transparent ? set.key : null;
-                mesh.userData.batch = key;
+                mesh.userData.batch = null;
                 mesh.userData.slot = -1;
                 if (!key) {
                     mesh.visible = true;
@@ -375,13 +394,45 @@ export default function Viewport({
                 }
                 mesh.visible = false;
                 park(mesh, false);
+                let list = groups.get(key);
+                if (!list) {
+                    list = [];
+                    groups.set(key, list);
+                }
+                list.push(mesh);
+            }
+
+            const members = new Map();
+            const add = (key, mesh) => {
                 let list = members.get(key);
                 if (!list) {
                     list = [];
                     members.set(key, list);
                 }
+                mesh.userData.batch = key;
                 mesh.userData.slot = list.length;
                 list.push(mesh);
+            };
+            for (const [key, list] of groups) {
+                if (list.length < CHUNK_MIN) {
+                    for (const mesh of list) add(key, mesh);
+                    continue;
+                }
+                let lo = Infinity;
+                let hi = -Infinity;
+                for (const mesh of list) {
+                    mesh.updateWorldMatrix(true, false);
+                    const e = mesh.matrixWorld.elements;
+                    lo = Math.min(lo, e[12], e[13], e[14]);
+                    hi = Math.max(hi, e[12], e[13], e[14]);
+                }
+                const cells = Math.max(1, Math.round((list.length / PER_CELL) ** (1 / 3)));
+                const size = Math.max((hi - lo) / cells, CELL_MIN);
+                for (const mesh of list) {
+                    const e = mesh.matrixWorld.elements;
+                    const cell = `${Math.floor(e[12] / size)},${Math.floor(e[13] / size)},${Math.floor(e[14] / size)}`;
+                    add(`${key}@${cell}`, mesh);
+                }
             }
 
             for (const [key, list] of members) {
@@ -399,7 +450,6 @@ export default function Viewport({
                     inst = new THREE.InstancedMesh(geometry, set.materials, capacity);
                     inst.userData.capacity = capacity;
                     inst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-                    inst.frustumCulled = false;
                     inst.castShadow = c.shadows;
                     inst.receiveShadow = c.shadows;
                     scene.add(inst);
@@ -409,8 +459,13 @@ export default function Viewport({
                 for (let i = 0; i < list.length; i++) {
                     list[i].updateWorldMatrix(true, false);
                     inst.setMatrixAt(i, list[i].matrixWorld);
+                    if (set.instanced) {
+                        inst.setColorAt(i, instColor(list[i].userData.part?.C ?? 'a3a2a5'));
+                    }
                 }
                 inst.instanceMatrix.needsUpdate = true;
+                if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+                inst.computeBoundingSphere();
             }
 
             for (const [key, inst] of batches) {
@@ -428,6 +483,18 @@ export default function Viewport({
             mesh.updateWorldMatrix(true, false);
             inst.setMatrixAt(mesh.userData.slot, mesh.matrixWorld);
             inst.instanceMatrix.needsUpdate = true;
+            if (!bumped.has(inst)) {
+                bumped.add(inst);
+                inst.frustumCulled = false;
+            }
+        };
+
+        const settleBumped = () => {
+            for (const inst of bumped) {
+                inst.frustumCulled = true;
+                inst.boundingSphere = null;
+            }
+            bumped.clear();
         };
 
         const setBatchShadows = (on) => {
@@ -458,6 +525,7 @@ export default function Viewport({
                 if (group) for (const m of c.selectedMeshes) pivot.attach(m);
                 return;
             }
+            settleBumped();
             if (group) {
                 const updates = c.selectedMeshes.map((m) => {
                     scene.attach(m);
@@ -618,14 +686,11 @@ export default function Viewport({
             return (selected ?? hits[0]).object;
         };
 
-        const pickBuf = [];
-        const pickSurface = (e, exclude) => {
+        const pickSurface = (e, targets) => {
             const c = ctx.current;
             if (!c) return null;
             castPointer(e);
-            pickBuf.length = 0;
-            for (const m of c.solidList) if (!exclude.has(m)) pickBuf.push(m);
-            const hits = raycaster.intersectObjects(pickBuf, false);
+            const hits = raycaster.intersectObjects(targets, false);
             if (hits.length) return hits[0].point.clone();
             return raycaster.ray.intersectPlane(dragPlane, planeHit) ? planeHit.clone() : null;
         };
@@ -641,7 +706,9 @@ export default function Viewport({
             if (!inSelection) c.setSelectedId(mesh.userData.id, false);
 
             const exclude = new Set(meshes);
-            const hit = pickSurface(e, exclude);
+            const targets = [];
+            for (const m of c.solidList) if (!exclude.has(m)) targets.push(m);
+            const hit = pickSurface(e, targets);
             if (!hit) return;
 
             const bounds = new THREE.Box3();
@@ -649,7 +716,7 @@ export default function Viewport({
 
             drag = {
                 meshes,
-                exclude,
+                targets,
                 index: meshes.indexOf(mesh),
                 baseY: bounds.min.y,
                 offX: mesh.position.x - hit.x,
@@ -664,7 +731,7 @@ export default function Viewport({
 
         const moveDrag = (e) => {
             const c = ctx.current;
-            const hit = pickSurface(e, drag.exclude);
+            const hit = pickSurface(e, drag.targets);
             if (!hit || !c) return;
             const grid = c.snapMove;
             let x = hit.x + drag.offX;
@@ -704,6 +771,7 @@ export default function Viewport({
             const moved = drag.meshes;
             drag = null;
             orbit.enabled = true;
+            settleBumped();
             syncBusy();
             if (e && renderer.domElement.hasPointerCapture(e.pointerId)) {
                 renderer.domElement.releasePointerCapture(e.pointerId);
@@ -895,6 +963,7 @@ export default function Viewport({
         let fpsMark = last;
         let fpsCount = 0;
         let fps = 0;
+        let cpu = 0;
         const countFps = (now) => {
             fpsCount++;
             if (now - fpsMark >= 500) {
@@ -904,9 +973,29 @@ export default function Viewport({
             }
         };
 
+        const publishStats = (c) => {
+            if (!c?.statsRef) return;
+            const info = renderer.info.render;
+            c.statsRef.current = {
+                fps,
+                cpu: Math.round(cpu * 10) / 10,
+                calls: info.calls,
+                triangles: info.triangles,
+                batches: batches.size,
+                loose: c.loose ?? 0,
+                textures: renderer.info.memory.textures,
+                materials: c.sets.size,
+            };
+        };
+
         const tick = () => {
             raf = requestAnimationFrame(tick);
-            const now = performance.now();
+            const at = performance.now();
+            frame(at);
+            cpu += ((performance.now() - at) - cpu) * 0.2;
+        };
+
+        const frame = (now) => {
             const dt = Math.min((now - last) / 1000, 0.1);
             last = now;
             if (ctx.current?.session) {
@@ -918,6 +1007,7 @@ export default function Viewport({
                 renderer.shadowMap.needsUpdate = true;
                 renderer.render(scene, camera);
                 countFps(now);
+                publishStats(ctx.current);
                 return;
             }
             fly(dt);
@@ -927,6 +1017,7 @@ export default function Viewport({
             if (drag !== null || gizmo.dragging) reshadow();
             if (dirty <= 0) {
                 countFps(now);
+                publishStats(c);
                 return;
             }
             dirty -= 1;
@@ -1043,18 +1134,7 @@ export default function Viewport({
             renderer.render(scene, camera);
 
             countFps(now);
-            if (c?.statsRef) {
-                const info = renderer.info.render;
-                c.statsRef.current = {
-                    fps,
-                    calls: info.calls,
-                    triangles: info.triangles,
-                    batches: batches.size,
-                    loose: c.loose ?? 0,
-                    textures: renderer.info.memory.textures,
-                    materials: c.sets.size,
-                };
-            }
+            publishStats(c);
         };
         tick();
 
@@ -1198,6 +1278,7 @@ export default function Viewport({
         c.onView = onView ?? null;
         c.onPlayState = onPlayState ?? null;
         c.playRef = playRef ?? null;
+        c.statsRef = statsRef ?? null;
         c.memberNames = new Map(members.map((m) => [m.id, { name: m.name, color: m.color }]));
         if (spawnRef) spawnRef.current = c.spawnPoint;
         if (thumbRef) {
@@ -1270,7 +1351,8 @@ export default function Viewport({
 
     useEffect(() => {
         const c = ctx.current;
-        if (!c) return;
+        if (!c) return undefined;
+        let cancelled = false;
         const rebuild = c.studsOn !== studs || c.mode !== mode;
         const alive = new Set();
 
@@ -1287,7 +1369,7 @@ export default function Viewport({
             return want;
         };
 
-        for (const part of parts) {
+        const one = (part) => {
             alive.add(part._id);
             let mesh = c.meshes.get(part._id);
             if (!mesh) {
@@ -1298,14 +1380,14 @@ export default function Viewport({
                 c.scene.add(mesh);
                 c.meshes.set(part._id, mesh);
             } else {
-                if (!rebuild && mesh.userData.part === part) continue;
+                if (!rebuild && mesh.userData.part === part) return;
                 const held = c.gizmo.dragging
                     ? (c.gizmo.object === mesh || mesh.parent === c.pivot)
                     : c.isDraggingMesh(mesh);
                 if (held) {
                     mesh.userData.part = part;
                     setMaterials(mesh, part);
-                    continue;
+                    return;
                 }
             }
             mesh.userData.part = part;
@@ -1317,25 +1399,64 @@ export default function Viewport({
 
             const geometry = partType(part) === 'Truss' ? c.trussGeometry : c.geometry;
             if (mesh.geometry !== geometry) mesh.geometry = geometry;
-        }
-        c.studsOn = studs;
-        c.mode = mode;
+        };
 
-        let removed = false;
-        for (const [id, mesh] of c.meshes) {
-            if (!alive.has(id)) {
-                if (c.gizmo.object === mesh) c.gizmo.detach();
-                mesh.removeFromParent();
-                c.sets.release(mesh.userData.set);
-                mesh.userData.set = null;
-                c.meshes.delete(id);
-                removed = true;
-            }
-        }
-        if (removed || c.meshList.length !== c.meshes.size) {
+        const publish = () => {
             c.meshList = [...c.meshes.values()];
+            c.syncBatches();
+        };
+
+        const finish = () => {
+            c.studsOn = studs;
+            c.mode = mode;
+
+            let removed = false;
+            for (const [id, mesh] of c.meshes) {
+                if (!alive.has(id)) {
+                    if (c.gizmo.object === mesh) c.gizmo.detach();
+                    mesh.removeFromParent();
+                    c.sets.release(mesh.userData.set);
+                    mesh.userData.set = null;
+                    c.meshes.delete(id);
+                    removed = true;
+                }
+            }
+            if (removed || c.meshList.length !== c.meshes.size) {
+                c.meshList = [...c.meshes.values()];
+            }
+            c.syncBatches();
+        };
+
+        if (parts.length <= BUILD_SYNC) {
+            for (const part of parts) one(part);
+            finish();
+            onBuild?.(null);
+            return undefined;
         }
-        c.syncBatches();
+
+        const build = async () => {
+            let mark = performance.now();
+            let shown = mark;
+            for (let i = 0; i < parts.length; i++) {
+                one(parts[i]);
+                if (performance.now() - mark > BUILD_SLICE) {
+                    if (performance.now() - shown > BUILD_SHOW) {
+                        publish();
+                        shown = performance.now();
+                    }
+                    onBuild?.(i / parts.length);
+                    await new Promise((r) => { setTimeout(r, 0); });
+                    if (cancelled) return;
+                    mark = performance.now();
+                }
+            }
+            finish();
+            onBuild?.(null);
+        };
+        onBuild?.(0);
+        build();
+
+        return () => { cancelled = true; };
     }, [parts, studs, mode]);
 
     useEffect(() => {

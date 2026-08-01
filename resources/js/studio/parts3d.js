@@ -101,6 +101,22 @@ function baseMaterial(mode, color, opacity) {
     }
 }
 
+const REPEAT_PATCH = `#include <uv_vertex>
+#if defined( USE_INSTANCING ) && defined( USE_MAP )
+    vMapUv *= vec2(
+        max(1.0, floor(length(instanceMatrix[0].xyz) + 0.5)),
+        max(1.0, floor(length(instanceMatrix[2].xyz) + 0.5))
+    );
+#endif`;
+
+function repeatByInstance(material) {
+    material.onBeforeCompile = (shader) => {
+        shader.vertexShader = shader.vertexShader.replace('#include <uv_vertex>', REPEAT_PATCH);
+    };
+    material.customProgramCacheKey = () => 'instanced-stud-repeat';
+    return material;
+}
+
 export function makeMaterialSets(tex) {
     const sets = new Map();
     const maps = new Map();
@@ -118,21 +134,22 @@ export function makeMaterialSets(tex) {
         return m;
     };
 
-    const build = (type, mode, color, opacity, marks, rx, rz) => {
+    const build = (type, mode, color, opacity, marks, rx, rz, instanced) => {
         const base = baseMaterial(mode, color, opacity);
         if (!marks) return { materials: base, own: [base] };
         const own = [base];
         const materials = FACES.map((face) => {
             const mark = marks[face];
             if (!mark) return base;
-            const map = mapFor(mark, rx, rz);
+            const repeats = REPEATING.has(mark);
+            const map = instanced && repeats ? tex[mark] : mapFor(mark, rx, rz);
             const m = mode === 'unlit'
                 ? new THREE.MeshBasicMaterial({ map })
                 : new THREE.MeshStandardMaterial({ map });
             m.color.copy(base.color);
             m.transparent = base.transparent;
             m.opacity = base.opacity;
-            own.push(m);
+            own.push(instanced && repeats ? repeatByInstance(m) : m);
             return m;
         });
         return { materials, own };
@@ -142,21 +159,24 @@ export function makeMaterialSets(tex) {
         acquire(part, mode, studs) {
             const type = partType(part);
             const normals = mode === 'normals';
-            const color = normals ? '' : (part.C ?? 'a3a2a5');
             const opacity = normals ? 1 : 1 - (part.Tr ?? 0);
+            const transparent = opacity < 1;
             const marks = marksFor(type, mode, studs);
+
+            const color = normals || !transparent ? '' : (part.C ?? 'a3a2a5');
             const repeats = !!marks && FACES.some((f) => REPEATING.has(marks[f]));
-            const rx = repeats ? Math.max(1, Math.round(part.S[0])) : 0;
-            const rz = repeats ? Math.max(1, Math.round(part.S[2])) : 0;
-            const key = `${type}|${mode}|${color}|${opacity}|${rx}|${rz}`;
+            const rx = repeats && transparent ? Math.max(1, Math.round(part.S[0])) : 0;
+            const rz = repeats && transparent ? Math.max(1, Math.round(part.S[2])) : 0;
+            const key = `${type}|${mode}|${studs ? 1 : 0}|${color}|${opacity}|${rx}|${rz}`;
 
             let e = sets.get(key);
             if (!e) {
                 e = {
-                    ...build(type, mode, color, opacity, marks, rx, rz),
+                    ...build(type, mode, color || 'ffffff', opacity, marks, rx, rz, !transparent),
                     key,
                     type,
-                    transparent: opacity < 1,
+                    transparent,
+                    instanced: !transparent && !normals,
                     n: 0,
                 };
                 sets.set(key, e);
