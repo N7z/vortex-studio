@@ -169,6 +169,11 @@ function __set_selection(info_json)
 end
 
 Model = nil
+Limits = { parts = 50000 }
+
+function __set_limits(parts)
+    Limits = { parts = math.floor(parts) }
+end
 
 function __set_model(w, h, d, count, data)
     if data == nil or data == '' or count == nil or count < 1 then

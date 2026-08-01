@@ -207,3 +207,20 @@ it('still refuses a map past the new cap', function () {
 
     $this->putJson('/api/maps/toobig', ['parts' => $parts])->assertStatus(400);
 });
+
+it('lets an admin save past the part and byte caps', function () {
+    $boss = User::factory()->create();
+    $boss->forceFill(['is_admin' => true])->save();
+
+    $parts = [];
+    for ($i = 0; $i < 70000; $i++) {
+        $parts[] = ['_id' => "p$i", 'T' => 'Part', 'P' => [$i, 0, 0], 'S' => [1, 1, 1], 'R' => [0, 0, 0]];
+    }
+
+    $this->actingAs($boss)->putJson('/api/maps/huge', ['parts' => $parts])->assertOk();
+    expect(DB::table('maps')->where('name', 'huge')->value('parts'))->toBe(70000);
+
+    // The same body from an ordinary account is still refused.
+    $this->actingAs(User::factory()->create())
+        ->putJson('/api/maps/huge', ['parts' => $parts])->assertStatus(400);
+});

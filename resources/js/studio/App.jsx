@@ -17,7 +17,7 @@ import {
     loadPlugins, stripId, compilePlugin, saveUserPlugin, deleteUserPlugin,
     userPluginSource, isBuiltin, resetBuiltin,
 } from './plugins';
-import { listTeams, loadMap, loadMapAsAdmin, saveMap } from './api';
+import { listTeams, loadAccount, loadMap, loadMapAsAdmin, saveMap } from './api';
 import { writeBackup } from './backup';
 import {
     addOp, applyOp, fillPart, invertOp, patchOp, removeOp, repairParts, stripIds,
@@ -30,7 +30,7 @@ import UpdateNotice from './UpdateNotice';
 import { watchForUpdate } from './version';
 import useLive from './useLive';
 import { decodeImage, imageMeta } from './image';
-import { buildVoxels, loadModel } from './model';
+import { MAX_RES, buildVoxels, loadModel } from './model';
 import { convertRoblox, importSummary } from './roblox';
 import useDialogs from '../ui/useDialogs';
 import Busy from '../ui/Busy';
@@ -114,6 +114,11 @@ export default function App() {
     const staleSeen = useRef(false);
     const { dialogs, confirm, ask } = useDialogs();
     const [busy, setBusy] = useState(null);
+    // An admin is trusted with maps of any size, so nothing here caps them.
+    const [unlimited, setUnlimited] = useState(false);
+    const mapCap = unlimited ? Infinity : MAX_MAP_PARTS;
+    const pluginCap = unlimited ? Infinity : MAX_PLUGIN_PARTS;
+    const resCap = unlimited ? 512 : MAX_RES;
 
     // Only the id travels with a map, so the names are looked up once and again
     // whenever one turns up that this list does not know.
@@ -121,6 +126,16 @@ export default function App() {
         if (mapTeam != null && teams.some((t) => t.id === mapTeam)) return;
         listTeams().then((d) => setTeams(d.teams ?? []));
     }, [mapTeam]);
+
+    useEffect(() => {
+        loadAccount()
+            .then((d) => setUnlimited(!!d.account?.admin))
+            .catch(() => setUnlimited(false));
+    }, []);
+
+    useEffect(() => {
+        setPartLimit(unlimited ? Number.MAX_SAFE_INTEGER : MAX_PLUGIN_PARTS);
+    }, [unlimited]);
 
     const flash = useCallback((msg) => {
         setStatus(msg);
@@ -478,7 +493,7 @@ export default function App() {
         const control = plugin.ui.find((c) => c.id === ctrlId);
         const res = Number(values?.[control?.res]) || 32;
         const solid = !!values?.[control?.solid];
-        const grid = await buildVoxels(entry.object, res, solid);
+        const grid = await buildVoxels(entry.object, res, solid, resCap);
         await plugin.setModel(grid);
         setPluginModels((all) => ({
             ...all,
@@ -541,8 +556,8 @@ export default function App() {
                         updates.push({ id: target._id, ...fillPart(part, target) });
                         continue;
                     }
-                    if (parts.length >= MAX_PLUGIN_PARTS
-                        || partsRef.current.length + parts.length >= MAX_MAP_PARTS) {
+                    if (parts.length >= pluginCap
+                        || partsRef.current.length + parts.length >= mapCap) {
                         capped = true;
                         break;
                     }
@@ -552,7 +567,7 @@ export default function App() {
             }
             // The voxel plugin emits bottom-up, so a silent cap beheads the model.
             if (capped) {
-                flash(`Too big: stopped at ${MAX_MAP_PARTS} parts, so the top is missing. `
+                flash(`Too big: stopped at ${mapCap} parts, so the top is missing. `
                     + 'Lower the Detail and run it again.');
             }
             if (updates.length) {
@@ -674,7 +689,7 @@ export default function App() {
     const importRobloxText = (text, fileName) => {
         let result;
         try {
-            result = convertRoblox(JSON.parse(text), MAX_MAP_PARTS - (mapName ? partsRef.current.length : 0));
+            result = convertRoblox(JSON.parse(text), mapCap - (mapName ? partsRef.current.length : 0));
         } catch (e) {
             flash(`Could not import: ${e.message ?? e}`);
             return;

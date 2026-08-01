@@ -63,8 +63,8 @@ function materialOf(mesh) {
     };
 }
 
-export function voxelize(object, res) {
-    const size = Math.min(Math.max(Math.floor(res) || 32, 4), MAX_RES);
+export function voxelize(object, res, maxRes = MAX_RES) {
+    const size = Math.min(Math.max(Math.floor(res) || 32, 4), maxRes);
     const meshes = collect(object);
     if (!meshes.length) throw new Error('this file has no meshes');
 
@@ -207,7 +207,7 @@ export function encode(grid) {
     return { w: dim.x, h: dim.y, d: dim.z, count: keys.length, data: out.join('') };
 }
 
-export async function buildVoxels(object, res, solid) {
-    const grid = voxelize(object, res);
+export async function buildVoxels(object, res, solid, maxRes = MAX_RES) {
+    const grid = voxelize(object, res, maxRes);
     return encode(solid ? fillInside(grid) : grid);
 }

@@ -12,7 +12,9 @@ plugin = {
     },
 }
 
-local MAX_PARTS = 50000
+local function maxParts()
+    return (Limits and Limits.parts) or 50000
+end
 
 local function clamp(v, lo, hi)
     v = tonumber(v) or lo
@@ -47,7 +49,7 @@ local function build(part, values)
                 run = run + 1
             end
         end
-        if #out >= MAX_PARTS then return out end
+        if #out >= maxParts() then return out end
         out[#out + 1] = {
             T = "Part",
             P = {

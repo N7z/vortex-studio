@@ -27,6 +27,15 @@ class MapController extends Controller
     /** Keys the editor writes / the example maps use; anything else is rejected. */
     private const PART_KEYS = ['_id', 'T', 'P', 'S', 'R', 'C', 'Tr', 'Shape', 'Sh', 'ItemId'];
 
+    /**
+     * An admin is trusted with maps of any size. The request still has to fit PHP's
+     * own post_max_size, which is the ceiling nothing here can lift.
+     */
+    private static function unlimited(): bool
+    {
+        return (bool) Auth::user()?->is_admin;
+    }
+
     private function token(Request $request): string
     {
         return MapAccess::token($request);
@@ -223,7 +232,11 @@ class MapController extends Controller
 
         $data = json_encode($parts);
         $encodedGroups = $groups === null ? null : json_encode($groups);
-        abort_if(strlen($data) + strlen((string) $encodedGroups) > self::MAX_BYTES, 413, 'map too large');
+        abort_if(
+            ! self::unlimited() && strlen($data) + strlen((string) $encodedGroups) > self::MAX_BYTES,
+            413,
+            'map too large',
+        );
 
         $token = $this->token($request);
         $id = Auth::id();
@@ -329,7 +342,7 @@ class MapController extends Controller
      */
     private function validParts(array $parts): bool
     {
-        if (count($parts) > self::MAX_PARTS) {
+        if (! self::unlimited() && count($parts) > self::MAX_PARTS) {
             return false;
         }
 
