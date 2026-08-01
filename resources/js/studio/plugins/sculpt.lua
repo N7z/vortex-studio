@@ -7,6 +7,7 @@ plugin = {
         { id = "size", type = "number", label = "Block size", default = 1 },
         { id = "solid", type = "checkbox", label = "Fill the inside", default = false },
         { id = "smooth", type = "number", label = "Smoothing", default = 2 },
+        { id = "merge", type = "number", label = "Merge angle", default = 6 },
         { id = "thick", type = "number", label = "Shell thickness", default = 0.5 },
         { id = "cover", type = "number", label = "Plate overlap", default = 1.7 },
         { id = "core", type = "checkbox", label = "Keep a solid core", default = false },
@@ -17,6 +18,7 @@ plugin = {
 }
 
 local MAX_VOXELS = 400000
+local MAX_RUN = 64
 local TO_DEG = 180 / math.pi
 
 local function maxParts()
@@ -35,14 +37,21 @@ local function round(n)
     return math.floor(n * 1000 + 0.5) / 1000
 end
 
--- A part's local Y axis is column 1 of three.js' XYZ euler matrix, which for a zero
--- Y angle is (-sin rz, cos rx cos rz, sin rx cos rz). Solving that for the normal
--- leaves the roll about it free, and a square plate does not care which roll it gets.
-local function euler_from_normal(nx, ny, nz)
-    local rz = math.asin(clamp(-nx, -1, 1))
-    local rx = math.atan(nz, ny)
+-- Euler XYZ from the three local axes, which are the columns of the rotation matrix.
+-- Inverted from three.js' own makeRotationFromEuler, so a part wears exactly the
+-- orientation asked for: local Y along the normal, local X along the run.
+local function euler_from_axes(xx, _, _, yx, yy, yz, zx, zy, zz)
+    local ry = math.asin(clamp(zx, -1, 1))
+    local rx, rz
+    if math.abs(zx) < 0.9999999 then
+        rx = math.atan(-zy, zz)
+        rz = math.atan(-yx, xx)
+    else
+        rx = math.atan(yz, yy)
+        rz = 0
+    end
 
-    return round(rx * TO_DEG), 0, round(rz * TO_DEG)
+    return round(rx * TO_DEG), round(ry * TO_DEG), round(rz * TO_DEG)
 end
 
 local function build(part, values)
@@ -56,6 +65,8 @@ local function build(part, values)
     local thick = clamp(tonumber(values.thick) or 0.5, 0.1, 2) * size
     local cover = clamp(tonumber(values.cover) or 1.7, 1, 4) * size
     local flat = clamp(tonumber(values.flat) or 0.985, 0, 1)
+    local merge = clamp(tonumber(values.merge) or 6, 0, 45)
+    local agree = merge > 0 and math.cos(merge / TO_DEG) or 2
     local core = values.core == true
     local base = values.ground ~= false and (part.P[2] + part.S[2] / 2) or part.P[2]
 
@@ -94,9 +105,7 @@ local function build(part, values)
         end
     end
 
-    local out = {}
-    local limit = maxParts()
-
+    local skin, sx, sy, sz = {}, {}, {}, {}
     for i = 1, Model.count do
         local x, y, z = xs[i], ys[i], zs[i]
         local buried = at(x + 1, y, z) and at(x - 1, y, z)
@@ -135,40 +144,93 @@ local function build(part, values)
             end
 
             if len > 1e-6 then
-                nx, ny, nz = nx / len, ny / len, nz / len
-                local cx = ox + (x + 0.5) * size
-                local cy = base + (y + 0.5) * size
-                local cz = oz + (z + 0.5) * size
+                skin[i] = true
+                sx[i], sy[i], sz[i] = nx / len, ny / len, nz / len
+            end
+        end
+    end
 
-                if #out >= limit then return out end
-                if math.max(math.abs(nx), math.abs(ny), math.abs(nz)) >= flat then
-                    -- Square-on to an axis already: a plate here would only add seams.
-                    out[#out + 1] = {
-                        T = "Part",
-                        P = { round(cx), round(cy), round(cz) },
-                        S = { size, size, size },
-                        R = { 0, 0, 0 },
-                        C = cs[i],
-                        Tr = 0,
-                    }
-                else
-                    -- Pushed out along the normal so the plate's outer face lands where
-                    -- the voxel's did, instead of sinking half a block into the model.
-                    local push = (size - thick) / 2
-                    local rx, ry, rz = euler_from_normal(nx, ny, nz)
-                    out[#out + 1] = {
-                        T = "Part",
-                        P = {
-                            round(cx + nx * push),
-                            round(cy + ny * push),
-                            round(cz + nz * push),
-                        },
-                        S = { round(cover), round(thick), round(cover) },
-                        R = { rx, ry, rz },
-                        C = cs[i],
-                        Tr = 0,
-                    }
+    local function is_flat(i)
+        return math.max(math.abs(sx[i]), math.abs(sy[i]), math.abs(sz[i])) >= flat
+    end
+
+    local out = {}
+    local limit = maxParts()
+    local taken = {}
+
+    for i = 1, Model.count do
+        if skin[i] and not taken[i] then
+            local nx, ny, nz = sx[i], sy[i], sz[i]
+            local square = is_flat(i)
+
+            -- Run along the world axis the plate is most face-on to, so each step is
+            -- across the plate rather than into it and the tangent cannot degenerate.
+            local ax, ay, az = 0, 0, 0
+            local bx, by, bz = math.abs(nx), math.abs(ny), math.abs(nz)
+            if bx <= by and bx <= bz then ax = 1
+            elseif by <= bz then ay = 1
+            else az = 1 end
+
+            local run, last = 1, i
+            if merge > 0 then
+                while run < MAX_RUN do
+                    local j = at(xs[i] + ax * run, ys[i] + ay * run, zs[i] + az * run)
+                    if not (j and skin[j] and not taken[j] and cs[j] == cs[i]) then break end
+                    if sx[j] * nx + sy[j] * ny + sz[j] * nz < agree then break end
+                    if is_flat(j) ~= square then break end
+                    last = j
+                    run = run + 1
                 end
+            end
+            for k = 0, run - 1 do
+                taken[at(xs[i] + ax * k, ys[i] + ay * k, zs[i] + az * k)] = true
+            end
+
+            -- Halfway between the ends, which is the run's middle cell centre.
+            local cx = ox + ((xs[i] + xs[last]) / 2 + 0.5) * size
+            local cy = base + ((ys[i] + ys[last]) / 2 + 0.5) * size
+            local cz = oz + ((zs[i] + zs[last]) / 2 + 0.5) * size
+
+            if #out >= limit then return out end
+            if square then
+                -- Square-on to an axis already: a plate here would only add seams.
+                out[#out + 1] = {
+                    T = "Part",
+                    P = { round(cx), round(cy), round(cz) },
+                    S = {
+                        round(size + ax * (run - 1) * size),
+                        round(size + ay * (run - 1) * size),
+                        round(size + az * (run - 1) * size),
+                    },
+                    R = { 0, 0, 0 },
+                    C = cs[i],
+                    Tr = 0,
+                }
+            else
+                local d = ax * nx + ay * ny + az * nz
+                local tx, ty, tz = ax - d * nx, ay - d * ny, az - d * nz
+                local tl = math.sqrt(tx * tx + ty * ty + tz * tz)
+                tx, ty, tz = tx / tl, ty / tl, tz / tl
+                local ux = ty * nz - tz * ny
+                local uy = tz * nx - tx * nz
+                local uz = tx * ny - ty * nx
+                local rx, ry, rz = euler_from_axes(tx, ty, tz, nx, ny, nz, ux, uy, uz)
+
+                -- Pushed out along the normal so the plate's outer face lands where
+                -- the voxel's did, instead of sinking half a block into the model.
+                local push = (size - thick) / 2
+                out[#out + 1] = {
+                    T = "Part",
+                    P = {
+                        round(cx + nx * push),
+                        round(cy + ny * push),
+                        round(cz + nz * push),
+                    },
+                    S = { round((run - 1) * size + cover), round(thick), round(cover) },
+                    R = { rx, ry, rz },
+                    C = cs[i],
+                    Tr = 0,
+                }
             end
         end
     end
@@ -178,21 +240,15 @@ local function build(part, values)
     -- What is left is entirely inside the shell, so it can be plain merged blocks.
     local i = 1
     while i <= Model.count do
-        local x, y, z = xs[i], ys[i], zs[i]
-        local function buried_at(j)
-            local bx, by, bz = xs[j], ys[j], zs[j]
-            return at(bx + 1, by, bz) and at(bx - 1, by, bz)
-                and at(bx, by + 1, bz) and at(bx, by - 1, bz)
-                and at(bx, by, bz + 1) and at(bx, by, bz - 1)
-        end
-        if not buried_at(i) then
+        if skin[i] then
             i = i + 1
         else
+            local x, y, z = xs[i], ys[i], zs[i]
             local run = 1
             while i + run <= Model.count do
                 local j = i + run
                 if ys[j] ~= y or zs[j] ~= z or xs[j] ~= x + run or cs[j] ~= cs[i] then break end
-                if not buried_at(j) then break end
+                if skin[j] then break end
                 run = run + 1
             end
             if #out >= limit then return out end
