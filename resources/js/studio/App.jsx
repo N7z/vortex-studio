@@ -88,7 +88,7 @@ export default function App() {
     const [activePluginId, setActivePluginId] = useState(null);
     const [pluginValues, setPluginValues] = useState({});
     const [pluginPreview, setPluginPreview] = useState([]);
-    const [pluginRun, setPluginRun] = useState(null);
+    const [pluginCount, setPluginCount] = useState(null);
     const [pluginImages, setPluginImages] = useState({});
     const [pluginModels, setPluginModels] = useState({});
     const loadedModels = useRef({});
@@ -577,6 +577,43 @@ export default function App() {
         }
     }, [activePlugin, activeValues]);
 
+    // What the button would make, counted by the plugin itself down the same code
+    // path, so the panel cannot promise a number the run does not produce. Debounced:
+    // every keystroke in a settings box would otherwise re-count the whole model.
+    useEffect(() => {
+        if (!activePlugin || !selected || busyRef.current) {
+            setPluginCount(null);
+            return undefined;
+        }
+        const plugin = activePlugin;
+        const targets = selectedParts.length || 1;
+        let alive = true;
+        const timer = setTimeout(async () => {
+            try {
+                await plugin.setSelection(selectionInfo);
+                const each = await plugin.count(stripId(selected), activeValues);
+                if (!alive) return;
+                if (!(each >= 0)) {
+                    setPluginCount(null);
+                    return;
+                }
+                const total = each * targets;
+                const cap = Math.min(pluginCap, Math.max(0, mapCap - partsRef.current.length));
+                setPluginCount({
+                    id: plugin.id,
+                    text: total > cap
+                        ? `Would make ${total.toLocaleString()} parts, over the ${cap.toLocaleString()} left`
+                        : `Will make ${total.toLocaleString()} part${total === 1 ? '' : 's'}`,
+                });
+            } catch {
+                if (alive) setPluginCount(null);
+            }
+        }, 300);
+
+        return () => { alive = false; clearTimeout(timer); };
+    }, [activePlugin, activeValues, pluginModels, pluginImages, selected, selectedParts.length,
+        pluginCap, mapCap, parts]);
+
     const pluginButton = async (btnId) => {
         if (!activePlugin || !selectedParts.length) return;
         setBusy(`Running ${activePlugin.name}...`);
@@ -620,7 +657,6 @@ export default function App() {
             }
             if (!parts.length) return;
             const placed = parts.map(withNewId);
-            setPluginRun({ id: activePlugin.id, count: placed.length });
             edit(addOp(placed));
             setSelectedIds(placed.map((p) => p._id));
             if (placed.length > 1) {
@@ -1277,8 +1313,8 @@ export default function App() {
                                 ? `Runs on all ${selectedParts.length} selected parts`
                                 : null}
                             onButton={pluginButton}
-                            resultNote={pluginRun?.id === activePlugin.id
-                                ? `Last run made ${pluginRun.count.toLocaleString()} parts`
+                            resultNote={pluginCount?.id === activePlugin.id
+                                ? pluginCount.text
                                 : null}
                             onEdit={() => openEditTab(activePlugin.id)}
                             onClose={() => setActivePluginId(null)}

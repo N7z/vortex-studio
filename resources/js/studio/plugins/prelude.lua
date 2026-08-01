@@ -205,3 +205,11 @@ function __click(id, part_json, values_json)
     if plugin == nil or plugin.click == nil then return nil end
     return plugin.click(id, json.decode(part_json), json.decode(values_json))
 end
+
+-- How many parts a click would make, without making them. -1 means the plugin
+-- cannot say, which is not the same answer as zero.
+function __count(part_json, values_json)
+    if plugin == nil or plugin.count == nil then return -1 end
+    local n = plugin.count(json.decode(part_json), json.decode(values_json))
+    return tonumber(n) or -1
+end

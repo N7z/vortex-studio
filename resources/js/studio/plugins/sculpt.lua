@@ -54,8 +54,10 @@ local function euler_from_axes(xx, _, _, yx, yy, yz, zx, zy, zz)
     return round(rx * TO_DEG), round(ry * TO_DEG), round(rz * TO_DEG)
 end
 
-local function build(part, values)
-    if Model == nil or Model.count < 1 then return {} end
+-- `counting` swaps the emit for a tally down the one code path, so what the panel
+-- promises and what the button makes can never drift apart.
+local function build(part, values, counting)
+    if Model == nil or Model.count < 1 then return counting and 0 or {} end
     if Model.count > MAX_VOXELS then
         error("that model has " .. Model.count .. " voxels, too many to sculpt: lower Detail")
     end
@@ -155,8 +157,17 @@ local function build(part, values)
     end
 
     local out = {}
+    local made = 0
     local limit = maxParts()
     local taken = {}
+    local function emit(p)
+        made = made + 1
+        if not counting then out[#out + 1] = p end
+    end
+    local function done()
+        if counting then return made end
+        return out
+    end
 
     for i = 1, Model.count do
         if skin[i] and not taken[i] then
@@ -191,10 +202,10 @@ local function build(part, values)
             local cy = base + ((ys[i] + ys[last]) / 2 + 0.5) * size
             local cz = oz + ((zs[i] + zs[last]) / 2 + 0.5) * size
 
-            if #out >= limit then return out end
+            if made >= limit then return done() end
             if square then
                 -- Square-on to an axis already: a plate here would only add seams.
-                out[#out + 1] = {
+                emit({
                     T = "Part",
                     P = { round(cx), round(cy), round(cz) },
                     S = {
@@ -205,7 +216,7 @@ local function build(part, values)
                     R = { 0, 0, 0 },
                     C = cs[i],
                     Tr = 0,
-                }
+                })
             else
                 local d = ax * nx + ay * ny + az * nz
                 local tx, ty, tz = ax - d * nx, ay - d * ny, az - d * nz
@@ -219,7 +230,7 @@ local function build(part, values)
                 -- Pushed out along the normal so the plate's outer face lands where
                 -- the voxel's did, instead of sinking half a block into the model.
                 local push = (size - thick) / 2
-                out[#out + 1] = {
+                emit({
                     T = "Part",
                     P = {
                         round(cx + nx * push),
@@ -230,12 +241,12 @@ local function build(part, values)
                     R = { rx, ry, rz },
                     C = cs[i],
                     Tr = 0,
-                }
+                })
             end
         end
     end
 
-    if not core then return out end
+    if not core then return done() end
 
     -- What is left is entirely inside the shell, so it can be plain merged blocks.
     local i = 1
@@ -251,8 +262,8 @@ local function build(part, values)
                 if skin[j] then break end
                 run = run + 1
             end
-            if #out >= limit then return out end
-            out[#out + 1] = {
+            if made >= limit then return done() end
+            emit({
                 T = "Part",
                 P = {
                     round(ox + (x + run / 2) * size),
@@ -263,15 +274,19 @@ local function build(part, values)
                 R = { 0, 0, 0 },
                 C = cs[i],
                 Tr = 0,
-            }
+            })
             i = i + run
         end
     end
 
-    return out
+    return done()
 end
 
 function plugin.click(id, part, values)
     if id ~= "build" then return nil end
     return build(part, values)
+end
+
+function plugin.count(part, values)
+    return build(part, values, true)
 end

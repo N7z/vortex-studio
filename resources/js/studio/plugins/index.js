@@ -102,6 +102,7 @@ do
     end
     __preview = limited(__preview)
     __click = limited(__click)
+    __count = limited(__count)
 end
 `;
 
@@ -143,6 +144,7 @@ async function startEngine(src) {
         await lua.doString(GUARD_SRC);
         const luaPreview = lua.global.get('__preview');
         const luaClick = lua.global.get('__click');
+        const luaCount = lua.global.get('__count');
         const luaSetImage = lua.global.get('__set_image');
         const luaSetModel = lua.global.get('__set_model');
         await lua.global.get('__set_limits')(partLimit);
@@ -154,6 +156,8 @@ async function startEngine(src) {
                 toParts(await luaPreview(JSON.stringify(part), JSON.stringify(values))),
             click: async (btnId, part, values) =>
                 toParts(await luaClick(btnId, JSON.stringify(part), JSON.stringify(values))),
+            count: async (part, values) =>
+                Number(await luaCount(JSON.stringify(part), JSON.stringify(values))),
             setImage: async (img) => {
                 pix = imagePixels(img?.id);
                 await luaSetImage(pix?.w ?? 0, pix?.h ?? 0);
@@ -184,6 +188,7 @@ function wrap(id, builtin, info, open) {
         ...info,
         preview: async (part, values) => (await get()).preview(part, values),
         click: async (btnId, part, values) => (await get()).click(btnId, part, values),
+        count: async (part, values) => (await get()).count(part, values),
         setImage: async (img) => (await get()).setImage(img),
         setSelection: async (sel) => (await get()).setSelection(sel),
         setModel: async (model) => (await get()).setModel(model),
