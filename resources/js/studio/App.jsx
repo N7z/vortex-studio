@@ -14,7 +14,7 @@ import StatsPanel from './StatsPanel';
 import TeamPanel from './TeamPanel';
 import ScriptTab, { TEMPLATE } from './ScriptTab';
 import {
-    loadPlugins, stripId, compilePlugin, saveUserPlugin, deleteUserPlugin,
+    loadPlugins, setPartLimit, stripId, compilePlugin, saveUserPlugin, deleteUserPlugin,
     userPluginSource, isBuiltin, resetBuiltin,
 } from './plugins';
 import { listTeams, loadAccount, loadMap, loadMapAsAdmin, saveMap } from './api';
