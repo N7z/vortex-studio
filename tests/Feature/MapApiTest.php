@@ -227,7 +227,7 @@ it('lets an admin save past the part and byte caps', function () {
 });
 
 it('stores and serves a map thumbnail', function () {
-    Storage::fake('public');
+    Storage::fake();
     asToken()->putJson('/api/maps/shot', [PART])->assertOk();
 
     $webp = 'RIFF'.pack('V', 20).'WEBPVP8 '.str_repeat("\0", 12);
@@ -236,7 +236,7 @@ it('stores and serves a map thumbnail', function () {
 
     $key = DB::table('maps')->where('name', 'shot')->value('thumb_key');
     expect($key)->toMatch('/^[a-f0-9]{32}$/');
-    Storage::disk('public')->assertExists("thumbs/$key.webp");
+    Storage::disk()->assertExists("thumbs/$key.webp");
 
     $listed = asToken()->getJson('/api/maps')->json('mine.0.thumb');
     expect($listed)->toContain("thumbs/$key.webp");
@@ -246,7 +246,7 @@ it('stores and serves a map thumbnail', function () {
 });
 
 it('refuses a thumbnail that is not a webp', function () {
-    Storage::fake('public');
+    Storage::fake();
     asToken()->putJson('/api/maps/shot', [PART])->assertOk();
 
     asToken()->call('PUT', '/api/maps/shot/thumb', [], tokenCookie(), [], ['CONTENT_TYPE' => 'image/webp'], '<?php echo 1;')
@@ -259,7 +259,7 @@ it('lists no thumbnail before one is stored', function () {
 });
 
 it('gives every thumbnail an unguessable name and drops the old one', function () {
-    Storage::fake('public');
+    Storage::fake();
     asToken()->putJson('/api/maps/shot', [PART])->assertOk();
     $webp = 'RIFF'.pack('V', 20).'WEBPVP8 '.str_repeat(' ', 12);
     $put = fn () => asToken()->call('PUT', '/api/maps/shot/thumb', [], tokenCookie(), [], ['CONTENT_TYPE' => 'image/webp'], $webp);
@@ -270,8 +270,8 @@ it('gives every thumbnail an unguessable name and drops the old one', function (
     $second = DB::table('maps')->where('name', 'shot')->value('thumb_key');
 
     expect($second)->not->toBe($first);
-    Storage::disk('public')->assertMissing("thumbs/$first.webp");
-    Storage::disk('public')->assertExists("thumbs/$second.webp");
+    Storage::disk()->assertMissing("thumbs/$first.webp");
+    Storage::disk()->assertExists("thumbs/$second.webp");
 
     // The id is never part of the name, so a map is not enumerable.
     $id = DB::table('maps')->where('name', 'shot')->value('id');

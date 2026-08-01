@@ -50,11 +50,11 @@ class ThumbExamples extends Command
 
             $png = $this->render($parts, $size);
             $path = "thumbs/examples/$name.webp";
-            Storage::disk(config('filesystems.thumbs', 'public'))->put($path, $png, 'public');
+            Storage::disk()->put($path, $png);
             $this->line(sprintf('%-24s %5d parts  %6.1f KB', $name, count($parts), strlen($png) / 1024));
         }
 
-        $this->info('written to '.Storage::disk(config('filesystems.thumbs', 'public'))->path('thumbs/examples'));
+        $this->info('written to the '.config('filesystems.default').' disk, under thumbs/examples');
 
         return self::SUCCESS;
     }

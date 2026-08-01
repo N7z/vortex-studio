@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 class MapController extends Controller
@@ -52,7 +53,13 @@ class MapController extends Controller
 
     private static function thumbDisk()
     {
-        return Storage::disk(config('filesystems.thumbs', 'public'));
+        return Storage::disk();
+    }
+
+    /** A bucket serves files itself; a local disk has no public URL, so the app streams them. */
+    private static function thumbsAreRemote(): bool
+    {
+        return config('filesystems.disks.'.config('filesystems.default').'.driver') !== 'local';
     }
 
     private static function thumbPath(string $key): string
@@ -73,8 +80,7 @@ class MapController extends Controller
         // A bucket addresses itself, so its own URL is the right one. A local disk
         // would build one from APP_URL, which breaks the moment the port differs, so
         // the app serves those from a path relative to whatever host is being used.
-        $name = config('filesystems.thumbs', 'public');
-        if (config("filesystems.disks.$name.driver") !== 'local') {
+        if (self::thumbsAreRemote()) {
             try {
                 return self::thumbDisk()->url(self::thumbPath($row->thumb_key));
             } catch (\Throwable) {
@@ -134,7 +140,13 @@ class MapController extends Controller
         // A new name every time, so a cached URL can never show a stale picture and
         // the old file does not linger.
         $key = bin2hex(random_bytes(16));
-        $disk->put(self::thumbPath($key), $body, 'public');
+        // No visibility argument: R2 rejects per-object ACLs, and the disks that do
+        // take one already carry their own default.
+        if (! $disk->put(self::thumbPath($key), $body)) {
+            Log::warning('thumbnail write failed', ['disk' => config('filesystems.default'), 'map' => $row->id]);
+
+            abort(500, 'the thumbnail could not be stored');
+        }
         if ($row->thumb_key) {
             $disk->delete(self::thumbPath($row->thumb_key));
         }
@@ -227,7 +239,7 @@ class MapController extends Controller
             ]);
 
         $disk = self::thumbDisk();
-        $remote = config('filesystems.disks.'.config('filesystems.thumbs', 'public').'.driver') !== 'local';
+        $remote = self::thumbsAreRemote();
         $examples = collect(glob($this->examplesDir().DIRECTORY_SEPARATOR.'*.json'))
             ->map(function ($f) use ($disk, $remote) {
                 $name = basename($f, '.json');
