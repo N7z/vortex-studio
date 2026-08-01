@@ -16,9 +16,10 @@ import StatsPanel from './StatsPanel';
 import TeamPanel from './TeamPanel';
 import ScriptTab, { TEMPLATE } from './ScriptTab';
 import {
-    loadPlugins, setPartLimit, setVoxelLimit, stripId, compilePlugin, saveUserPlugin,
+    loadPlugins, setPartLimit, setVoxelLimit, setStepBudget, STEP_BUDGET,
+    stripId, compilePlugin, saveUserPlugin,
     deleteUserPlugin,
-    userPluginSource, isBuiltin, resetBuiltin, onPluginPrint,
+    userPluginSource, isBuiltin, resetBuiltin, onPluginPrint, onPluginProgress,
 } from './plugins';
 import {
     listTeams, loadAccount, loadMap, loadMapAsAdmin, putThumb, saveBody, saveMap,
@@ -35,7 +36,8 @@ import UpdateNotice from './UpdateNotice';
 import { watchForUpdate } from './version';
 import useLive from './useLive';
 import { decodeImage, imageMeta } from './image';
-import { MAX_DIM, MAX_RES, buildVoxels, loadModel } from './model';
+import { MAX_DIM, MAX_RES, buildVoxels, loadModel, voxelCost } from './model';
+import { predict, record } from './estimate';
 import { convertRoblox, importSummary } from './roblox';
 import useDialogs from '../ui/useDialogs';
 import Busy from '../ui/Busy';
@@ -187,6 +189,7 @@ export default function App() {
     useEffect(() => {
         setPartLimit(unlimited ? Number.MAX_SAFE_INTEGER : MAX_PLUGIN_PARTS);
         setVoxelLimit(unlimited ? Number.MAX_SAFE_INTEGER : MAX_MODEL_VOXELS);
+        setStepBudget(unlimited ? 0 : STEP_BUDGET);
     }, [unlimited]);
 
     const flash = useCallback((msg) => {
@@ -550,12 +553,27 @@ export default function App() {
         }
     };
 
-    const voxelise = async (plugin, ctrlId, entry, values) => {
+    const voxelise = async (plugin, ctrlId, entry, values, label = null) => {
         const control = plugin.ui.find((c) => c.id === ctrlId);
         const res = Number(values?.[control?.res]) || 32;
         const solid = !!values?.[control?.solid];
         modelSigs.current[`${plugin.id}:${ctrlId}`] = modelSig(control, values);
-        const grid = await buildVoxels(entry.object, res, solid, resCap);
+        const units = voxelCost(entry.object, res, resCap);
+        if (label) {
+            setBusy({ label, estimate: predict('voxelise', units), progress: 0 });
+            await paint();
+        }
+        const from = performance.now();
+        const estimate = predict('voxelise', units);
+        let grid;
+        try {
+            grid = await buildVoxels(entry.object, res, solid, resCap, label
+                ? (p) => setBusy({ label, estimate, progress: p })
+                : null);
+        } finally {
+            if (label) setBusy(null);
+        }
+        record('voxelise', units, performance.now() - from);
         await plugin.setModel(grid);
         setPluginModels((all) => ({
             ...all,
@@ -575,9 +593,7 @@ export default function App() {
             const object = await loadModel(file);
             const entry = { object, name: file.name };
             loadedModels.current[`${plugin.id}:${ctrlId}`] = entry;
-            setBusy(`Building blocks from ${file.name}...`);
-            await paint();
-            await voxelise(plugin, ctrlId, entry, activeValues);
+            await voxelise(plugin, ctrlId, entry, activeValues, `Building blocks from ${file.name}...`);
             flash(`${file.name} ready`);
         } catch (e) {
             flash(`Could not read ${file.name}: ${e.message ?? e}`);
@@ -599,7 +615,7 @@ export default function App() {
         if (!jobs.length) return undefined;
         const timer = setTimeout(() => {
             for (const { c, entry } of jobs) {
-                voxelise(activePlugin, c.id, entry, activeValues).catch((e) => {
+                voxelise(activePlugin, c.id, entry, activeValues, 'Rebuilding blocks...').catch((e) => {
                     flash(`Could not voxelise: ${e.message ?? e}`);
                 });
             }
@@ -610,8 +626,21 @@ export default function App() {
 
     const pluginButton = async (btnId) => {
         if (!activePlugin || !selectedParts.length) return;
-        setBusy(`Running ${activePlugin.name}...`);
+        const voxels = Object.values(pluginModels[activePlugin.id] ?? {})
+            .reduce((n, m) => n + (m?.count ?? 0), 0);
+        const kind = voxels > 0 ? `run:${activePlugin.id}:voxels` : `run:${activePlugin.id}:parts`;
+        const units = voxels > 0 ? voxels * selectedParts.length : selectedParts.length;
+        const started = performance.now();
+        const label = `Running ${activePlugin.name}...`;
+        const estimate = predict(kind, units);
+        setBusy({ label, estimate, progress: 0 });
         await paint();
+        let failed = false;
+        let done = 0;
+        const total = selectedParts.length;
+        onPluginProgress((p) => {
+            setBusy({ label, estimate, progress: (done + p) / total });
+        });
         try {
             const parts = [];
             const updates = [];
@@ -619,6 +648,8 @@ export default function App() {
             await activePlugin.setSelection(selectionInfo);
             for (const target of selectedParts) {
                 const made = await activePlugin.click(btnId, stripId(target), activeValues);
+                done += 1;
+                setBusy({ label, estimate, progress: done / total });
                 // Only the first Replace can land on the source; the rest have no
                 // part of their own to update, so they are added like anything else.
                 let taken = false;
@@ -664,8 +695,11 @@ export default function App() {
                 flash(`${activePlugin.name} placed ${placed.length} parts, grouped in the explorer`);
             }
         } catch (e) {
+            failed = true;
             flash(String(e.message ?? e));
         } finally {
+            onPluginProgress(null);
+            if (!failed) record(kind, units, performance.now() - started);
             setBusy(null);
         }
     };

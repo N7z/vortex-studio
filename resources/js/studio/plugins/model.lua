@@ -213,9 +213,11 @@ local function prepared(radius, want, clean)
 
     -- A colour no neighbour shares is texture noise, not something the artist
     -- painted, so it takes the commonest neighbour instead.
-    for _ = 1, clean do
+    progress_span(0, 0.15)
+    for pass = 1, clean do
         local next_cs = {}
         for i = 1, Model.count do
+            progress((pass - 1) * Model.count + i, clean * Model.count)
             local x, y, z = xs[i], ys[i], zs[i]
             local tally, best, bn = {}, cs[i], 0
             for k = 1, 6 do
@@ -246,7 +248,9 @@ local function prepared(radius, want, clean)
     end
 
     local skin, sx, sy, sz = {}, {}, {}, {}
+    progress_span(0.15, 0.6)
     for i = 1, Model.count do
+        progress(i, Model.count)
         local x, y, z = xs[i], ys[i], zs[i]
         local buried = at(x + 1, y, z) and at(x - 1, y, z)
             and at(x, y + 1, z) and at(x, y - 1, z)
@@ -332,7 +336,9 @@ local function build(part, values)
     local limit = maxParts()
     local taken = {}
 
+    progress_span(0.6, core and 0.85 or 1)
     for i = 1, Model.count do
+        progress(i, Model.count)
         if skin[i] and not taken[i] then
             local nx, ny, nz = sx[i], sy[i], sz[i]
             local square = is_flat(i)
@@ -431,8 +437,10 @@ local function build(part, values)
 
     if not core then return out end
 
+    progress_span(0.85, 1)
     local i = 1
     while i <= Model.count do
+        progress(i, Model.count)
         if skin[i] then
             i = i + 1
         else

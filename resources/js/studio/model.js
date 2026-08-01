@@ -156,7 +156,23 @@ function faceMaterials(geo, faces, materials) {
     return out;
 }
 
-export function voxelize(object, res, maxRes = MAX_RES) {
+export function voxelCost(object, res, maxRes = MAX_RES) {
+    const size = Math.min(Math.max(Math.floor(res) || 32, 4), maxRes, MAX_DIM);
+    let tris = 0;
+    for (const mesh of collect(object)) {
+        const geo = mesh.geometry;
+        const count = geo.index ? geo.index.count : geo.attributes.position.count;
+        tris += Math.floor(count / 3);
+    }
+    return tris * size * size;
+}
+
+const SLICE_MS = 60;
+const SHELL_SHARE = 0.8;
+const FILL_SHARE = 0.92;
+const yieldNow = () => new Promise((r) => { setTimeout(r, 0); });
+
+export async function voxelize(object, res, maxRes = MAX_RES, onProgress = null, share = 1) {
     const size = Math.min(Math.max(Math.floor(res) || 32, 4), maxRes, MAX_DIM);
     const meshes = collect(object);
     if (!meshes.length) throw new Error('this file has no meshes');
@@ -220,6 +236,15 @@ export function voxelize(object, res, maxRes = MAX_RES) {
     // the whole model.
     const used = { texture: 0, vertex: 0, flat: 0 };
 
+    let totalFaces = 0;
+    for (const mesh of meshes) {
+        const g = mesh.geometry;
+        const n = g.index ? g.index.count : g.attributes.position.count;
+        totalFaces += Math.floor(n / 3);
+    }
+    let doneFaces = 0;
+    let mark = performance.now();
+
     for (const mesh of meshes) {
         const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
         const mats = list.map((m) => describe(m, cap));
@@ -237,6 +262,13 @@ export function voxelize(object, res, maxRes = MAX_RES) {
         const perFace = faceMaterials(geo, faces, mats.length);
 
         for (let f = 0; f < faces; f++) {
+            doneFaces += 1;
+            if (onProgress && performance.now() - mark > SLICE_MS) {
+                mark = performance.now();
+                onProgress((doneFaces / totalFaces) * share);
+                await yieldNow();
+                mark = performance.now();
+            }
             const mat = mats[perFace ? perFace[f] : 0] ?? mats[0];
             if (mat.skip) continue;
             const uv = mat.sample ? uvs[mat.uvSet] : null;
@@ -365,11 +397,13 @@ export function voxelize(object, res, maxRes = MAX_RES) {
     return { dim, cells, norms, source };
 }
 
-export function fillInside(grid) {
+export async function fillInside(grid, onProgress = null) {
     const { dim, cells } = grid;
     const total = dim.x * dim.y * dim.z;
     const outside = new Uint8Array(total);
     const queue = [];
+    let mark = performance.now();
+    let seen = 0;
 
     const at = (x, y, z) => (y * dim.z + z) * dim.x + x;
     const push = (x, y, z) => {
@@ -391,6 +425,12 @@ export function fillInside(grid) {
     }
 
     while (queue.length) {
+        seen += 1;
+        if (onProgress && performance.now() - mark > SLICE_MS) {
+            onProgress(SHELL_SHARE + (Math.min(seen / total, 1) * (FILL_SHARE - SHELL_SHARE)));
+            await yieldNow();
+            mark = performance.now();
+        }
         const z = queue.pop();
         const y = queue.pop();
         const x = queue.pop();
@@ -403,6 +443,11 @@ export function fillInside(grid) {
     // grey mud wherever the shell is thin enough to see through.
     const front = [...cells.keys()];
     for (let head = 0; head < front.length; head++) {
+        if (onProgress && performance.now() - mark > SLICE_MS) {
+            onProgress(FILL_SHARE + (Math.min(head / total, 1) * (1 - FILL_SHARE)));
+            await yieldNow();
+            mark = performance.now();
+        }
         const key = front[head];
         const x = key % dim.x;
         const rest = (key - x) / dim.x;
@@ -451,7 +496,13 @@ export function encode(grid) {
     };
 }
 
-export async function buildVoxels(object, res, solid, maxRes = MAX_RES) {
-    const grid = voxelize(object, res, maxRes);
-    return encode(solid ? fillInside(grid) : grid);
+export async function buildVoxels(object, res, solid, maxRes = MAX_RES, onProgress = null) {
+    const grid = await voxelize(object, res, maxRes, onProgress, solid ? SHELL_SHARE : 0.97);
+    if (!solid) {
+        onProgress?.(1);
+        return encode(grid);
+    }
+    const filled = await fillInside(grid, onProgress);
+    onProgress?.(1);
+    return encode(filled);
 }

@@ -132,12 +132,40 @@
     display: flex;
     align-items: center;
     gap: 12px;
+    min-width: 260px;
     padding: 14px 20px;
     background: var(--surface, #14141a);
     border: 1px solid var(--line, #26262e);
     border-radius: 8px;
     color: var(--ink, #ddd);
     font-size: 13px;
+}
+.busy-text {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+    flex: 1;
+}
+.busy-time {
+    color: var(--ink-dim, #8b8b96);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+.busy-bar {
+    display: block;
+    height: 3px;
+    margin-top: 1px;
+    border-radius: 2px;
+    background: var(--line, #26262e);
+    overflow: hidden;
+}
+.busy-bar > span {
+    display: block;
+    height: 100%;
+    border-radius: 2px;
+    background: var(--accent, #5b8dd6);
+    transition: width 200ms linear;
 }
 .spinner {
     width: 16px;

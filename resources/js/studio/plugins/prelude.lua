@@ -177,10 +177,14 @@ function __set_selection(info_json)
 end
 
 Model = nil
-Limits = { parts = 50000, voxels = 400000 }
+Limits = { parts = 50000, voxels = 400000, steps = 1000 }
 
-function __set_limits(parts, voxels)
-    Limits = { parts = math.floor(parts), voxels = math.floor(voxels) }
+function __set_limits(parts, voxels, steps)
+    Limits = {
+        parts = math.floor(parts),
+        voxels = math.floor(voxels),
+        steps = math.floor(steps or 1000),
+    }
 end
 
 function __set_model(w, h, d, count, data)
@@ -201,6 +205,31 @@ function __set_model(w, h, d, count, data)
             (tonumber(data:sub(o + 20, o + 21), 16) - 128) / 127
     end
     Model = m
+end
+
+local progress_at = 0
+local span_from, span_to = 0, 1
+
+function __reset_progress()
+    progress_at = 0
+    span_from, span_to = 0, 1
+end
+
+function progress_span(from, to)
+    span_from, span_to = from, to
+end
+
+-- Yields so the page can paint. Only the click path runs on a coroutine, so
+-- anywhere else this reports and carries on.
+function progress(done, total)
+    if total == nil or total <= 0 then return end
+    local f = done / total
+    if f < 0 then f = 0 elseif f > 1 then f = 1 end
+    local p = span_from + f * (span_to - span_from)
+    if p - progress_at < 0.01 then return end
+    progress_at = p
+    if __progress ~= nil then __progress(p) end
+    if coroutine.isyieldable() then coroutine.yield() end
 end
 
 function __preview(part_json, values_json)

@@ -178,13 +178,18 @@ export default function Viewport({
         const camera = new THREE.PerspectiveCamera(70, 1, 0.5, 5000);
         camera.position.set(40, 40, 40);
 
-        const renderer = new THREE.WebGLRenderer({
-            antialias: true,
-            logarithmicDepthBuffer: true,
-        });
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.shadowMap.autoUpdate = false;
         mount.appendChild(renderer.domElement);
+
+        let dirty = 2;
+        const invalidate = () => { dirty = 2; };
+        const reshadow = () => {
+            renderer.shadowMap.needsUpdate = true;
+            dirty = 2;
+        };
 
         const hemi = new THREE.HemisphereLight(0xcfe8ff, 0x5a5a52, 0.9);
         scene.add(hemi);
@@ -325,6 +330,11 @@ export default function Viewport({
             return b;
         };
 
+        const proxies = new THREE.Group();
+        proxies.matrixWorldAutoUpdate = false;
+        scene.add(proxies);
+        const refreshProxies = () => proxies.updateMatrixWorld(true);
+
         const batches = new Map();
 
         const dropBatch = (inst) => {
@@ -338,12 +348,17 @@ export default function Viewport({
             const members = new Map();
             c.solidList = [];
             c.selectList = [];
+            const park = (mesh, drawn) => {
+                const want = drawn ? scene : proxies;
+                if (mesh.parent !== want && mesh.parent !== pivot) want.add(mesh);
+            };
             for (const mesh of c.meshList) {
                 const id = mesh.userData.id;
                 if (isHidden(c.flags, id)) {
                     mesh.visible = false;
                     mesh.userData.batch = null;
                     mesh.userData.slot = -1;
+                    park(mesh, false);
                     continue;
                 }
                 c.solidList.push(mesh);
@@ -355,9 +370,11 @@ export default function Viewport({
                 mesh.userData.slot = -1;
                 if (!key) {
                     mesh.visible = true;
+                    park(mesh, true);
                     continue;
                 }
                 mesh.visible = false;
+                park(mesh, false);
                 let list = members.get(key);
                 if (!list) {
                     list = [];
@@ -402,6 +419,7 @@ export default function Viewport({
                 batches.delete(key);
             }
             c.loose = c.solidList.length - [...members.values()].reduce((n, l) => n + l.length, 0);
+            reshadow();
         };
 
         const bumpBatch = (mesh) => {
@@ -429,6 +447,8 @@ export default function Viewport({
             pivot.scale.set(1, 1, 1);
         };
 
+        orbit.addEventListener('change', invalidate);
+        gizmo.addEventListener('change', invalidate);
         gizmo.addEventListener('dragging-changed', (e) => {
             orbit.enabled = !e.value;
             const c = ctx.current;
@@ -483,6 +503,7 @@ export default function Viewport({
         const onKeyDown = (e) => {
             if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable) return;
             keys.add(e.code);
+            invalidate();
             if (e.code === 'KeyF' && !e.ctrlKey && !e.altKey && !flying && !ctx.current?.session) {
                 e.preventDefault();
                 focusMeshes(ctx.current?.selectedMeshes ?? []);
@@ -493,8 +514,8 @@ export default function Viewport({
                 rotateDrag();
             }
         };
-        const onKeyUp = (e) => keys.delete(e.code);
-        const onBlur = () => { keys.clear(); setFlying(false); pending = null; hideBand(); };
+        const onKeyUp = (e) => { keys.delete(e.code); invalidate(); };
+        const onBlur = () => { keys.clear(); setFlying(false); pending = null; hideBand(); invalidate(); };
         const onWindowUp = (e) => { if (e.button === 2) setFlying(false); };
         window.addEventListener('keydown', onKeyDown);
         window.addEventListener('keyup', onKeyUp);
@@ -577,6 +598,7 @@ export default function Viewport({
         };
 
         const castPointer = (e) => {
+            refreshProxies();
             const rect = renderer.domElement.getBoundingClientRect();
             pointerNdc.set(
                 ((e.clientX - rect.left) / rect.width) * 2 - 1,
@@ -765,6 +787,7 @@ export default function Viewport({
             if (gizmo.dragging) return;
             const c = ctx.current;
             if (!c) return;
+            refreshProxies();
             const rect = renderer.domElement.getBoundingClientRect();
             const ndc = new THREE.Vector2(
                 ((e.clientX - rect.left) / rect.width) * 2 - 1,
@@ -791,9 +814,14 @@ export default function Viewport({
                 hits.length ? snapNormal(hits[0].face?.normal) : null,
             );
         };
+        const onAnyPointer = () => invalidate();
         renderer.domElement.addEventListener('pointerdown', onDown);
         renderer.domElement.addEventListener('pointermove', onMove);
         renderer.domElement.addEventListener('pointerup', onUp);
+        renderer.domElement.addEventListener('pointerdown', onAnyPointer);
+        renderer.domElement.addEventListener('pointermove', onAnyPointer);
+        renderer.domElement.addEventListener('pointerup', onAnyPointer);
+        renderer.domElement.addEventListener('pointerleave', onAnyPointer);
 
         // Where a newly added part should go: on the ground under the middle of the
         // view, so it lands where the user is looking instead of at the origin. If the
@@ -805,6 +833,7 @@ export default function Viewport({
         const spawnNdc = new THREE.Vector2(0, 0);
         const spawnPoint = (height) => {
             const c = ctx.current;
+            refreshProxies();
             raycaster.setFromCamera(spawnNdc, camera);
             const hits = raycaster.intersectObjects(c?.solidList ?? [], false);
             if (hits.length && hits[0].distance <= 400) {
@@ -829,6 +858,7 @@ export default function Viewport({
             camera.aspect = w / h;
             camera.updateProjectionMatrix();
             renderer.setSize(w, h);
+            invalidate();
         };
         const applyScale = () => {
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2) * (gfxRef.current.scale ?? 1));
@@ -885,6 +915,7 @@ export default function Viewport({
                 if (states) s.setPeers(states, ctx.current.memberNames);
                 s.update(dt);
                 ctx.current.onPlayState?.(s.state);
+                renderer.shadowMap.needsUpdate = true;
                 renderer.render(scene, camera);
                 countFps(now);
                 return;
@@ -892,6 +923,13 @@ export default function Viewport({
             fly(dt);
             orbit.update();
             const c = ctx.current;
+            if (flying || marquee?.active) invalidate();
+            if (drag !== null || gizmo.dragging) reshadow();
+            if (dirty <= 0) {
+                countFps(now);
+                return;
+            }
+            dirty -= 1;
             const sel = c?.selectedMeshes ?? [];
             if (drag) {
                 for (const m of drag.meshes) bumpBatch(m);
@@ -1031,7 +1069,7 @@ export default function Viewport({
 
         ctx.current = {
             scene, camera, renderer, orbit, gizmo, tex, pivot, spawnPoint,
-            sun, grid, applyScale, syncBatches, setBatchShadows,
+            sun, grid, applyScale, syncBatches, setBatchShadows, invalidate, reshadow,
             isDragging: () => drag !== null,
             isDraggingMesh: (m) => !!drag?.meshes.includes(m),
             snapMove: 0,
@@ -1046,6 +1084,7 @@ export default function Viewport({
                 keys.clear();
                 setFlying(false);
                 orbit.enabled = false;
+                reshadow();
             },
             leavePlay: () => {
                 grid.visible = true;
@@ -1054,6 +1093,7 @@ export default function Viewport({
                 orbit.target.copy(camera.position).addScaledVector(
                     camera.getWorldDirection(new THREE.Vector3()), 30,
                 );
+                reshadow();
             },
             shadows: gfxRef.current.shadows,
             canEdit: true,
@@ -1088,6 +1128,10 @@ export default function Viewport({
             renderer.domElement.removeEventListener('pointerdown', onDown);
             renderer.domElement.removeEventListener('pointermove', onMove);
             renderer.domElement.removeEventListener('pointerup', onUp);
+            renderer.domElement.removeEventListener('pointerdown', onAnyPointer);
+            renderer.domElement.removeEventListener('pointermove', onAnyPointer);
+            renderer.domElement.removeEventListener('pointerup', onAnyPointer);
+            renderer.domElement.removeEventListener('pointerleave', onAnyPointer);
             window.removeEventListener('keydown', onKeyDown);
             window.removeEventListener('keyup', onKeyUp);
             window.removeEventListener('blur', onBlur);
@@ -1121,6 +1165,7 @@ export default function Viewport({
             ctx.current.trussGeometry.dispose();
             for (const m of ctx.current.previewMeshes) scene.remove(m);
             ctx.current.previewMat.dispose();
+            scene.remove(proxies);
             scene.remove(grid);
             grid.geometry.dispose();
             grid.material.dispose();
@@ -1158,6 +1203,7 @@ export default function Viewport({
         if (thumbRef) {
             thumbRef.current = (parts) => captureThumb(c.renderer, c.scene, parts);
         }
+        c.invalidate();
     });
 
     useEffect(() => {
@@ -1218,8 +1264,8 @@ export default function Viewport({
             for (const m of Array.isArray(mats) ? mats : [mats]) m.needsUpdate = true;
         }
         c.setBatchShadows(shadows);
-        c.renderer.shadowMap.needsUpdate = true;
         c.applyScale();
+        c.reshadow();
     }, [graphics]);
 
     useEffect(() => {
@@ -1318,6 +1364,7 @@ export default function Viewport({
             mesh.rotation.set(p.R[0] * DEG, p.R[1] * DEG, p.R[2] * DEG);
         }
         for (let i = shown; i < c.previewMeshes.length; i++) c.previewMeshes[i].visible = false;
+        c.reshadow();
     }, [preview]);
 
     useEffect(() => {
@@ -1343,6 +1390,7 @@ export default function Viewport({
             c.gizmo.setMode(mode);
             c.gizmo.attach(c.pivot);
         }
+        c.invalidate();
     }, [selectedIds, tool, parts, canEdit]);
 
     useEffect(() => {
@@ -1372,6 +1420,7 @@ export default function Viewport({
         const size = Math.max(box.getSize(new THREE.Vector3()).length(), 40);
         c.orbit.target.copy(center);
         c.camera.position.copy(center).add(new THREE.Vector3(0.5, 0.6, 0.5).multiplyScalar(size));
+        c.invalidate();
     }, [mapName]);
 
     return <div ref={mountRef} style={{ position: 'absolute', inset: 0 }} />;

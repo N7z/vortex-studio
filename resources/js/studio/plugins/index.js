@@ -50,6 +50,14 @@ const openPrints = (label) => {
 let factory;
 const getFactory = () => (factory ??= new LuaFactory());
 
+// wasmoon resumes a yielded thread with a bare setImmediate, which no browser has.
+if (typeof globalThis.setImmediate !== 'function') {
+    globalThis.setImmediate = (fn, ...args) => setTimeout(fn, 0, ...args);
+}
+
+let progressSink = null;
+export const onPluginProgress = (fn) => { progressSink = fn; };
+
 const toArray = (t) => {
     if (t == null) return [];
     if (Array.isArray(t)) return t;
@@ -92,25 +100,27 @@ const toParts = (res) => {
 // The hook fires every STEP_CHUNK VM instructions; a call that burns more than
 // STEP_BUDGET of them is an endless loop, and without this it freezes the tab.
 const STEP_CHUNK = 1e6;
-const STEP_BUDGET = 1000;
+export const STEP_BUDGET = 1000;
 
 // The hook has to be installed from inside the call: wasmoon runs each one on its
 // own Lua thread, and a hook belongs to the thread that set it.
 const GUARD_SRC = `
 do
     local steps = 0
+    local budget = ${STEP_BUDGET}
     local function guard()
         steps = steps + 1
-        if steps > ${STEP_BUDGET} then
+        if steps > budget then
             error('the script ran too long, check it for an endless loop', 2)
         end
     end
     local function limited(fn)
         return function(...)
             steps = 0
-            debug.sethook(guard, '', ${STEP_CHUNK})
+            budget = (Limits and Limits.steps) or ${STEP_BUDGET}
+            if budget > 0 then debug.sethook(guard, '', ${STEP_CHUNK}) end
             local ok, res = pcall(fn, ...)
-            debug.sethook()
+            if budget > 0 then debug.sethook() end
             if not ok then error(res, 0) end
             return res
         end
@@ -164,19 +174,33 @@ async function startEngine(src) {
         await lua.doString(preludeSrc);
         await lua.doString(src);
         await lua.doString(GUARD_SRC);
+        lua.global.set('__progress', (p) => progressSink?.(p));
         const luaPreview = lua.global.get('__preview');
-        const luaClick = lua.global.get('__click');
+        const luaResetProgress = lua.global.get('__reset_progress');
         const luaSetImage = lua.global.get('__set_image');
         const luaSetModel = lua.global.get('__set_model');
-        await lua.global.get('__set_limits')(partLimit, voxelLimit);
+        const luaSetLimits = lua.global.get('__set_limits');
+        const applyLimits = () => luaSetLimits(partLimit, voxelLimit, stepBudget);
+        await applyLimits();
+        liveLimits.add(applyLimits);
         const luaSetSelection = lua.global.get('__set_selection');
 
         return {
             plugin: lua.global.get('plugin'),
             preview: async (part, values) =>
                 toParts(await luaPreview(JSON.stringify(part), JSON.stringify(values))),
-            click: async (btnId, part, values) =>
-                toParts(await luaClick(btnId, JSON.stringify(part), JSON.stringify(values))),
+            // doString runs on a Lua thread, so a yield from progress() suspends the
+            // run and lets the page paint. lua.global.get gives a synchronous pcall
+            // that cannot yield at all.
+            click: async (btnId, part, values) => {
+                await luaResetProgress();
+                lua.global.set('__click_id', btnId);
+                lua.global.set('__click_part', JSON.stringify(part));
+                lua.global.set('__click_values', JSON.stringify(values));
+                return toParts(await lua.doString(
+                    'return __click(__click_id, __click_part, __click_values)',
+                ));
+            },
                 setImage: async (img) => {
                 pix = imagePixels(img?.id);
                 await luaSetImage(pix?.w ?? 0, pix?.h ?? 0);
@@ -189,7 +213,10 @@ async function startEngine(src) {
                     model?.w ?? 0, model?.h ?? 0, model?.d ?? 0, model?.count ?? 0, model?.data ?? '',
                 );
             },
-            close: () => lua.global.close(),
+            close: () => {
+                liveLimits.delete(applyLimits);
+                lua.global.close();
+            },
         };
     } catch (e) {
         lua.global.close();
@@ -265,13 +292,32 @@ export function userPlugins() {
 // Lifted for an admin, who is trusted with maps of any size.
 let partLimit = 50_000;
 let voxelLimit = 400_000;
+let stepBudget = STEP_BUDGET;
+const liveLimits = new Set();
+
+function pushLimits() {
+    for (const apply of liveLimits) {
+        try {
+            Promise.resolve(apply()).catch(() => {});
+        } catch {
+            liveLimits.delete(apply);
+        }
+    }
+}
 
 export function setPartLimit(n) {
     partLimit = Number.isFinite(n) ? n : 50_000;
+    pushLimits();
 }
 
 export function setVoxelLimit(n) {
     voxelLimit = Number.isFinite(n) ? n : 400_000;
+    pushLimits();
+}
+
+export function setStepBudget(n) {
+    stepBudget = Number.isFinite(n) && n > 0 ? n : 0;
+    pushLimits();
 }
 
 export function isBuiltin(id) {
