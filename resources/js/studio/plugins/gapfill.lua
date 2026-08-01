@@ -1,5 +1,6 @@
 plugin = {
     name = "Gap Fill",
+    version = "1.0",
     icon = Icons.Blend,
     faces = true,
     ui = {

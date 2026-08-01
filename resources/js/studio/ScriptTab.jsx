@@ -44,6 +44,7 @@ const COMPLETIONS = [
     prop('plugin', 'global table describing this plugin'),
     prop('plugin.name', 'display name shown in the toolbar'),
     prop('plugin.icon', 'any lucide icon, e.g. Icons.DraftingCompass'),
+    prop('plugin.version', 'version tag shown beside the name, e.g. "1.2"'),
     prop('Icons', 'every lucide icon: Icons.Box, Icons.Spline, ...'),
     prop('plugin.ui', 'list of controls: number, checkbox, button, image'),
     fn('plugin.preview(part, values)', 'return the ghost part shown while a part is selected'),

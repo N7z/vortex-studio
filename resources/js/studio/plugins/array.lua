@@ -1,5 +1,6 @@
 plugin = {
     name = "Array",
+    version = "1.0",
     icon = Icons.Grid3x3,
     ui = {
         { id = "copies", type = "number", label = "Copies", default = 4 },

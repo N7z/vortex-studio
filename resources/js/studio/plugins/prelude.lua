@@ -213,8 +213,3 @@ function __click(id, part_json, values_json)
     return plugin.click(id, json.decode(part_json), json.decode(values_json))
 end
 
-function __count(values_json)
-    if plugin == nil or plugin.count == nil then return -1 end
-    local n = plugin.count(json.decode(values_json))
-    return tonumber(n) or -1
-end

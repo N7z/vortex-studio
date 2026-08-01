@@ -1,5 +1,6 @@
 plugin = {
     name = "Text",
+    version = "1.0",
     icon = Icons.Type,
     ui = {
         { id = "text", type = "text", label = "Text", default = "VORTEX" },

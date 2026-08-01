@@ -47,10 +47,6 @@ const openPrints = (label) => {
     printLabel = label ?? '';
 };
 
-// The count runs on its own, off a debounce, so anything it prints is not something
-// the user asked to see.
-const mutePrints = () => { printsLeft = 0; };
-
 let factory;
 const getFactory = () => (factory ??= new LuaFactory());
 
@@ -121,7 +117,6 @@ do
     end
     __preview = limited(__preview)
     __click = limited(__click)
-    __count = limited(__count)
 end
 `;
 
@@ -132,6 +127,7 @@ const meta = (p) => {
 
     return {
         name: String(p.name),
+        version: p.version == null ? null : String(p.version),
         icon: p.icon,
         usesFaces: p.faces === true,
         ui,
@@ -170,7 +166,6 @@ async function startEngine(src) {
         await lua.doString(GUARD_SRC);
         const luaPreview = lua.global.get('__preview');
         const luaClick = lua.global.get('__click');
-        const luaCount = lua.global.get('__count');
         const luaSetImage = lua.global.get('__set_image');
         const luaSetModel = lua.global.get('__set_model');
         await lua.global.get('__set_limits')(partLimit);
@@ -182,8 +177,7 @@ async function startEngine(src) {
                 toParts(await luaPreview(JSON.stringify(part), JSON.stringify(values))),
             click: async (btnId, part, values) =>
                 toParts(await luaClick(btnId, JSON.stringify(part), JSON.stringify(values))),
-            count: async (values) => Number(await luaCount(JSON.stringify(values))),
-            setImage: async (img) => {
+                setImage: async (img) => {
                 pix = imagePixels(img?.id);
                 await luaSetImage(pix?.w ?? 0, pix?.h ?? 0);
             },
@@ -218,10 +212,6 @@ function wrap(id, builtin, info, open) {
         click: async (btnId, part, values) => {
             openPrints(info.name);
             return (await get()).click(btnId, part, values);
-        },
-        count: async (values) => {
-            mutePrints();
-            return (await get()).count(values);
         },
         setImage: async (img) => (await get()).setImage(img),
         setSelection: async (sel) => (await get()).setSelection(sel),

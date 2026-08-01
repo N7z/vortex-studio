@@ -1,5 +1,6 @@
 plugin = {
     name = "Scatter",
+    version = "1.0",
     icon = Icons.Trees,
     ui = {
         { id = "density", type = "number", label = "Density", default = 0.35 },

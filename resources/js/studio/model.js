@@ -8,6 +8,19 @@ const hex = (n) => n.toString(16).padStart(2, '0');
 const MAX_DIM = 4096;
 const chex = (n) => n.toString(16).padStart(3, '0');
 
+const MAX_TEX = 2048;
+const ALPHA_CUT = 128;
+const GREY = [170, 170, 170];
+
+const SRGB_TO_LINEAR = new Float32Array(256);
+for (let i = 0; i < 256; i++) {
+    const v = i / 255;
+    SRGB_TO_LINEAR[i] = v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+}
+
+const toSrgb = (v) => (v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055);
+const byte = (v) => Math.max(0, Math.min(255, Math.round(toSrgb(v) * 255)));
+
 async function parseGltf(buffer) {
     const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
     return new Promise((resolve, reject) => {
@@ -27,25 +40,52 @@ export async function loadModel(file) {
     throw new Error('use a .glb, .gltf or .obj file');
 }
 
+function wrapped(t, mode) {
+    if (mode === THREE.RepeatWrapping) return t - Math.floor(t);
+    if (mode === THREE.MirroredRepeatWrapping) {
+        const f = Math.abs(t) % 2;
+        return f > 1 ? 2 - f : f;
+    }
+    return Math.min(Math.max(t, 0), 1);
+}
+
 function textureSampler(map) {
     const img = map?.image;
-    if (!img || !img.width) return null;
+    if (!img || !img.width || !img.height) return null;
+    const w = Math.min(img.width, MAX_TEX);
+    const h = Math.min(img.height, MAX_TEX);
     const canvas = document.createElement('canvas');
-    canvas.width = Math.min(img.width, 512);
-    canvas.height = Math.min(img.height, 512);
+    canvas.width = w;
+    canvas.height = h;
     const g = canvas.getContext('2d', { willReadFrequently: true });
+    let data;
     try {
-        g.drawImage(img, 0, 0, canvas.width, canvas.height);
-        const { data } = g.getImageData(0, 0, canvas.width, canvas.height);
-        return (u, v) => {
-            const x = Math.min(Math.max(Math.floor(u * canvas.width), 0), canvas.width - 1);
-            const y = Math.min(Math.max(Math.floor((1 - v) * canvas.height), 0), canvas.height - 1);
-            const i = (y * canvas.width + x) * 4;
-            return data[i + 3] < 128 ? null : [data[i], data[i + 1], data[i + 2]];
-        };
+        // Five arguments: the three-argument form draws at intrinsic size and
+        // crops, so every model was coloured from the corner of its atlas.
+        g.drawImage(img, 0, 0, w, h);
+        ({ data } = g.getImageData(0, 0, w, h));
     } catch {
         return null;
     }
+
+    // glTF puts v = 0 at the top row and leaves flipY off; OBJ flips.
+    const flip = map.flipY === true;
+    if (map.matrixAutoUpdate !== false) map.updateMatrix();
+    const e = map.matrix?.elements;
+    const moved = !!e && (e[0] !== 1 || e[4] !== 1 || e[1] !== 0 || e[3] !== 0
+        || e[6] !== 0 || e[7] !== 0);
+
+    return (u, v) => {
+        const s = wrapped(moved ? e[0] * u + e[3] * v + e[6] : u, map.wrapS);
+        const t = wrapped(moved ? e[1] * u + e[4] * v + e[7] : v, map.wrapT);
+        const x = Math.min(Math.max(Math.floor(s * w), 0), w - 1);
+        const y = Math.min(Math.max(Math.floor((flip ? 1 - t : t) * h), 0), h - 1);
+        const i = (y * w + x) * 4;
+        // Nearest: filtering across a UV island border pulls the atlas's blank
+        // padding into every seam.
+        if (data[i + 3] < ALPHA_CUT) return null;
+        return [data[i], data[i + 1], data[i + 2]];
+    };
 }
 
 function collect(object) {
@@ -57,17 +97,37 @@ function collect(object) {
     return meshes;
 }
 
-const toSrgb = (v) => (v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055);
-const byte = (v) => Math.max(0, Math.min(255, Math.round(toSrgb(v) * 255)));
-
-function materialOf(mesh) {
-    const m = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
-    if (!m) return { rgb: [170, 170, 170], sample: null };
+function describe(m) {
+    if (!m) return { rgb: GREY, linear: GREY.map((b) => SRGB_TO_LINEAR[b]), sample: null, tint: null, uvSet: 0 };
+    const map = m.map ?? m.emissiveMap ?? null;
     const c = m.color ? m.color.clone().convertLinearToSRGB() : null;
+    const rgb = c ? [Math.round(c.r * 255), Math.round(c.g * 255), Math.round(c.b * 255)] : GREY;
+    // glTF multiplies baseColorFactor into the texture. m.color is linear here.
+    const tint = m.color && (m.color.r !== 1 || m.color.g !== 1 || m.color.b !== 1)
+        ? [m.color.r, m.color.g, m.color.b]
+        : null;
+
     return {
-        rgb: c ? [Math.round(c.r * 255), Math.round(c.g * 255), Math.round(c.b * 255)] : [170, 170, 170],
-        sample: textureSampler(m.map),
+        rgb,
+        linear: rgb.map((b) => SRGB_TO_LINEAR[b]),
+        sample: textureSampler(map),
+        tint,
+        uvSet: map?.channel === 1 ? 1 : 0,
     };
+}
+
+// A GLB usually ships hat, body and skin as groups of one mesh, so material[0]
+// for every face paints most of the model from the wrong atlas.
+function faceMaterials(geo, faces, materials) {
+    if (materials < 2 || !geo.groups?.length) return null;
+    const out = new Uint8Array(faces);
+    for (const g of geo.groups) {
+        const from = Math.max(0, Math.floor(g.start / 3));
+        const to = Math.min(faces, from + Math.floor(g.count / 3));
+        const index = Math.min(Math.max(g.materialIndex ?? 0, 0), 255);
+        for (let f = from; f < to; f++) out[f] = index;
+    }
+    return out;
 }
 
 export function voxelize(object, res, maxRes = MAX_RES) {
@@ -87,7 +147,9 @@ export function voxelize(object, res, maxRes = MAX_RES) {
         y: Math.max(Math.ceil(span.y * scale), 1),
         z: Math.max(Math.ceil(span.z * scale), 1),
     };
-    const cells = new Map();
+    // Summed in linear light, averaged at the end. Keeping only the last triangle
+    // to land in a cell let a back face win, which is where the speckle came from.
+    const acc = new Map();
     // The face normal of every triangle that landed in a cell, summed. This is the
     // real surface direction; recovering one from the filled cells afterwards can
     // only ever approximate it, and on a fine grid it is mostly rasterisation noise.
@@ -101,9 +163,17 @@ export function voxelize(object, res, maxRes = MAX_RES) {
     const face = new THREE.Vector3();
 
     const slot = (v, n) => Math.min(Math.max(Math.floor(v), 0), n - 1);
-    const put = (x, y, z, rgb) => {
+    const put = (x, y, z, r, g, bl) => {
         const key = (slot(y, dim.y) * dim.z + slot(z, dim.z)) * dim.x + slot(x, dim.x);
-        cells.set(key, rgb);
+        const cell = acc.get(key);
+        if (cell) {
+            cell[0] += r;
+            cell[1] += g;
+            cell[2] += bl;
+            cell[3] += 1;
+        } else {
+            acc.set(key, [r, g, bl, 1]);
+        }
         const n = norms.get(key);
         if (n) {
             n[0] += face.x;
@@ -118,15 +188,16 @@ export function voxelize(object, res, maxRes = MAX_RES) {
     const na = new THREE.Vector3();
     const nb = new THREE.Vector3();
     const nc = new THREE.Vector3();
-    // What the colours ended up coming from, so the panel can say why a model
-    // came out flat instead of leaving the user to guess.
-    let source = 'flat';
+    // Per sample, not set by the first hit: one textured triangle used to claim
+    // the whole model.
+    const used = { texture: 0, vertex: 0, flat: 0 };
 
     for (const mesh of meshes) {
-        const { rgb, sample } = materialOf(mesh);
+        const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        const mats = list.map(describe);
         const geo = mesh.geometry;
         const pos = geo.attributes.position;
-        const uv = sample ? geo.attributes.uv : null;
+        const uvs = [geo.attributes.uv ?? null, geo.attributes.uv1 ?? geo.attributes.uv ?? null];
         // The artist's own normals, which on a smooth-shaded model describe the
         // surface the mesh stands for rather than the triangles it is made of.
         const nrm = geo.attributes.normal;
@@ -134,9 +205,12 @@ export function voxelize(object, res, maxRes = MAX_RES) {
         const vcol = geo.attributes.color;
         normalMatrix.getNormalMatrix(mesh.matrixWorld);
         const index = geo.index;
-        const faces = index ? index.count / 3 : pos.count / 3;
+        const faces = Math.floor((index ? index.count : pos.count) / 3);
+        const perFace = faceMaterials(geo, faces, mats.length);
 
         for (let f = 0; f < faces; f++) {
+            const mat = mats[perFace ? perFace[f] : 0] ?? mats[0];
+            const uv = mat.sample ? uvs[mat.uvSet] : null;
             const i0 = index ? index.getX(f * 3) : f * 3;
             const i1 = index ? index.getX(f * 3 + 1) : f * 3 + 1;
             const i2 = index ? index.getX(f * 3 + 2) : f * 3 + 2;
@@ -168,6 +242,7 @@ export function voxelize(object, res, maxRes = MAX_RES) {
             const cr2 = vcol ? vcol.getX(i2) : 0;
             const cg2 = vcol ? vcol.getY(i2) : 0;
             const cb2 = vcol ? vcol.getZ(i2) : 0;
+            const tint = mat.tint;
 
             const steps = Math.max(
                 Math.ceil(a.distanceTo(b) * scale),
@@ -181,26 +256,43 @@ export function voxelize(object, res, maxRes = MAX_RES) {
                     const w0 = i / steps;
                     const w1 = j / steps;
                     const w2 = 1 - w0 - w1;
+                    let lr = mat.linear[0];
+                    let lg = mat.linear[1];
+                    let lb = mat.linear[2];
+                    if (uv) {
+                        const hit = mat.sample(
+                            u0 * w0 + u1 * w1 + u2 * w2,
+                            v0 * w0 + v1 * w1 + v2 * w2,
+                        );
+                        // Below the cutout there is no surface here at all.
+                        if (!hit) continue;
+                        lr = SRGB_TO_LINEAR[hit[0]];
+                        lg = SRGB_TO_LINEAR[hit[1]];
+                        lb = SRGB_TO_LINEAR[hit[2]];
+                        if (tint) {
+                            lr *= tint[0];
+                            lg *= tint[1];
+                            lb *= tint[2];
+                        }
+                        used.texture += 1;
+                    } else if (vcol) {
+                        lr = cr0 * w0 + cr1 * w1 + cr2 * w2;
+                        lg = cg0 * w0 + cg1 * w1 + cg2 * w2;
+                        lb = cb0 * w0 + cb1 * w1 + cb2 * w2;
+                        if (tint) {
+                            lr *= tint[0];
+                            lg *= tint[1];
+                            lb *= tint[2];
+                        }
+                        used.vertex += 1;
+                    } else {
+                        used.flat += 1;
+                    }
                     p.set(
                         a.x * w0 + b.x * w1 + c.x * w2,
                         a.y * w0 + b.y * w1 + c.y * w2,
                         a.z * w0 + b.z * w1 + c.z * w2,
                     );
-                    let colour = rgb;
-                    if (uv) {
-                        const hit = sample(u0 * w0 + u1 * w1 + u2 * w2, v0 * w0 + v1 * w1 + v2 * w2);
-                        if (hit) {
-                            colour = hit;
-                            source = 'texture';
-                        }
-                    } else if (vcol) {
-                        colour = [
-                            byte(cr0 * w0 + cr1 * w1 + cr2 * w2),
-                            byte(cg0 * w0 + cg1 * w1 + cg2 * w2),
-                            byte(cb0 * w0 + cb1 * w1 + cb2 * w2),
-                        ];
-                        source = 'vertex';
-                    }
                     if (nrm) {
                         face.set(
                             na.x * w0 + nb.x * w1 + nc.x * w2,
@@ -213,12 +305,24 @@ export function voxelize(object, res, maxRes = MAX_RES) {
                         (p.x - box.min.x) * scale,
                         (p.y - box.min.y) * scale,
                         (p.z - box.min.z) * scale,
-                        colour,
+                        lr,
+                        lg,
+                        lb,
                     );
                 }
             }
         }
     }
+
+    const cells = new Map();
+    for (const [key, cell] of acc) {
+        const w = cell[3] || 1;
+        cells.set(key, [byte(cell[0] / w), byte(cell[1] / w), byte(cell[2] / w)]);
+    }
+
+    let source = 'flat';
+    if (used.texture >= used.vertex && used.texture > 0) source = 'texture';
+    else if (used.vertex > 0) source = 'vertex';
 
     return { dim, cells, norms, source };
 }
@@ -257,16 +361,28 @@ export function fillInside(grid) {
         push(x, y, z + 1); push(x, y, z - 1);
     }
 
-    let r = 0;
-    let g = 0;
-    let b = 0;
-    for (const rgb of cells.values()) { r += rgb[0]; g += rgb[1]; b += rgb[2]; }
-    const n = Math.max(cells.size, 1);
-    const core = [Math.round(r / n), Math.round(g / n), Math.round(b / n)];
-
-    for (let i = 0; i < total; i++) {
-        if (!outside[i] && !cells.has(i)) cells.set(i, core);
+    // Nearest shell colour, grown inward. One average for the whole model reads as
+    // grey mud wherever the shell is thin enough to see through.
+    const front = [...cells.keys()];
+    for (let head = 0; head < front.length; head++) {
+        const key = front[head];
+        const x = key % dim.x;
+        const rest = (key - x) / dim.x;
+        const z = rest % dim.z;
+        const y = (rest - z) / dim.z;
+        const rgb = cells.get(key);
+        const grow = (nx, ny, nz) => {
+            if (nx < 0 || ny < 0 || nz < 0 || nx >= dim.x || ny >= dim.y || nz >= dim.z) return;
+            const i = at(nx, ny, nz);
+            if (outside[i] || cells.has(i)) return;
+            cells.set(i, rgb);
+            front.push(i);
+        };
+        grow(x + 1, y, z); grow(x - 1, y, z);
+        grow(x, y + 1, z); grow(x, y - 1, z);
+        grow(x, y, z + 1); grow(x, y, z - 1);
     }
+
     return grid;
 }
 

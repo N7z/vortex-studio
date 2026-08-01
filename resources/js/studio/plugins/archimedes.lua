@@ -1,5 +1,6 @@
 plugin = {
     name = "Archimedes",
+    version = "1.0",
     icon = Icons.DraftingCompass,
     ui = {
         { id = "x", type = "number", label = "X", default = 0 },

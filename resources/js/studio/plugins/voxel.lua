@@ -1,5 +1,6 @@
 plugin = {
     name = "Voxel",
+    version = "1.0",
     icon = Icons.Boxes,
     ui = {
         { id = "model", type = "model", label = "Model", res = "res", solid = "solid" },

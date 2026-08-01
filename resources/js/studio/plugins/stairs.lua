@@ -1,5 +1,6 @@
 plugin = {
     name = "Stairs",
+    version = "1.0",
     icon = Icons.TrendingUp,
     ui = {
         { id = "steps", type = "number", label = "Steps", default = 10 },

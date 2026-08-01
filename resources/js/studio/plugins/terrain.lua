@@ -1,5 +1,6 @@
 plugin = {
     name = "Terrain",
+    version = "1.0",
     icon = Icons.Mountain,
     ui = {
         { id = "res", type = "number", label = "Resolution", default = 40 },

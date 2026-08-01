@@ -5,7 +5,7 @@ import useDraggable from './useDraggable';
 
 export default function PluginPanel({
     plugin, values, setValue, images, onImage, models, onModel,
-    hasSelection, targetNote, countNote, onButton, onEdit, onClose,
+    hasSelection, targetNote, onButton, onEdit, onClose,
 }) {
     const pickers = useRef({});
     const { style, onPointerDown } = useDraggable('plugin');
@@ -20,6 +20,7 @@ export default function PluginPanel({
         <div className="arch-pop" style={style}>
             <div className="arch-head" onPointerDown={onPointerDown}>
                 <h3>{plugin.name}</h3>
+                {plugin.version && <span className="arch-ver">v{plugin.version}</span>}
                 <button className="arch-edit" onClick={onEdit} title="Edit plugin script">
                     <PencilIcon />
                 </button>
@@ -76,7 +77,6 @@ export default function PluginPanel({
                                 <span className="name" title={info.name}>{info.name}</span>
                                 <span className="dim">
                                     {info.w}×{info.h}×{info.d}, {info.count.toLocaleString()} blocks
-                                    {countNote && <> {'→'} <b>{countNote}</b></>}
                                 </span>
                                 <span className="dim">
                                     {info.source === 'texture' && 'coloured from its texture'}
@@ -89,7 +89,6 @@ export default function PluginPanel({
                     </div>
                 );
             })}
-            {countNote && !shapes.length && <div className="arch-count">Makes {countNote}</div>}
             {texts.map((c) => (
                 <label className="arch-text" key={c.id}>
                     {c.label}

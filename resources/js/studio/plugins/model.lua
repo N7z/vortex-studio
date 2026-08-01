@@ -1,5 +1,6 @@
 plugin = {
     name = "Model",
+    version = "2.0",
     icon = Icons.Gem,
     ui = {
         { id = "model", type = "model", label = "Model", res = "res", solid = "solid" },
@@ -12,6 +13,8 @@ plugin = {
         { id = "cover", type = "number", label = "Plate overlap", default = 1.7 },
         { id = "core", type = "checkbox", label = "Keep a solid core", default = false },
         { id = "flat", type = "number", label = "Keep flat faces square", default = 0.985 },
+        { id = "palette", type = "number", label = "Colours", default = 24 },
+        { id = "clean", type = "number", label = "Clean up speckles", default = 1 },
         { id = "ground", type = "checkbox", label = "Sit on the selected part", default = true },
         { id = "build", type = "button", label = "Build model" },
     },
@@ -21,6 +24,13 @@ local MAX_VOXELS = 400000
 local MAX_RUN = 64
 local TO_DEG = 180 / math.pi
 local AGREE = 0.4
+-- 5 bits per channel: a texture's dithering lands in one bucket, two real shades
+-- of the same red do not.
+local BUCKET = 8
+local MAX_PALETTE = 64
+local NEIGHBOURS = {
+    { 1, 0, 0 }, { -1, 0, 0 }, { 0, 1, 0 }, { 0, -1, 0 }, { 0, 0, 1 }, { 0, 0, -1 },
+}
 
 local function maxParts()
     return (Limits and Limits.parts) or 50000
@@ -52,10 +62,97 @@ local function euler_from_axes(xx, _, _, yx, yy, yz, zx, zy, zz)
     return round(rx * TO_DEG), round(ry * TO_DEG), round(rz * TO_DEG)
 end
 
+local hexbyte = {}
+
+local function rgb_of(hexstr)
+    local c = hexbyte[hexstr]
+    if c then return c[1], c[2], c[3] end
+    local r = tonumber(hexstr:sub(1, 2), 16) or 0
+    local g = tonumber(hexstr:sub(3, 4), 16) or 0
+    local b = tonumber(hexstr:sub(5, 6), 16) or 0
+    hexbyte[hexstr] = { r, g, b }
+    return r, g, b
+end
+
+local function to_hex(r, g, b)
+    return string.format("%02x%02x%02x", r, g, b)
+end
+
+-- The mesher merges on exact equality, so one texel of drift per voxel stops it
+-- joining anything. Snapping to a small palette is what makes it work at all.
+local function palettise(cs, count, want)
+    local pop, sum, shades = {}, {}, {}
+    local distinct = 0
+    for i = 1, count do
+        local hexstr = cs[i]
+        if not shades[hexstr] then
+            shades[hexstr] = true
+            distinct = distinct + 1
+        end
+        local r, g, b = rgb_of(hexstr)
+        local key = (r // BUCKET) * 1024 + (g // BUCKET) * 32 + (b // BUCKET)
+        local s = sum[key]
+        if s then
+            s[1] = s[1] + r
+            s[2] = s[2] + g
+            s[3] = s[3] + b
+            pop[key] = pop[key] + 1
+        else
+            sum[key] = { r, g, b }
+            pop[key] = 1
+        end
+    end
+    -- On the distinct colours, not the buckets: a model can spread a hundred
+    -- near-identical shades over four buckets and still merge nothing.
+    if distinct <= want then return nil end
+
+    local keys = {}
+    for key in pairs(pop) do keys[#keys + 1] = key end
+    table.sort(keys, function(a, b) return pop[a] > pop[b] end)
+    want = math.min(want, #keys)
+
+    local pal = {}
+    for i = 1, want do
+        local s, n = sum[keys[i]], pop[keys[i]]
+        pal[i] = {
+            math.floor(s[1] / n + 0.5),
+            math.floor(s[2] / n + 0.5),
+            math.floor(s[3] / n + 0.5),
+        }
+    end
+
+    -- Once per distinct colour, not once per voxel.
+    local seen = {}
+    local out = {}
+    for i = 1, count do
+        local hexstr = cs[i]
+        local got = seen[hexstr]
+        if not got then
+            local r, g, b = rgb_of(hexstr)
+            local best, bd = 1, math.huge
+            for k = 1, want do
+                local p = pal[k]
+                local dr, dg, db = r - p[1], g - p[2], b - p[3]
+                local d = dr * dr + dg * dg + db * db
+                if d < bd then best, bd = k, d end
+            end
+            local p = pal[best]
+            got = to_hex(p[1], p[2], p[3])
+            seen[hexstr] = got
+        end
+        out[i] = got
+    end
+
+    return out
+end
+
 local cache = {}
 
-local function prepared(radius)
-    if cache.model == Model and cache.radius == radius then return cache end
+local function prepared(radius, want, clean)
+    if cache.model == Model and cache.radius == radius
+        and cache.want == want and cache.clean == clean then
+        return cache
+    end
 
     local W, D = Model.w, Model.d
     local slot = {}
@@ -70,6 +167,32 @@ local function prepared(radius)
 
     local function at(x, y, z)
         return slot[(y * D + z) * W + x]
+    end
+
+    if want > 0 then
+        cs = palettise(cs, Model.count, want) or cs
+    end
+
+    -- A colour no neighbour shares is texture noise, not something the artist
+    -- painted, so it takes the commonest neighbour instead.
+    for _ = 1, clean do
+        local next_cs = {}
+        for i = 1, Model.count do
+            local x, y, z = xs[i], ys[i], zs[i]
+            local tally, best, bn = {}, cs[i], 0
+            for k = 1, 6 do
+                local o = NEIGHBOURS[k]
+                local j = at(x + o[1], y + o[2], z + o[3])
+                if j then
+                    local h = cs[j]
+                    local n = (tally[h] or 0) + 1
+                    tally[h] = n
+                    if n > bn then best, bn = h, n end
+                end
+            end
+            next_cs[i] = tally[cs[i]] and cs[i] or best
+        end
+        cs = next_cs
     end
 
     local ball = {}
@@ -128,7 +251,7 @@ local function prepared(radius)
     end
 
     cache = {
-        model = Model, radius = radius, at = at, counts = {},
+        model = Model, radius = radius, want = want, clean = clean, at = at,
         xs = xs, ys = ys, zs = zs, cs = cs,
         skin = skin, sx = sx, sy = sy, sz = sz,
     }
@@ -136,8 +259,8 @@ local function prepared(radius)
     return cache
 end
 
-local function build(part, values, counting)
-    if Model == nil or Model.count < 1 then return counting and 0 or {} end
+local function build(part, values)
+    if Model == nil or Model.count < 1 then return {} end
     if Model.count > MAX_VOXELS then
         error("that model has " .. Model.count .. " voxels, too many to build: lower Detail")
     end
@@ -148,17 +271,16 @@ local function build(part, values, counting)
     local cover = clamp(tonumber(values.cover) or 1.7, 1, 4) * size
     local flat = clamp(tonumber(values.flat) or 0.985, 0, 1)
     local merge = clamp(tonumber(values.merge) or 6, 0, 45)
+    local want = math.floor(clamp(tonumber(values.palette) or 24, 0, MAX_PALETTE))
+    local clean = math.floor(clamp(tonumber(values.clean) or 1, 0, 3))
     local agree = merge > 0 and math.cos(merge / TO_DEG) or 2
     local core = values.core == true
     local base = values.ground ~= false and (part.P[2] + part.S[2] / 2) or part.P[2]
 
-    local c = prepared(radius)
+    local c = prepared(radius, want, clean)
     local xs, ys, zs, cs = c.xs, c.ys, c.zs, c.cs
     local skin, sx, sy, sz = c.skin, c.sx, c.sy, c.sz
     local at = c.at
-
-    local key = flat .. "/" .. merge .. "/" .. tostring(core)
-    if counting and c.counts[key] then return c.counts[key] end
 
     local W, D = Model.w, Model.d
     local ox = part.P[1] - W * size / 2
@@ -169,19 +291,8 @@ local function build(part, values, counting)
     end
 
     local out = {}
-    local made = 0
     local limit = maxParts()
     local taken = {}
-    local function emit(p)
-        made = made + 1
-        if not counting then out[#out + 1] = p end
-    end
-    local function done()
-        if not counting then return out end
-        c.counts[key] = made
-
-        return made
-    end
 
     for i = 1, Model.count do
         if skin[i] and not taken[i] then
@@ -239,9 +350,9 @@ local function build(part, values, counting)
             local cy = base + (y0 + (ay * spanA + by * spanB) / 2 + 0.5) * size
             local cz = oz + (z0 + (az * spanA + bz * spanB) / 2 + 0.5) * size
 
-            if made >= limit then return done() end
+            if #out >= limit then return out end
             if square then
-                emit({
+                out[#out + 1] = {
                     T = "Part",
                     P = { round(cx), round(cy), round(cz) },
                     S = {
@@ -252,7 +363,7 @@ local function build(part, values, counting)
                     R = { 0, 0, 0 },
                     C = cs[i],
                     Tr = 0,
-                })
+                }
             else
                 local d = ax * nx + ay * ny + az * nz
                 local tx, ty, tz = ax - d * nx, ay - d * ny, az - d * nz
@@ -264,7 +375,7 @@ local function build(part, values, counting)
                 local rx, ry, rz = euler_from_axes(tx, ty, tz, nx, ny, nz, ux, uy, uz)
 
                 local push = (size - thick) / 2
-                emit({
+                out[#out + 1] = {
                     T = "Part",
                     P = {
                         round(cx + nx * push),
@@ -275,12 +386,12 @@ local function build(part, values, counting)
                     R = { rx, ry, rz },
                     C = cs[i],
                     Tr = 0,
-                })
+                }
             end
         end
     end
 
-    if not core then return done() end
+    if not core then return out end
 
     local i = 1
     while i <= Model.count do
@@ -295,8 +406,8 @@ local function build(part, values, counting)
                 if skin[j] then break end
                 run = run + 1
             end
-            if made >= limit then return done() end
-            emit({
+            if #out >= limit then return out end
+            out[#out + 1] = {
                 T = "Part",
                 P = {
                     round(ox + (x + run / 2) * size),
@@ -307,19 +418,15 @@ local function build(part, values, counting)
                 R = { 0, 0, 0 },
                 C = cs[i],
                 Tr = 0,
-            })
+            }
             i = i + run
         end
     end
 
-    return done()
+    return out
 end
 
 function plugin.click(id, part, values)
     if id ~= "build" then return nil end
     return build(part, values)
-end
-
-function plugin.count(values)
-    return build({ P = { 0, 0, 0 }, S = { 0, 0, 0 } }, values, true)
 end

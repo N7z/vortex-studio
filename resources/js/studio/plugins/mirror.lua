@@ -1,5 +1,6 @@
 plugin = {
     name = "Mirror",
+    version = "1.0",
     icon = Icons.FlipHorizontal,
     ui = {
         { id = "mx", type = "checkbox", label = "Mirror X", default = true },

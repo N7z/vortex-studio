@@ -1,5 +1,6 @@
 plugin = {
     name = "Image",
+    version = "1.0",
     icon = Icons.Image,
     ui = {
         { id = "img", type = "image", label = "Image" },
