@@ -433,12 +433,12 @@ it('deletes a map and lets only the team owner delete a team one', function () {
 
     $this->actingAs($a)->putJson('/api/maps/gone', ['parts' => [TPART]])->assertOk();
     $this->actingAs($a)->deleteJson('/api/maps/gone')->assertOk();
-    expect(DB::table('maps')->where('name', 'gone')->exists())->toBeFalse();
+    expect(DB::table('maps')->where('name', 'gone')->whereNull('deleted_at')->exists())->toBeFalse();
 
     $this->actingAs($a)->putJson("/api/maps/shared?team=$team", ['parts' => [TPART]])->assertOk();
     $this->actingAs($b)->deleteJson("/api/maps/shared?team=$team")->assertStatus(403);
     $this->actingAs($a)->deleteJson("/api/maps/shared?team=$team")->assertOk();
-    expect(DB::table('maps')->count())->toBe(0);
+    expect(DB::table('maps')->whereNull('deleted_at')->count())->toBe(0);
 });
 
 it('keeps one team map from renaming onto another', function () {

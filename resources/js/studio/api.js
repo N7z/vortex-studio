@@ -66,6 +66,15 @@ export class StaleError extends Error {
     }
 }
 
+export class DestructiveError extends Error {
+    constructor(was, now) {
+        super('this save removes most of the map');
+        this.destructive = true;
+        this.was = was;
+        this.now = now;
+    }
+}
+
 // PHP discards a request body over post_max_size (8 MB by default) before any code
 // sees it, and a big map is mostly repeated key names, so it gzips to about a fifth.
 // Sent under our own header: nginx and Cloudflare do not touch request bodies, but
@@ -79,9 +88,10 @@ const gzip = async (text) => new Response(
 /** The JSON a save would send, so a caller can size it without building it twice. */
 export const saveBody = (parts, groups, version) => JSON.stringify({ parts, groups, version });
 
-export async function saveMap(name, parts, groups, team = null, version = null, body = null) {
+export async function saveMap(name, parts, groups, team = null, version = null, body = null, confirmed = false) {
     const text = body ?? saveBody(parts, groups, version);
     const headers = { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf };
+    if (confirmed) headers['X-Confirm-Destructive'] = '1';
     let payload = text;
     if (text.length > GZIP_OVER && typeof CompressionStream === 'function') {
         payload = await gzip(text);
@@ -94,10 +104,36 @@ export async function saveMap(name, parts, groups, team = null, version = null, 
     });
     const d = await r.json().catch(() => ({}));
     if (r.status === 409) throw new StaleError(d.version ?? null);
+    if (d.error === 'destructive') throw new DestructiveError(d.was ?? 0, d.now ?? 0);
     if (!r.ok) throw new Error(d.message || `failed to save ${name}`);
 
     return d;
 }
+
+const historyUrl = (name, team, suffix = '') =>
+    `/api/maps/${encodeURIComponent(name)}/history${suffix}${team != null ? `?team=${team}` : ''}`;
+
+async function json(url, options = {}) {
+    const r = await fetch(url, {
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf },
+        ...options,
+        body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.message || 'that did not work');
+
+    return d;
+}
+
+export const mapHistory = (name, team) => json(historyUrl(name, team));
+export const pinVersion = (name, team) => json(historyUrl(name, team), { method: 'POST' });
+export const loadVersion = (name, team, id) => json(historyUrl(name, team, `/${id}`));
+export const restoreVersion = (name, team, id) =>
+    json(historyUrl(name, team, `/${id}/restore`), { method: 'POST' });
+
+export const listTrash = () => json('/api/maps/trash');
+export const restoreTrashed = (id) => json(`/api/trash/${id}/restore`, { method: 'POST' });
+export const purgeTrashed = (id) => json(`/api/trash/${id}`, { method: 'DELETE' });
 
 export async function moveMap(name, fromTeam, toTeam) {
     const r = await fetch(mapUrl(name, fromTeam), {

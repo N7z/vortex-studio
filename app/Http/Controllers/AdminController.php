@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Support\Audit;
+use App\Support\MapHistory;
 use App\Support\Stats;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -78,6 +80,7 @@ class AdminController extends Controller
             ->orderByDesc('maps.updated_at')
             ->paginate(self::PER_PAGE, [
                 'maps.id', 'maps.name', 'maps.user_id', 'maps.created_at', 'maps.updated_at',
+                'maps.deleted_at',
                 'users.name as owner', 'users.email as owner_email',
                 DB::raw('length(maps.data) as bytes'),
             ]);
@@ -95,13 +98,54 @@ class AdminController extends Controller
         ]);
     }
 
-    public function deleteMap(int $id)
+    public function deleteMap(Request $request, int $id)
     {
-        $deleted = DB::table('maps')->where('id', $id)->delete();
-        abort_unless($deleted, 404);
+        $row = DB::table('maps')->where('id', $id)->first();
+        abort_unless($row, 404);
+        $purge = $request->boolean('purge');
+
+        if ($purge) {
+            MapHistory::forget($id);
+            DB::table('maps')->where('id', $id)->delete();
+        } else {
+            MapHistory::snapshot($row, MapHistory::PRE_DELETE);
+            DB::table('maps')->where('id', $id)->update(['deleted_at' => now()]);
+        }
+        Audit::log($purge ? 'admin.map_purge' : 'admin.map_delete', $id, ['name' => $row->name]);
         Cache::forget('admin_overview');
 
-        return response()->json(['deleted' => true]);
+        return response()->json(['deleted' => true, 'purged' => $purge]);
+    }
+
+    public function restoreMap(int $id)
+    {
+        $row = DB::table('maps')->where('id', $id)->whereNotNull('deleted_at')->first(['id', 'name']);
+        abort_unless($row, 404);
+
+        DB::table('maps')->where('id', $id)->update(['deleted_at' => null, 'updated_at' => now()]);
+        Audit::log('admin.map_restore', $id, ['name' => $row->name]);
+        Cache::forget('admin_overview');
+
+        return response()->json(['restored' => true]);
+    }
+
+    public function audit(Request $request)
+    {
+        $q = trim((string) $request->query('q', ''));
+
+        return DB::table('audit_log')
+            ->leftJoin('users', 'users.id', '=', 'audit_log.user_id')
+            ->when($q !== '', fn ($b) => $b->where(function ($w) use ($q) {
+                $w->where('audit_log.action', 'like', "%$q%")
+                    ->orWhere('users.name', 'like', "%$q%")
+                    ->orWhere('audit_log.meta', 'like', "%$q%");
+            }))
+            ->orderByDesc('audit_log.id')
+            ->paginate(self::PER_PAGE, [
+                'audit_log.id', 'audit_log.action', 'audit_log.subject_id', 'audit_log.team_id',
+                'audit_log.meta', 'audit_log.ip', 'audit_log.created_at',
+                'users.name as who',
+            ]);
     }
 
     public function updateUser(Request $request, User $user)
@@ -110,6 +154,7 @@ class AdminController extends Controller
         $this->refuseSelf($user);
 
         $user->forceFill(['banned_at' => $data['banned'] ? now() : null])->save();
+        Audit::log($data['banned'] ? 'admin.user_ban' : 'admin.user_unban', $user->id, ['name' => $user->name]);
 
         return response()->json(['banned_at' => $user->banned_at]);
     }
@@ -119,9 +164,11 @@ class AdminController extends Controller
         $this->refuseSelf($user);
 
         DB::transaction(function () use ($user) {
-            DB::table('maps')->where('user_id', $user->id)->delete();
+            DB::table('maps')->where('user_id', $user->id)->whereNull('deleted_at')
+                ->update(['deleted_at' => now()]);
             $user->delete();
         });
+        Audit::log('admin.user_delete', $user->id, ['name' => $user->name]);
         Cache::forget('admin_overview');
 
         return response()->json(['deleted' => true]);

@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { deleteMap, listMaps } from './api';
+import { deleteMap, listMaps, restoreMap } from './api';
 import useList from './useList';
 import useDialogs from '../ui/useDialogs';
 import Pager from './Pager';
@@ -14,18 +14,11 @@ export default function Maps({ onChanged }) {
     const [error, setError] = useState(null);
     const { dialogs, confirm } = useDialogs();
 
-    const remove = async (m) => {
-        const yes = await confirm({
-            title: `Delete "${m.name}"?`,
-            body: 'The map and everything in it go for good. This cannot be undone.',
-            confirmLabel: 'Delete map',
-            danger: true,
-        });
-        if (!yes) return;
-        setBusy(m.id);
+    const run = async (id, job) => {
+        setBusy(id);
         setError(null);
         try {
-            await deleteMap(m.id);
+            await job();
             list.reload();
             onChanged?.();
         } catch (e) {
@@ -33,6 +26,26 @@ export default function Maps({ onChanged }) {
         } finally {
             setBusy(null);
         }
+    };
+
+    const remove = async (m) => {
+        const yes = await confirm({
+            title: `Delete "${m.name}"?`,
+            body: 'It goes to the trash, where its owner can still put it back.',
+            confirmLabel: 'Delete map',
+            danger: true,
+        });
+        if (yes) run(m.id, () => deleteMap(m.id));
+    };
+
+    const purge = async (m) => {
+        const yes = await confirm({
+            title: `Delete "${m.name}" for good?`,
+            body: 'The map and every version kept of it go. This one cannot be undone.',
+            confirmLabel: 'Delete for good',
+            danger: true,
+        });
+        if (yes) run(m.id, () => deleteMap(m.id, true));
     };
 
     return (
@@ -52,7 +65,7 @@ export default function Maps({ onChanged }) {
                 <thead>
                     <tr>
                         <th>Name</th><th>Owner</th><th className="num">Size</th>
-                        <th>Last saved</th><th />
+                        <th>Last saved</th><th>State</th><th />
                     </tr>
                 </thead>
                 <tbody>
@@ -64,18 +77,35 @@ export default function Maps({ onChanged }) {
                             </td>
                             <td className="num">{size(m.bytes)}</td>
                             <td className="dim">{when(m.updated_at)}</td>
+                            <td className="dim">
+                                {m.deleted_at ? <span className="tag">In trash</span> : 'Live'}
+                            </td>
                             <td className="row-actions">
                                 <a className="button" href={`/?view=${m.id}`} target="_blank" rel="noreferrer">
                                     Open
                                 </a>
-                                <button className="danger" disabled={busy === m.id} onClick={() => remove(m)}>
-                                    Delete
-                                </button>
+                                {m.deleted_at ? (
+                                    <>
+                                        <button
+                                            disabled={busy === m.id}
+                                            onClick={() => run(m.id, () => restoreMap(m.id))}
+                                        >
+                                            Restore
+                                        </button>
+                                        <button className="danger" disabled={busy === m.id} onClick={() => purge(m)}>
+                                            Delete for good
+                                        </button>
+                                    </>
+                                ) : (
+                                    <button className="danger" disabled={busy === m.id} onClick={() => remove(m)}>
+                                        Delete
+                                    </button>
+                                )}
                             </td>
                         </tr>
                     ))}
                     {!list.rows.length && !list.loading && (
-                        <tr><td colSpan="5" className="dim">No maps match.</td></tr>
+                        <tr><td colSpan="6" className="dim">No maps match.</td></tr>
                     )}
                 </tbody>
             </table>

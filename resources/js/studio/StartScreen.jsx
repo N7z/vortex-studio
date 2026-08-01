@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { deleteMap, listMaps, renameMap } from './api';
+import { deleteMap, listMaps, listTrash, purgeTrashed, renameMap, restoreTrashed } from './api';
 import { listBackups, readBackup, deleteBackup } from './backup';
 import useDialogs from '../ui/useDialogs';
+import History from './History';
 import MoveMap from './MoveMap';
 import UserMenu from './UserMenu';
 
@@ -35,6 +36,9 @@ export default function StartScreen({
     const [account, setAccount] = useState(null);
     const [teams, setTeams] = useState([]);
     const [backups, setBackups] = useState(() => listBackups());
+    const [trash, setTrash] = useState([]);
+    const [trashDays, setTrashDays] = useState(30);
+    const [history, setHistory] = useState(null);
     const [disclaimer, setDisclaimer] = useState(() => !readClosed());
     const [error, setError] = useState('');
     const [scope, setScope] = useState(null);
@@ -44,20 +48,28 @@ export default function StartScreen({
     const fileRef = useRef(null);
     const { dialogs, notice, confirm, ask } = useDialogs();
 
-    const refresh = () => listMaps()
-        .then((d) => {
-            const rows = d.mine ?? [];
-            setMine(rows);
-            setExamples(d.examples ?? []);
-            setTtl(d.ttl_hours ?? 24);
-            setAccount(d.account ?? null);
-            setTeams(d.teams ?? []);
-            onAccountSeen?.(d.account ?? null, d.ttl_hours ?? 24);
-            // Examples are the only useful thing to click with nothing of your own,
-            // and they leave the way as soon as there is a first map.
-            setScope((s) => s ?? (rows.length ? 'personal' : 'examples'));
-        })
-        .catch((e) => setError(String(e.message ?? e)));
+    const refreshTrash = () => listTrash()
+        .then((d) => { setTrash(d.trash ?? []); setTrashDays(d.trash_days ?? 30); })
+        .catch(() => setTrash([]));
+
+    const refresh = () => {
+        refreshTrash();
+
+        return listMaps()
+            .then((d) => {
+                const rows = d.mine ?? [];
+                setMine(rows);
+                setExamples(d.examples ?? []);
+                setTtl(d.ttl_hours ?? 24);
+                setAccount(d.account ?? null);
+                setTeams(d.teams ?? []);
+                onAccountSeen?.(d.account ?? null, d.ttl_hours ?? 24);
+                // Examples are the only useful thing to click with nothing of your own,
+                // and they leave the way as soon as there is a first map.
+                setScope((s) => s ?? (rows.length ? 'personal' : 'examples'));
+            })
+            .catch((e) => setError(String(e.message ?? e)));
+    };
 
     // Signing in from the toolbar changes which maps and teams there are.
     useEffect(() => { refresh(); }, [accountSeq]);
@@ -132,20 +144,22 @@ export default function StartScreen({
         })),
         { id: 'examples', label: 'Examples', count: examples.length },
         { id: 'device', label: 'On this device', count: backups.length },
-    ], [personal, teams, mine, examples, backups]);
+        ...(trash.length ? [{ id: 'trash', label: 'Trash', count: trash.length }] : []),
+    ], [personal, teams, mine, examples, backups, trash]);
 
     const rows = useMemo(() => {
         const q = query.trim().toLowerCase();
         const match = (n) => !q || n.toLowerCase().includes(q);
         if (scope === 'examples') return examples.filter((m) => match(m.title ?? m.name));
         if (scope === 'device') return backups.filter((b) => match(b.name));
+        if (scope === 'trash') return trash.filter((m) => match(m.name));
         if (team) return mine.filter((m) => m.team_id === team.id && match(m.name));
 
         return personal.filter((m) => match(m.name));
-    }, [scope, query, examples, backups, mine, personal, team]);
+    }, [scope, query, examples, backups, trash, mine, personal, team]);
 
     // Examples are read-only fixtures, and a device backup is not a stored map.
-    const canManage = scope !== 'examples' && scope !== 'device'
+    const canManage = scope !== 'examples' && scope !== 'device' && scope !== 'trash'
         && (scope === 'personal' || team?.role !== 'viewer');
 
     const rename = async (m) => {
@@ -186,12 +200,45 @@ export default function StartScreen({
         }
     };
 
+    const undelete = async (m) => {
+        try {
+            const d = await restoreTrashed(m.id);
+            refresh();
+            if (d.name !== m.name) {
+                notice({
+                    title: `Restored as ${d.name}.json`,
+                    body: `A map called ${m.name} was created while this one was in the trash, so the`
+                        + ' one coming back was given a free name.',
+                });
+            }
+        } catch (e) {
+            notice({ title: 'That map could not be restored', body: String(e.message ?? e) });
+        }
+    };
+
+    const shred = async (m) => {
+        const yes = await confirm({
+            title: `Delete ${m.name}.json for good?`,
+            body: 'The map and every version kept of it go. This one really cannot be undone.',
+            confirmLabel: 'Delete for good',
+            danger: true,
+        });
+        if (!yes) return;
+        try {
+            await purgeTrashed(m.id);
+            refresh();
+        } catch (e) {
+            notice({ title: 'That map could not be deleted', body: String(e.message ?? e) });
+        }
+    };
+
     const canCreate = scope === 'personal' || (team && team.role !== 'viewer');
     const canMove = !!account && (scope === 'personal'
         ? teams.some((t) => t.role !== 'viewer')
         : team?.role === 'owner');
 
     const openRow = (m) => {
+        if (scope === 'trash') return undelete(m);
         if (scope === 'device') return restore(m.name);
         if (scope === 'examples') return onOpen(m.name, null);
 
@@ -202,6 +249,7 @@ export default function StartScreen({
         personal: 'No maps of your own yet.',
         examples: 'No examples are installed.',
         device: 'Nothing has been saved from this browser yet.',
+        trash: 'The trash is empty.',
     }[scope] ?? (team?.role === 'viewer'
         ? 'This team has no maps you can open.'
         : 'This team has no maps yet.');
@@ -209,6 +257,15 @@ export default function StartScreen({
     return (
         <div className="start">
             {dialogs}
+            {history && (
+                <History
+                    name={history.name}
+                    team={history.team_id ?? null}
+                    canEdit={history.canEdit}
+                    onClose={() => setHistory(null)}
+                    onRestored={() => refresh()}
+                />
+            )}
             {moving && (
                 <MoveMap
                     map={moving}
@@ -284,13 +341,18 @@ export default function StartScreen({
                             {scope === 'personal' && !account && personal.length > 0 && (
                                 <p className="scope-note">Kept {ttl}h after each save. Sign in to keep them.</p>
                             )}
+                            {scope === 'trash' && (
+                                <p className="scope-note">
+                                    Deleted maps stay here for {trashDays} days. Open one to put it back.
+                                </p>
+                            )}
 
                             {rows.length === 0 ? (
                                 <p className="scope-note">{query ? 'Nothing matches that.' : nothingHere}</p>
                             ) : (
                                 <div className="cards">
                                     {rows.map((m) => (
-                                        <div className="card" key={m.name}>
+                                        <div className="card" key={m.id ?? m.name}>
                                             <button type="button" className="card-open" onClick={() => openRow(m)}>
                                                 <span className="card-shot">
                                                     {m.thumb
@@ -299,7 +361,11 @@ export default function StartScreen({
                                                 </span>
                                                 <span className="card-name">{m.title ?? m.name}</span>
                                                 <span className="card-when">
-                                                    {scope === 'device' ? ago(m.savedAt) : ago(m.modified * 1000)}
+                                                    {scope === 'trash'
+                                                        ? `Deleted ${ago(m.deleted * 1000)}`
+                                                        : scope === 'device'
+                                                            ? ago(m.savedAt)
+                                                            : ago(m.modified * 1000)}
                                                 </span>
                                             </button>
                                             {m.name === openName && scope !== 'device' && teamId === openTeam && (
@@ -311,6 +377,16 @@ export default function StartScreen({
                                                     className="card-x"
                                                     title="Delete this local copy"
                                                     onClick={() => forget(m.name)}
+                                                >
+                                                    ×
+                                                </button>
+                                            )}
+                                            {scope === 'trash' && (
+                                                <button
+                                                    type="button"
+                                                    className="card-x"
+                                                    title="Delete for good"
+                                                    onClick={() => shred(m)}
                                                 >
                                                     ×
                                                 </button>
@@ -329,6 +405,19 @@ export default function StartScreen({
                                                         <>
                                                             <div className="menu-shade" onClick={() => setMenu(null)} />
                                                             <div className="menu-pop">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setMenu(null);
+                                                                        setHistory({
+                                                                            ...m,
+                                                                            canEdit: scope === 'personal'
+                                                                                || team?.role !== 'viewer',
+                                                                        });
+                                                                    }}
+                                                                >
+                                                                    History
+                                                                </button>
                                                                 <button type="button" onClick={() => rename(m)}>
                                                                     Rename
                                                                 </button>

@@ -51,13 +51,14 @@ class MapAccess
     {
         $id = Auth::id();
         if (! $id) {
-            return DB::table('maps')->whereNull('user_id')->whereNull('team_id')
+            return DB::table('maps')->whereNull('deleted_at')
+                ->whereNull('user_id')->whereNull('team_id')
                 ->where('token', self::token($request));
         }
 
         $teams = self::teamIds();
 
-        return DB::table('maps')->where(function ($q) use ($id, $teams) {
+        return DB::table('maps')->whereNull('deleted_at')->where(function ($q) use ($id, $teams) {
             $q->where(fn ($p) => $p->where('user_id', $id)->whereNull('team_id'));
             if ($teams) {
                 $q->orWhereIn('team_id', $teams);
@@ -71,16 +72,36 @@ class MapAccess
         $id = Auth::id();
 
         return $id
-            ? DB::table('maps')->where('user_id', $id)->whereNull('team_id')
-            : DB::table('maps')->whereNull('user_id')->whereNull('team_id')
+            ? DB::table('maps')->whereNull('deleted_at')->where('user_id', $id)->whereNull('team_id')
+            : DB::table('maps')->whereNull('deleted_at')
+                ->whereNull('user_id')->whereNull('team_id')
                 ->where('token', self::token($request));
+    }
+
+    public static function trashed(Request $request): Builder
+    {
+        $id = Auth::id();
+        if (! $id) {
+            return DB::table('maps')->whereNotNull('deleted_at')
+                ->whereNull('user_id')->whereNull('team_id')
+                ->where('token', self::token($request));
+        }
+
+        $owned = DB::table('teams')->where('owner_id', $id)->pluck('id')->all();
+
+        return DB::table('maps')->whereNotNull('deleted_at')->where(function ($q) use ($id, $owned) {
+            $q->where(fn ($p) => $p->where('user_id', $id)->whereNull('team_id'));
+            if ($owned) {
+                $q->orWhereIn('team_id', $owned);
+            }
+        });
     }
 
     public static function find(Request $request, string $name, ?int $teamId)
     {
         $q = $teamId === null
             ? self::personal($request)
-            : DB::table('maps')->where('team_id', $teamId);
+            : DB::table('maps')->whereNull('deleted_at')->where('team_id', $teamId);
 
         return $q->where('name', $name)->first();
     }

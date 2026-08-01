@@ -24,6 +24,18 @@ Route::get('/api/thumbs/{key}.webp', [MapController::class, 'thumb'])->where('ke
 
 Route::middleware('throttle:60,1')->group(function () {
     Route::get('/api/maps', [MapController::class, 'index']);
+
+    Route::get('/api/maps/trash', [MapController::class, 'trash']);
+    Route::post('/api/trash/{id}/restore', [MapController::class, 'restore'])->whereNumber('id');
+    Route::delete('/api/trash/{id}', [MapController::class, 'purgeOne'])->whereNumber('id');
+
+    Route::get('/api/maps/{name}/history', [MapController::class, 'history']);
+    Route::post('/api/maps/{name}/history', [MapController::class, 'pinVersion']);
+    Route::get('/api/maps/{name}/history/{version}', [MapController::class, 'showVersion'])
+        ->whereNumber('version');
+    Route::post('/api/maps/{name}/history/{version}/restore', [MapController::class, 'restoreVersion'])
+        ->whereNumber('version');
+
     Route::get('/api/maps/{name}', [MapController::class, 'show']);
     Route::put('/api/maps/{name}', [MapController::class, 'save']);
     Route::patch('/api/maps/{name}', [MapController::class, 'move']);
@@ -47,7 +59,9 @@ Route::prefix('admin')->middleware('admin')->group(function () {
     Route::get('/users', [AdminController::class, 'users']);
     Route::patch('/users/{user}', [AdminController::class, 'updateUser']);
     Route::delete('/users/{user}', [AdminController::class, 'deleteUser']);
+    Route::get('/audit', [AdminController::class, 'audit']);
     Route::get('/maps', [AdminController::class, 'maps']);
     Route::get('/maps/{id}', [AdminController::class, 'map'])->whereNumber('id');
     Route::delete('/maps/{id}', [AdminController::class, 'deleteMap'])->whereNumber('id');
+    Route::post('/maps/{id}/restore', [AdminController::class, 'restoreMap'])->whereNumber('id');
 });

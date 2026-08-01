@@ -3,11 +3,12 @@ import { overview } from './api';
 import Chart from './Chart';
 import Users from './Users';
 import Maps from './Maps';
+import Audit from './Audit';
 
 const BLUE = '#3987e5';
 const ORANGE = '#d95926';
 
-const TABS = [['overview', 'Overview'], ['users', 'Users'], ['maps', 'Maps']];
+const TABS = [['overview', 'Overview'], ['users', 'Users'], ['maps', 'Maps'], ['audit', 'Activity']];
 
 const compact = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e4 ? `${Math.round(n / 1e3)}K` : n.toLocaleString());
 
@@ -101,6 +102,7 @@ export default function Admin() {
 
             {tab === 'users' && <Users me={{ id: data.me }} onChanged={load} />}
             {tab === 'maps' && <Maps onChanged={load} />}
+            {tab === 'audit' && <Audit />}
         </div>
     );
 }

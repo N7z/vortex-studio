@@ -141,7 +141,9 @@ it('keeps an account s maps past the anonymous TTL', function () {
 
     $this->getJson('/api/maps')->assertOk();
 
-    expect(DB::table('maps')->pluck('name')->all())->toBe(['owned']);
+    // Expiring is a move to the trash, so a token lost on the last day is recoverable.
+    expect(DB::table('maps')->whereNull('deleted_at')->pluck('name')->all())->toBe(['owned'])
+        ->and(DB::table('maps')->whereNotNull('deleted_at')->pluck('name')->all())->toBe(['stale']);
 });
 
 it('does not show one account the maps of another', function () {

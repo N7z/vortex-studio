@@ -21,4 +21,6 @@ export const listUsers = (params) => call(`/users${query(params)}`);
 export const listMaps = (params) => call(`/maps${query(params)}`);
 export const setBanned = (id, banned) => call(`/users/${id}`, { method: 'PATCH', body: { banned } });
 export const deleteUser = (id) => call(`/users/${id}`, { method: 'DELETE' });
-export const deleteMap = (id) => call(`/maps/${id}`, { method: 'DELETE' });
+export const listAudit = (params) => call(`/audit${query(params)}`);
+export const deleteMap = (id, purge = false) => call(`/maps/${id}${purge ? '?purge=1' : ''}`, { method: 'DELETE' });
+export const restoreMap = (id) => call(`/maps/${id}/restore`, { method: 'POST' });

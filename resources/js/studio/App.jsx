@@ -889,7 +889,7 @@ export default function App() {
             .catch(() => {});
     }, []);
 
-    const save = useCallback(async (auto) => {
+    const save = useCallback(async (auto, confirmed = false) => {
         if (!mapName) return false;
         if (liveRef.current.live && !liveRef.current.canEdit) {
             if (auto !== true) flash('You are a spectator in this session');
@@ -905,7 +905,7 @@ export default function App() {
         const backed = writeBackup(mapName, snapshot, body);
         try {
             const r = await saveMap(
-                mapName, snapshot, grouped, mapTeamRef.current, versionRef.current, body,
+                mapName, snapshot, grouped, mapTeamRef.current, versionRef.current, body, confirmed,
             );
             versionRef.current = r.version ?? null;
             // Edits made while the request was in flight must stay dirty.
@@ -923,12 +923,25 @@ export default function App() {
                 staleSeen.current = true;
                 return false;
             }
+            if (e.destructive) {
+                const yes = await confirm({
+                    title: `Save ${mapName}.json with ${e.now} parts?`,
+                    body: `This map has ${e.was} parts in the cloud and this save keeps ${e.now}.`
+                        + ' Everyone in the team gets this copy. The version before it is kept,'
+                        + ' so it can be put back from History.',
+                    confirmLabel: 'Save anyway',
+                    danger: true,
+                });
+                if (!yes) return false;
+
+                return save(auto, true);
+            }
             flash(backed
                 ? `Server save failed (${e.message ?? e}), kept a copy on this device`
                 : String(e.message ?? e));
             return false;
         }
-    }, [mapName, flash, snapThumb]);
+    }, [mapName, flash, snapThumb, confirm]);
 
     // Auto-save: every 20 s, but only when there are unsaved changes.
     useEffect(() => {

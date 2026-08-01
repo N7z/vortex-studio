@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\Audit;
 use App\Support\MapAccess;
+use App\Support\MapHistory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
@@ -13,6 +15,12 @@ use Illuminate\Support\Facades\Storage;
 class MapController extends Controller
 {
     public const TTL_HOURS = 24;
+
+    public const TRASH_DAYS = 30;
+
+    private const DESTRUCTIVE_MIN_PARTS = 100;
+
+    private const DESTRUCTIVE_RATIO = 0.5;
 
     // A part measures ~115 bytes with its id, so this is MAX_PARTS with headroom
     // for groups. Raising one without the other silently caps the map at the lower.
@@ -185,8 +193,27 @@ class MapController extends Controller
         DB::table('maps')
             ->whereNull('user_id')
             ->whereNull('team_id')
+            ->whereNull('deleted_at')
             ->where('updated_at', '<', now()->subHours(self::TTL_HOURS))
-            ->delete();
+            ->update(['deleted_at' => now()]);
+    }
+
+    public static function purge(): int
+    {
+        $rows = DB::table('maps')
+            ->whereNotNull('deleted_at')
+            ->where('deleted_at', '<', now()->subDays(self::TRASH_DAYS))
+            ->get(['id', 'thumb_key']);
+
+        foreach ($rows as $row) {
+            MapHistory::forget((int) $row->id);
+            if ($row->thumb_key) {
+                self::thumbDisk()->delete(self::thumbPath($row->thumb_key));
+            }
+            DB::table('maps')->where('id', $row->id)->delete();
+        }
+
+        return $rows->count();
     }
 
     private function validName(string $name): string
@@ -343,6 +370,7 @@ class MapController extends Controller
             'user_id' => $to === null ? $id : $row->user_id,
             'updated_at' => now(),
         ]);
+        Audit::log('map.move', (int) $row->id, ['name' => $name, 'from' => $from, 'to' => $to], $from ?? $to);
 
         return response()->json(['ok' => true, 'team_id' => $to]);
     }
@@ -361,6 +389,7 @@ class MapController extends Controller
         );
 
         DB::table('maps')->where('id', $row->id)->update(['name' => $to, 'updated_at' => now()]);
+        Audit::log('map.rename', (int) $row->id, ['from' => $name, 'to' => $to], $team);
 
         return response()->json(['ok' => true, 'name' => $to]);
     }
@@ -382,12 +411,149 @@ class MapController extends Controller
             );
         }
 
+        MapHistory::snapshot($row, MapHistory::PRE_DELETE);
+        DB::table('maps')->where('id', $row->id)->update(['deleted_at' => now()]);
+        Audit::log('map.delete', (int) $row->id, ['name' => $name], $team);
+
+        return response()->json(['ok' => true, 'trash_days' => self::TRASH_DAYS]);
+    }
+
+    public function trash(Request $request)
+    {
+        return response()->json([
+            'trash' => MapAccess::trashed($request)
+                ->orderByDesc('deleted_at')
+                ->limit(200)
+                ->get(['id', 'name', 'parts', 'team_id', 'deleted_at', 'updated_at', 'thumb_key'])
+                ->map(fn ($m) => [
+                    'id' => (int) $m->id,
+                    'name' => $m->name,
+                    'parts' => (int) $m->parts,
+                    'team_id' => $m->team_id,
+                    'deleted' => strtotime((string) $m->deleted_at),
+                    'modified' => strtotime((string) $m->updated_at),
+                    'thumb' => self::thumbUrl($m),
+                ]),
+            'trash_days' => self::TRASH_DAYS,
+        ]);
+    }
+
+    private function trashedMap(Request $request, int $id): object
+    {
+        $row = MapAccess::trashed($request)->where('id', $id)->first();
+        abort_unless($row, 404);
+
+        return $row;
+    }
+
+    public function restore(Request $request, int $id)
+    {
+        $row = $this->trashedMap($request, $id);
+
+        $team = $row->team_id === null ? null : (int) $row->team_id;
+        $count = $team === null
+            ? MapAccess::personal($request)->count()
+            : DB::table('maps')->whereNull('deleted_at')->where('team_id', $team)->count();
+        abort_if(
+            $count >= ($team === null ? self::MAX_MAPS_PER_OWNER : self::MAX_MAPS_PER_TEAM),
+            403,
+            'there is no room for it, delete something first',
+        );
+
+        $name = $row->name;
+        for ($n = 2; MapAccess::find($request, $name, $team) !== null; $n++) {
+            abort_if($n > 99, 422, 'rename the map that took its name first');
+            $name = substr($row->name, 0, 60)."-$n";
+        }
+
+        DB::table('maps')->where('id', $row->id)
+            ->update(['deleted_at' => null, 'name' => $name, 'updated_at' => now()]);
+        Audit::log('map.restore', (int) $row->id, ['name' => $name], $team);
+
+        return response()->json(['ok' => true, 'name' => $name, 'team_id' => $team]);
+    }
+
+    public function purgeOne(Request $request, int $id)
+    {
+        $row = $this->trashedMap($request, $id);
+
+        MapHistory::forget((int) $row->id);
         if ($row->thumb_key) {
             self::thumbDisk()->delete(self::thumbPath($row->thumb_key));
         }
         DB::table('maps')->where('id', $row->id)->delete();
+        Audit::log('map.purge', (int) $row->id, ['name' => $row->name], $row->team_id);
 
         return response()->json(['ok' => true]);
+    }
+
+    public function history(Request $request, string $name)
+    {
+        $name = $this->validName($name);
+        $row = MapAccess::find($request, $name, $this->teamId($request));
+        abort_unless($row, 404);
+
+        return response()->json([
+            'versions' => MapHistory::versions((int) $row->id),
+            'current' => ['version' => (int) $row->version, 'parts' => (int) $row->parts],
+        ]);
+    }
+
+    public function showVersion(Request $request, string $name, int $versionId)
+    {
+        $name = $this->validName($name);
+        $row = MapAccess::find($request, $name, $this->teamId($request));
+        abort_unless($row, 404);
+
+        $doc = MapHistory::document((int) $row->id, $versionId);
+        abort_unless($doc, 404, 'that version is no longer stored');
+
+        return response()->json([
+            'parts' => $doc['parts'],
+            'groups' => $doc['groups'] ?? [],
+        ]);
+    }
+
+    public function restoreVersion(Request $request, string $name, int $versionId)
+    {
+        $name = $this->validName($name);
+        $team = $this->teamId($request);
+        $row = MapAccess::find($request, $name, $team);
+        abort_unless($row, 404);
+        abort_unless(MapAccess::canEdit($row), 403, 'you can only view this map');
+
+        $doc = MapHistory::document((int) $row->id, $versionId);
+        abort_unless($doc, 404, 'that version is no longer stored');
+
+        MapHistory::snapshot($row, MapHistory::PRE_RESTORE);
+
+        $next = (int) $row->version + 1;
+        DB::table('maps')->where('id', $row->id)->update([
+            'data' => json_encode($doc['parts']),
+            'groups' => json_encode($doc['groups'] ?? []),
+            'parts' => count($doc['parts']),
+            'version' => $next,
+            'saved_by' => Auth::id(),
+            'updated_at' => now(),
+        ]);
+        Audit::log('map.version_restore', (int) $row->id, ['name' => $name, 'from' => $versionId], $team);
+
+        return response()->json(['ok' => true, 'version' => $next, 'parts' => count($doc['parts'])]);
+    }
+
+    public function pinVersion(Request $request, string $name)
+    {
+        $name = $this->validName($name);
+        $team = $this->teamId($request);
+        $row = MapAccess::find($request, $name, $team);
+        abort_unless($row, 404);
+        abort_unless(MapAccess::canEdit($row), 403, 'you can only view this map');
+
+        $id = MapHistory::snapshot($row, MapHistory::MANUAL);
+        abort_unless($id, 422, 'there is nothing to keep yet');
+        Audit::log('map.pin', (int) $row->id, ['name' => $name, 'version' => (int) $row->version], $team);
+
+        return response()->json(['ok' => true, 'id' => $id]);
     }
 
     /** Parts and groups travel together, so the stored JSON is wrapped rather than re-encoded. */
@@ -470,17 +636,34 @@ class MapController extends Controller
             abort_if($count >= $limit, 403, 'map limit reached');
         }
 
-        $values = ['token' => $token, 'data' => $data, 'parts' => count($parts), 'updated_at' => now()]
+        $values = ['token' => $token, 'data' => $data, 'parts' => count($parts), 'saved_by' => $id, 'updated_at' => now()]
             + ($encodedGroups === null ? [] : ['groups' => $encodedGroups]);
 
         if (! $row) {
-            DB::table('maps')->insert($values + [
+            $new = DB::table('maps')->insertGetId($values + [
                 'user_id' => $id, 'team_id' => $teamId, 'name' => $name,
                 'version' => 1, 'created_at' => now(),
             ]);
+            Audit::log('map.create', $new, ['name' => $name, 'parts' => count($parts)], $teamId);
 
             return response()->json(['ok' => true, 'version' => 1]);
         }
+
+        $wrecking = $this->destructive($row, count($parts));
+        if ($wrecking && ! $request->header('X-Confirm-Destructive')) {
+            return response()->json([
+                'error' => 'destructive',
+                'message' => 'this save removes most of the map',
+                'was' => (int) $row->parts,
+                'now' => count($parts),
+            ], 422);
+        }
+
+        MapHistory::snapshot(
+            $row,
+            $wrecking ? MapHistory::DESTRUCTIVE : MapHistory::SAVE,
+            count($parts),
+        );
 
         // Optimistic concurrency: a save built on an older copy is refused rather
         // than silently overwriting whoever saved in between. A client that sends
@@ -500,7 +683,23 @@ class MapController extends Controller
             ], 409);
         }
 
+        if ($wrecking) {
+            Audit::log(
+                'map.save_destructive',
+                (int) $row->id,
+                ['name' => $name, 'was' => (int) $row->parts, 'now' => count($parts)],
+                $teamId,
+            );
+        }
+
         return response()->json(['ok' => true, 'version' => $next]);
+    }
+
+    private function destructive(object $row, int $incoming): bool
+    {
+        return $row->team_id !== null
+            && (int) $row->parts >= self::DESTRUCTIVE_MIN_PARTS
+            && $incoming < (int) $row->parts * self::DESTRUCTIVE_RATIO;
     }
 
     /**

@@ -188,3 +188,23 @@
     .modal input, .modal select, .modal textarea { padding: 11px 12px; font-size: 16px; }
     .btn { padding: 10px 16px; }
 }
+
+.history { list-style: none; margin: 0; padding: 0; max-height: 46vh; overflow-y: auto; }
+
+.history-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 4px 12px;
+    padding: 10px 2px;
+    border-bottom: 1px solid #26262e;
+}
+.history-row:last-child { border-bottom: 0; }
+.history-row.pinned { border-left: 2px solid var(--accent, #5b8dd6); padding-left: 10px; }
+
+.history-main { display: flex; align-items: baseline; gap: 8px; }
+.history-parts { font-size: 13px; color: #d8d8de; }
+.history-why { font-size: 11px; color: #8a8a95; }
+.history-meta { grid-column: 1; font-size: 11px; color: #6e6e78; }
+.history-row > .btn, .history-confirm { grid-column: 2; grid-row: 1 / span 2; }
+.history-confirm { display: flex; gap: 6px; }

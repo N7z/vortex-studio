@@ -77,6 +77,13 @@ it('opens any map by id and deletes it', function () {
         ->assertJson(['name' => 'world', 'parts' => [['T' => 'Part']]]);
 
     $this->actingAs(admin())->deleteJson("/admin/maps/$id")->assertOk();
+    expect(DB::table('maps')->whereNull('deleted_at')->count())->toBe(0)
+        ->and(DB::table('maps')->count())->toBe(1);
+
+    $this->actingAs(admin())->postJson("/admin/maps/$id/restore")->assertOk();
+    expect(DB::table('maps')->whereNull('deleted_at')->count())->toBe(1);
+
+    $this->actingAs(admin())->deleteJson("/admin/maps/$id?purge=1")->assertOk();
     expect(DB::table('maps')->count())->toBe(0);
 });
 
@@ -107,8 +114,11 @@ it('deletes an account together with its maps', function () {
 
     $this->actingAs(admin())->deleteJson("/admin/users/{$user->id}")->assertOk();
 
+    // The account goes, its work goes to the trash: this used to be the one action
+    // in the app that destroyed maps with no way back.
     expect(User::find($user->id))->toBeNull()
-        ->and(DB::table('maps')->count())->toBe(0);
+        ->and(DB::table('maps')->whereNull('deleted_at')->count())->toBe(0)
+        ->and(DB::table('maps')->whereNotNull('deleted_at')->count())->toBe(1);
 });
 
 it('refuses to ban or delete the admin doing it', function () {
