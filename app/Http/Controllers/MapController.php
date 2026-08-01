@@ -41,7 +41,6 @@ class MapController extends Controller
         }
         abort_unless(is_numeric($raw), 400, 'bad team');
         $id = (int) $raw;
-        // 404 rather than 403: a team you are not in should not be discoverable.
         abort_unless(MapAccess::teamRole($id) !== null, 404);
 
         return $id;
@@ -118,7 +117,6 @@ class MapController extends Controller
         ]);
     }
 
-    /** Teams the caller belongs to, with their own role, for the map-list switcher. */
     private function myTeams(): array
     {
         if (! Auth::id()) {

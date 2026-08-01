@@ -41,7 +41,7 @@ function CreateTeam({ onClose, onDone }) {
     return (
         <Modal
             title="New team"
-            subtitle="Everyone you add can open and save the team's maps, whenever they like."
+            subtitle="Members can open and save this team's maps."
             onClose={onClose}
             footer={(
                 <>
@@ -84,8 +84,6 @@ function ManageTeam({ team, me, onClose, onChanged }) {
 
     useEffect(() => { load(); }, [team.id]);
 
-    // `after` runs only when the request succeeded, so a failure leaves the modal
-    // open with its message rather than closing over the top of it.
     const run = (p, { after, reload = true } = {}) => {
         setBusy(true);
         setError('');
@@ -134,8 +132,7 @@ function ManageTeam({ team, me, onClose, onChanged }) {
                 {owner && (
                     <form className="invite" onSubmit={add}>
                         <input
-                            type="email"
-                            placeholder="Add someone by account email"
+                            placeholder="Add by username or email"
                             value={email}
                             disabled={busy}
                             onChange={(e) => setEmail(e.target.value)}
@@ -208,7 +205,6 @@ function ManageTeam({ team, me, onClose, onChanged }) {
                             return run(deleteTeam(team.id), { after: done, reload: false });
                         }
 
-                        // Leaving takes your own access with it, so the panel goes too.
                         return run(removeMember(team.id, confirm.id), {
                             after: () => (confirm.id === me ? done() : setConfirm(null)),
                             reload: confirm.id !== me,
@@ -228,10 +224,7 @@ export default function Teams({ teams, me, onChanged }) {
 
     return (
         <>
-            <h2>
-                Teams
-                <span className="ttl-note">maps a whole team can edit, at any time</span>
-            </h2>
+            <h2>Teams</h2>
 
             <div className="team-cards">
                 {teams.map((t) => (

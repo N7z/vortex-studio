@@ -32,10 +32,6 @@ class AccountController extends Controller
     }
 
     /**
-     * A short-lived proof of username for the live server, which never talks to
-     * Laravel. No secret configured means no proof, and members stay anonymous.
-     */
-    /**
      * The live server cannot ask this app anything, so the token is the whole
      * authority: it carries who the user is and what they may do to one named map.
      * The room never trusts a role or id the client states for itself.
@@ -58,8 +54,6 @@ class AccountController extends Controller
             $map = null;
         }
 
-        // A role is only claimed for a map the caller really can edit. With no map
-        // named (joining by code) the token proves the name and nothing more.
         $role = null;
         if ($map !== null) {
             $row = MapAccess::find($request, $map, $teamId);
@@ -82,7 +76,11 @@ class AccountController extends Controller
     public function register(Request $request)
     {
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:32'],
+            'name' => ['required', 'string', 'max:32', function ($attribute, $value, $fail) {
+                if (User::whereRaw('lower(name) = ?', [mb_strtolower((string) $value)])->exists()) {
+                    $fail('That username is taken.');
+                }
+            }],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'confirmed', Password::min(8)],
         ]);

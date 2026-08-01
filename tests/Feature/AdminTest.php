@@ -15,8 +15,10 @@ function admin(): User
 
 function member(array $over = []): User
 {
+    static $n = 0;
+    $n++;
     $user = User::create($over + [
-        'name' => 'Member', 'email' => 'm@example.com', 'password' => 'correct horse',
+        'name' => $n === 1 ? 'Member' : "Member $n", 'email' => 'm@example.com', 'password' => 'correct horse',
     ]);
 
     // is_admin and banned_at are not fillable: nothing but the console and the panel sets them.

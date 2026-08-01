@@ -17,7 +17,6 @@ export default function useDialogs() {
     }, []);
 
     const show = useCallback((spec) => new Promise((res) => {
-        // A dialog opened over another would strand the first one's caller.
         resolve.current?.(spec.kind === 'ask' ? null : false);
         resolve.current = res;
         setOpen(spec);

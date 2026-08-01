@@ -268,3 +268,45 @@ it('refuses the delete when the maps would not fit', function () {
     expect(DB::table('teams')->count())->toBe(1)
         ->and(DB::table('maps')->where('team_id', $team)->count())->toBe(1);
 });
+
+it('adds a member by username as well as by email', function () {
+    $a = User::factory()->create();
+    $b = User::factory()->create(['name' => 'Ada']);
+    $c = User::factory()->create();
+    $team = makeTeam($a);
+
+    $this->actingAs($a)->postJson("/api/teams/$team/members", ['who' => 'Ada'])->assertOk();
+    $this->actingAs($a)->postJson("/api/teams/$team/members", ['who' => $c->email])->assertOk();
+
+    expect(DB::table('team_members')->where('team_id', $team)->count())->toBe(3)
+        ->and(DB::table('team_members')->where('user_id', $b->id)->exists())->toBeTrue();
+});
+
+it('matches a username whatever its case', function () {
+    $a = User::factory()->create();
+    User::factory()->create(['name' => 'Ada']);
+    $team = makeTeam($a);
+
+    $this->actingAs($a)->postJson("/api/teams/$team/members", ['who' => 'aDa'])->assertOk();
+    expect(DB::table('team_members')->where('team_id', $team)->count())->toBe(2);
+});
+
+it('refuses a username nobody has', function () {
+    $a = User::factory()->create();
+    $team = makeTeam($a);
+
+    $this->actingAs($a)->postJson("/api/teams/$team/members", ['who' => 'nobody-at-all'])
+        ->assertStatus(422);
+});
+
+it('keeps usernames unique, whatever the case', function () {
+    $this->postJson('/account/register', [
+        'name' => 'Ada', 'email' => 'a@example.com',
+        'password' => 'correct horse', 'password_confirmation' => 'correct horse',
+    ])->assertOk();
+
+    $this->postJson('/account/register', [
+        'name' => 'ada', 'email' => 'b@example.com',
+        'password' => 'correct horse', 'password_confirmation' => 'correct horse',
+    ])->assertStatus(422);
+});

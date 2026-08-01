@@ -14,8 +14,6 @@ class TeamController extends Controller
 
     private const MAX_MEMBERS = 25;
 
-    // Mirrors MapController::MAX_MAPS_PER_OWNER: deleting a team must not smuggle
-    // maps past the personal quota.
     private const MAX_PERSONAL_MAPS = 50;
 
     private const ROLES = [MapAccess::EDITOR, MapAccess::VIEWER];
@@ -115,13 +113,17 @@ class TeamController extends Controller
     {
         $this->owner($team);
         $data = $request->validate([
-            'email' => ['required', 'email'],
+            'who' => ['required_without:email', 'nullable', 'string', 'max:255'],
+            'email' => ['required_without:who', 'nullable', 'string', 'max:255'],
             'role' => ['nullable', 'in:'.implode(',', self::ROLES)],
         ]);
 
-        $user = User::where('email', $data['email'])->first();
-        // Not "no such account": that would turn this into an email lookup for anyone.
-        abort_unless($user, 422, 'nobody could be added with that address');
+        $who = trim((string) ($data['who'] ?? $data['email']));
+        abort_if($who === '', 422, 'name or email needed');
+
+        $column = str_contains($who, '@') ? 'email' : 'name';
+        $user = User::whereRaw("lower($column) = ?", [mb_strtolower($who)])->first();
+        abort_unless($user, 422, 'nobody could be added with that name or email');
 
         abort_if(
             DB::table('team_members')->where('team_id', $team)->count() >= self::MAX_MEMBERS,
@@ -180,8 +182,6 @@ class TeamController extends Controller
         DB::transaction(function () use ($team, $me, $maps, &$taken) {
             foreach ($maps as $map) {
                 $name = $this->freeName($map->name, $taken);
-                // Nowhere left to put it: keeping the row costs nothing and losing
-                // somebody's map would not be recoverable.
                 if ($name === null) {
                     continue;
                 }

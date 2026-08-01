@@ -98,7 +98,7 @@ async function team(path, options = {}) {
 export const createTeam = (name) => team('', { method: 'POST', body: { name } });
 export const deleteTeam = (id) => team(`/${id}`, { method: 'DELETE' });
 export const teamMembers = (id) => team(`/${id}/members`);
-export const addTeamMember = (id, email, role) => team(`/${id}/members`, { method: 'POST', body: { email, role } });
+export const addTeamMember = (id, who, role) => team(`/${id}/members`, { method: 'POST', body: { who, role } });
 export const setMemberRole = (id, user, role) => team(`/${id}/members/${user}`, { method: 'PATCH', body: { role } });
 export const removeMember = (id, user) => team(`/${id}/members/${user}`, { method: 'DELETE' });
 
