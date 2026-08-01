@@ -5,7 +5,7 @@ import useDraggable from './useDraggable';
 
 export default function PluginPanel({
     plugin, values, setValue, images, onImage, models, onModel,
-    hasSelection, targetNote, onButton, onEdit, onClose,
+    hasSelection, targetNote, resultNote, onButton, onEdit, onClose,
 }) {
     const pickers = useRef({});
     const { style, onPointerDown } = useDraggable('plugin');
@@ -128,6 +128,7 @@ export default function PluginPanel({
                 </button>
             ))}
             {targetNote && <div className="arch-note">{targetNote}</div>}
+            {resultNote && <div className="arch-note">{resultNote}</div>}
         </div>
     );
 }

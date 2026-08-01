@@ -63,8 +63,12 @@ const MAX_SELECTION_PARTS = 256;
 const GROUPS_DEBOUNCE_MS = 400;
 
 // Heavy work in the same tick as setBusy paints nothing, so the spinner is given a
-// frame of its own first.
-const paint = () => new Promise((r) => requestAnimationFrame(() => r()));
+// frame of its own first. Two frames, not one: a rAF callback runs *before* the
+// paint it belongs to, so a single one still hands the thread back with nothing on
+// screen, which is why a long plugin run used to show no spinner at all.
+const paint = () => new Promise((r) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => r()));
+});
 
 // Autosave runs every 20s; a picture that often is wasted upload for a view that
 // barely changed.
@@ -84,6 +88,7 @@ export default function App() {
     const [activePluginId, setActivePluginId] = useState(null);
     const [pluginValues, setPluginValues] = useState({});
     const [pluginPreview, setPluginPreview] = useState([]);
+    const [pluginRun, setPluginRun] = useState(null);
     const [pluginImages, setPluginImages] = useState({});
     const [pluginModels, setPluginModels] = useState({});
     const loadedModels = useRef({});
@@ -615,6 +620,7 @@ export default function App() {
             }
             if (!parts.length) return;
             const placed = parts.map(withNewId);
+            setPluginRun({ id: activePlugin.id, count: placed.length });
             edit(addOp(placed));
             setSelectedIds(placed.map((p) => p._id));
             if (placed.length > 1) {
@@ -1271,6 +1277,9 @@ export default function App() {
                                 ? `Runs on all ${selectedParts.length} selected parts`
                                 : null}
                             onButton={pluginButton}
+                            resultNote={pluginRun?.id === activePlugin.id
+                                ? `Last run made ${pluginRun.count.toLocaleString()} parts`
+                                : null}
                             onEdit={() => openEditTab(activePlugin.id)}
                             onClose={() => setActivePluginId(null)}
                         />

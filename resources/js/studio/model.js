@@ -3,6 +3,10 @@ import * as THREE from 'three';
 export const MAX_RES = 160;
 
 const hex = (n) => n.toString(16).padStart(2, '0');
+// Three digits, because a coordinate is not a byte: an admin may voxelise past 255
+// on an axis, and a 2-digit overflow used to shift every field after it.
+const MAX_DIM = 4096;
+const chex = (n) => n.toString(16).padStart(3, '0');
 
 async function parseGltf(buffer) {
     const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
@@ -64,7 +68,7 @@ function materialOf(mesh) {
 }
 
 export function voxelize(object, res, maxRes = MAX_RES) {
-    const size = Math.min(Math.max(Math.floor(res) || 32, 4), maxRes);
+    const size = Math.min(Math.max(Math.floor(res) || 32, 4), maxRes, MAX_DIM);
     const meshes = collect(object);
     if (!meshes.length) throw new Error('this file has no meshes');
 
@@ -230,7 +234,7 @@ export function encode(grid) {
         const len = n ? Math.hypot(n[0], n[1], n[2]) : 0;
         const s = len > 1e-9 ? 1 / len : 0;
         out.push(
-            hex(x) + hex(y) + hex(z) + hex(r) + hex(g) + hex(b)
+            chex(x) + chex(y) + chex(z) + hex(r) + hex(g) + hex(b)
             + nhex(n ? n[0] * s : 0) + nhex(n ? n[1] * s : 0) + nhex(n ? n[2] * s : 0),
         );
     }
