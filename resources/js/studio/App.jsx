@@ -16,7 +16,8 @@ import StatsPanel from './StatsPanel';
 import TeamPanel from './TeamPanel';
 import ScriptTab, { TEMPLATE } from './ScriptTab';
 import {
-    loadPlugins, setPartLimit, stripId, compilePlugin, saveUserPlugin, deleteUserPlugin,
+    loadPlugins, setPartLimit, setVoxelLimit, stripId, compilePlugin, saveUserPlugin,
+    deleteUserPlugin,
     userPluginSource, isBuiltin, resetBuiltin, onPluginPrint,
 } from './plugins';
 import {
@@ -34,7 +35,7 @@ import UpdateNotice from './UpdateNotice';
 import { watchForUpdate } from './version';
 import useLive from './useLive';
 import { decodeImage, imageMeta } from './image';
-import { MAX_RES, buildVoxels, loadModel } from './model';
+import { MAX_DIM, MAX_RES, buildVoxels, loadModel } from './model';
 import { convertRoblox, importSummary } from './roblox';
 import useDialogs from '../ui/useDialogs';
 import Busy from '../ui/Busy';
@@ -57,6 +58,7 @@ const NEW_SPAWN = {
 
 
 const MAX_PLUGIN_PARTS = 60000;
+const MAX_MODEL_VOXELS = 400000;
 
 const MAX_MAP_PARTS = 60000;
 
@@ -149,7 +151,9 @@ export default function App() {
     const [teamsOpen, setTeamsOpen] = useState(false);
     const mapCap = unlimited ? Infinity : MAX_MAP_PARTS;
     const pluginCap = unlimited ? Infinity : MAX_PLUGIN_PARTS;
-    const resCap = unlimited ? 512 : MAX_RES;
+    // A coordinate is three hex digits on the wire, so MAX_DIM is the format's own
+    // ceiling rather than a policy: past it every field after it shifts.
+    const resCap = unlimited ? MAX_DIM : MAX_RES;
 
     // Only the id travels with a map, so the names are looked up once and again
     // whenever one turns up that this list does not know.
@@ -176,6 +180,7 @@ export default function App() {
 
     useEffect(() => {
         setPartLimit(unlimited ? Number.MAX_SAFE_INTEGER : MAX_PLUGIN_PARTS);
+        setVoxelLimit(unlimited ? Number.MAX_SAFE_INTEGER : MAX_MODEL_VOXELS);
     }, [unlimited]);
 
     const flash = useCallback((msg) => {

@@ -1,6 +1,6 @@
 plugin = {
     name = "Model",
-    version = "2.2",
+    version = "2.3",
     icon = Icons.Gem,
     ui = {
         { id = "model", type = "model", label = "Model", res = "res", solid = "solid" },
@@ -20,7 +20,6 @@ plugin = {
     },
 }
 
-local MAX_VOXELS = 400000
 local MAX_RUN = 64
 local TO_DEG = 180 / math.pi
 local AGREE = 0.4
@@ -38,6 +37,10 @@ local NEIGHBOURS = {
 
 local function maxParts()
     return (Limits and Limits.parts) or 50000
+end
+
+local function maxVoxels()
+    return (Limits and Limits.voxels) or 400000
 end
 
 local function clamp(v, lo, hi)
@@ -296,7 +299,7 @@ end
 
 local function build(part, values)
     if Model == nil or Model.count < 1 then return {} end
-    if Model.count > MAX_VOXELS then
+    if Model.count > maxVoxels() then
         error("that model has " .. Model.count .. " voxels, too many to build: lower Detail")
     end
 

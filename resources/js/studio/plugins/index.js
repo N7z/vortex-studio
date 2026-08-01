@@ -168,7 +168,7 @@ async function startEngine(src) {
         const luaClick = lua.global.get('__click');
         const luaSetImage = lua.global.get('__set_image');
         const luaSetModel = lua.global.get('__set_model');
-        await lua.global.get('__set_limits')(partLimit);
+        await lua.global.get('__set_limits')(partLimit, voxelLimit);
         const luaSetSelection = lua.global.get('__set_selection');
 
         return {
@@ -264,9 +264,14 @@ export function userPlugins() {
 
 // Lifted for an admin, who is trusted with maps of any size.
 let partLimit = 50_000;
+let voxelLimit = 400_000;
 
 export function setPartLimit(n) {
     partLimit = Number.isFinite(n) ? n : 50_000;
+}
+
+export function setVoxelLimit(n) {
+    voxelLimit = Number.isFinite(n) ? n : 400_000;
 }
 
 export function isBuiltin(id) {

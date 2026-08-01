@@ -177,10 +177,10 @@ function __set_selection(info_json)
 end
 
 Model = nil
-Limits = { parts = 50000 }
+Limits = { parts = 50000, voxels = 400000 }
 
-function __set_limits(parts)
-    Limits = { parts = math.floor(parts) }
+function __set_limits(parts, voxels)
+    Limits = { parts = math.floor(parts), voxels = math.floor(voxels) }
 end
 
 function __set_model(w, h, d, count, data)

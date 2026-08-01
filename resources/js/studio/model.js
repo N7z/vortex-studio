@@ -5,7 +5,7 @@ export const MAX_RES = 160;
 const hex = (n) => n.toString(16).padStart(2, '0');
 // Three digits, because a coordinate is not a byte: an admin may voxelise past 255
 // on an axis, and a 2-digit overflow used to shift every field after it.
-const MAX_DIM = 4096;
+export const MAX_DIM = 4096;
 const chex = (n) => n.toString(16).padStart(3, '0');
 
 const MAX_TEX = 2048;
