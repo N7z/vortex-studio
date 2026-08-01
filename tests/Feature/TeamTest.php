@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\MapController;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -129,9 +130,9 @@ it('spares team maps from the anonymous prune', function () {
     DB::table('maps')->update(['updated_at' => now()->subHours(48)]);
     $this->travel(48)->hours();
 
-    $this->getJson('/api/stats')->assertOk();
+    MapController::prune();
 
-    expect(DB::table('maps')->where('team_id', $team)->count())->toBe(1);
+    expect(DB::table('maps')->where('team_id', $team)->whereNull('deleted_at')->count())->toBe(1);
 });
 
 it('lets a personal and a team map share a name', function () {

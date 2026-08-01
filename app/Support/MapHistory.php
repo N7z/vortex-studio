@@ -45,18 +45,39 @@ class MapHistory
         return "snapshots/$mapId/$key.json.gz";
     }
 
+    private static function document_of(object $map): ?string
+    {
+        $data = $map->data ?? null;
+        $groups = $map->groups ?? null;
+
+        if ($data === null) {
+            $row = MapAccess::body((int) $map->id);
+            if (! $row) {
+                return null;
+            }
+            $data = $row->data;
+            $groups = $row->groups;
+        }
+
+        $data = (string) $data;
+
+        return $data === '' || $data === '[]' ? null : '{"parts":'.$data.',"groups":'.($groups ?: '[]').'}';
+    }
+
     public static function snapshot(object $map, string $reason = self::SAVE, ?int $newParts = null): ?int
     {
-        $data = (string) ($map->data ?? '');
-        if ($data === '' || $data === '[]') {
+        $last = DB::table('map_versions')->where('map_id', $map->id)
+            ->orderByDesc('id')->first(['id', 'hash', 'parts', 'created_at']);
+
+        if ($reason === self::SAVE && ! self::worthKeeping($last, $map, $newParts)) {
             return null;
         }
 
-        $doc = '{"parts":'.$data.',"groups":'.($map->groups ?: '[]').'}';
+        $doc = self::document_of($map);
+        if ($doc === null) {
+            return null;
+        }
         $hash = hash('sha256', $doc);
-
-        $last = DB::table('map_versions')->where('map_id', $map->id)
-            ->orderByDesc('id')->first(['id', 'hash', 'parts', 'created_at']);
 
         if ($last && $last->hash === $hash) {
             if ($reason === self::MANUAL) {
@@ -64,9 +85,6 @@ class MapHistory
             }
 
             return (int) $last->id;
-        }
-        if ($reason === self::SAVE && ! self::worthKeeping($last, $map, $newParts)) {
-            return null;
         }
 
         $key = bin2hex(random_bytes(16));

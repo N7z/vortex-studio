@@ -231,8 +231,6 @@ class MapController extends Controller
     public function stats()
     {
         return response()->json(Cache::remember('studio_stats', 60, function () {
-            self::prune();
-
             // Never select `data`: a map is megabytes and there is no bound on rows.
             $agg = DB::table('maps')->selectRaw(
                 'count(*) as maps, count(distinct token) as sessions, coalesce(sum(parts), 0) as parts, max(updated_at) as last_save',
@@ -252,8 +250,6 @@ class MapController extends Controller
 
     public function index(Request $request)
     {
-        self::prune();
-
         $mine = MapAccess::visible($request)
             ->orderByDesc('updated_at')
             ->get(['id', 'name', 'updated_at', 'team_id', 'version', 'thumb_key'])
@@ -310,7 +306,7 @@ class MapController extends Controller
     {
         $name = $this->validName($name);
 
-        $row = MapAccess::find($request, $name, $this->teamId($request));
+        $row = MapAccess::find($request, $name, $this->teamId($request), true);
         if ($row) {
             return $this->document($row->data, $row->groups, (int) $row->version);
         }
@@ -440,7 +436,7 @@ class MapController extends Controller
 
     private function trashedMap(Request $request, int $id): object
     {
-        $row = MapAccess::trashed($request)->where('id', $id)->first();
+        $row = MapAccess::trashed($request)->where('id', $id)->first(MapAccess::COLUMNS);
         abort_unless($row, 404);
 
         return $row;
@@ -528,10 +524,12 @@ class MapController extends Controller
         MapHistory::snapshot($row, MapHistory::PRE_RESTORE);
 
         $next = (int) $row->version + 1;
+        $data = json_encode($doc['parts']);
         DB::table('maps')->where('id', $row->id)->update([
-            'data' => json_encode($doc['parts']),
+            'data' => $data,
             'groups' => json_encode($doc['groups'] ?? []),
             'parts' => count($doc['parts']),
+            'bytes' => strlen($data),
             'version' => $next,
             'saved_by' => Auth::id(),
             'updated_at' => now(),
@@ -636,8 +634,10 @@ class MapController extends Controller
             abort_if($count >= $limit, 403, 'map limit reached');
         }
 
-        $values = ['token' => $token, 'data' => $data, 'parts' => count($parts), 'saved_by' => $id, 'updated_at' => now()]
-            + ($encodedGroups === null ? [] : ['groups' => $encodedGroups]);
+        $values = [
+            'token' => $token, 'data' => $data, 'parts' => count($parts),
+            'bytes' => strlen($data), 'saved_by' => $id, 'updated_at' => now(),
+        ] + ($encodedGroups === null ? [] : ['groups' => $encodedGroups]);
 
         if (! $row) {
             $new = DB::table('maps')->insertGetId($values + [

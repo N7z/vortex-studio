@@ -10,6 +10,15 @@ class Audit
 {
     private const MAX_META = 2000;
 
+    public const KEEP_DAYS = 180;
+
+    public static function purgeOld(): int
+    {
+        return DB::table('audit_log')
+            ->where('created_at', '<', now()->subDays(self::KEEP_DAYS))
+            ->delete();
+    }
+
     public static function log(string $action, ?int $subjectId = null, array $meta = [], ?int $teamId = null): void
     {
         try {

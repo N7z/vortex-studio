@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\MapController;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -139,7 +140,7 @@ it('keeps an account s maps past the anonymous TTL', function () {
         ['user_id' => null, 'token' => str_repeat('C', 40), 'name' => 'stale', 'data' => '[]', 'created_at' => $old, 'updated_at' => $old],
     ]);
 
-    $this->getJson('/api/maps')->assertOk();
+    MapController::prune();
 
     // Expiring is a move to the trash, so a token lost on the last day is recoverable.
     expect(DB::table('maps')->whereNull('deleted_at')->pluck('name')->all())->toBe(['owned'])

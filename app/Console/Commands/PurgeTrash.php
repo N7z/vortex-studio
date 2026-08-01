@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Http\Controllers\MapController;
+use App\Support\Audit;
 use Illuminate\Console\Command;
 
 class PurgeTrash extends Command
@@ -15,7 +16,8 @@ class PurgeTrash extends Command
     {
         MapController::prune();
         $gone = MapController::purge();
-        $this->info("purged $gone map(s)");
+        $audit = Audit::purgeOld();
+        $this->info("purged $gone map(s), $audit audit row(s)");
 
         return self::SUCCESS;
     }

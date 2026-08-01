@@ -97,13 +97,25 @@ class MapAccess
         });
     }
 
-    public static function find(Request $request, string $name, ?int $teamId)
+    public const COLUMNS = [
+        'id', 'name', 'token', 'user_id', 'team_id', 'saved_by', 'version',
+        'parts', 'bytes', 'thumb_key', 'deleted_at', 'created_at', 'updated_at',
+    ];
+
+    public static function find(Request $request, string $name, ?int $teamId, bool $withBody = false)
     {
         $q = $teamId === null
             ? self::personal($request)
             : DB::table('maps')->whereNull('deleted_at')->where('team_id', $teamId);
 
-        return $q->where('name', $name)->first();
+        $columns = $withBody ? [...self::COLUMNS, 'data', 'groups'] : self::COLUMNS;
+
+        return $q->where('name', $name)->first($columns);
+    }
+
+    public static function body(int $id): ?object
+    {
+        return DB::table('maps')->where('id', $id)->first(['data', 'groups']);
     }
 
     /** Null means no access at all, which callers report as 404 rather than 403. */

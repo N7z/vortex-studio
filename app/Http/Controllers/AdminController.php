@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Support\Audit;
+use App\Support\MapAccess;
 use App\Support\MapHistory;
 use App\Support\Stats;
 use Illuminate\Http\Request;
@@ -56,16 +57,14 @@ class AdminController extends Controller
         $q = trim((string) $request->query('q', ''));
 
         return DB::table('users')
-            ->leftJoin('maps', 'maps.user_id', '=', 'users.id')
             ->when($q !== '', fn ($b) => $b->where(function ($w) use ($q) {
                 $w->where('users.name', 'like', "%$q%")->orWhere('users.email', 'like', "%$q%");
             }))
-            ->groupBy('users.id', 'users.name', 'users.email', 'users.created_at', 'users.is_admin', 'users.banned_at')
             ->orderByDesc('users.created_at')
             ->paginate(self::PER_PAGE, [
                 'users.id', 'users.name', 'users.email', 'users.created_at',
                 'users.is_admin', 'users.banned_at',
-                DB::raw('count(maps.id) as maps'),
+                DB::raw('(select count(*) from maps where maps.user_id = users.id) as maps'),
             ]);
     }
 
@@ -80,9 +79,8 @@ class AdminController extends Controller
             ->orderByDesc('maps.updated_at')
             ->paginate(self::PER_PAGE, [
                 'maps.id', 'maps.name', 'maps.user_id', 'maps.created_at', 'maps.updated_at',
-                'maps.deleted_at',
+                'maps.deleted_at', 'maps.bytes',
                 'users.name as owner', 'users.email as owner_email',
-                DB::raw('length(maps.data) as bytes'),
             ]);
     }
 
@@ -100,7 +98,7 @@ class AdminController extends Controller
 
     public function deleteMap(Request $request, int $id)
     {
-        $row = DB::table('maps')->where('id', $id)->first();
+        $row = DB::table('maps')->where('id', $id)->first(MapAccess::COLUMNS);
         abort_unless($row, 404);
         $purge = $request->boolean('purge');
 
