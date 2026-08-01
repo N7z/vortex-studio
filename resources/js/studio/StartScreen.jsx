@@ -142,7 +142,7 @@ export default function StartScreen({
     const rows = useMemo(() => {
         const q = query.trim().toLowerCase();
         const match = (n) => !q || n.toLowerCase().includes(q);
-        if (scope === 'examples') return examples.filter((m) => match(m.name));
+        if (scope === 'examples') return examples.filter((m) => match(m.title ?? m.name));
         if (scope === 'device') return backups.filter((b) => match(b.name));
         if (team) return mine.filter((m) => m.team_id === team.id && match(m.name));
 
@@ -307,7 +307,7 @@ export default function StartScreen({
                                                         ? <img src={m.thumb} alt="" loading="lazy" />
                                                         : <span className="card-blank">{m.name.slice(0, 2)}</span>}
                                                 </span>
-                                                <span className="card-name">{m.name}</span>
+                                                <span className="card-name">{m.title ?? m.name}</span>
                                                 <span className="card-when">
                                                     {scope === 'device' ? ago(m.savedAt) : ago(m.modified * 1000)}
                                                 </span>

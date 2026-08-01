@@ -25,6 +25,22 @@ class MapController extends Controller
 
     private const MAX_GROUPS = 2_000;
 
+    /** The example files are named by the world id the game uses; these are shown instead. */
+    private const EXAMPLE_TITLES = [
+        '1' => 'Demo',
+        '3' => 'Snowy Peak',
+        '4' => 'The Crossbridges',
+        '5' => 'Oasis',
+        '6' => 'Pirate Ship Island',
+        '7' => 'Vortex HQ',
+        '8' => 'Vortexia',
+        '9' => 'Familiar Pizzeria',
+        '10' => 'Anixus Pond',
+        '11' => 'Banlands',
+        '13' => 'Classic House',
+        '14' => 'Backrooms',
+    ];
+
     /** Keys the editor writes / the example maps use; anything else is rejected. */
     private const PART_KEYS = ['_id', 'T', 'P', 'S', 'R', 'C', 'Tr', 'Shape', 'Sh', 'ItemId'];
 
@@ -219,6 +235,7 @@ class MapController extends Controller
 
                 return [
                     'name' => $name,
+                    'title' => self::EXAMPLE_TITLES[$name] ?? $name,
                     'thumb' => $disk->exists($path)
                         ? ($remote ? $disk->url($path) : "/api/thumbs/examples/$name.webp")
                         : null,
