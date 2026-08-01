@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { deleteUser, listUsers, setBanned } from './api';
 import useList from './useList';
+import useDialogs from '../ui/useDialogs';
 import Pager from './Pager';
 
 const date = (s) => new Date(s.replace(' ', 'T') + 'Z').toLocaleDateString();
@@ -9,6 +10,7 @@ export default function Users({ me, onChanged }) {
     const list = useList(useCallback((p) => listUsers(p), []));
     const [busy, setBusy] = useState(null);
     const [error, setError] = useState(null);
+    const { dialogs, confirm } = useDialogs();
 
     const act = async (id, fn) => {
         setBusy(id);
@@ -26,14 +28,20 @@ export default function Users({ me, onChanged }) {
 
     const ban = (u) => act(u.id, () => setBanned(u.id, !u.banned_at));
 
-    const remove = (u) => {
+    const remove = async (u) => {
         const maps = u.maps ? ` and ${u.maps} map${u.maps === 1 ? '' : 's'}` : '';
-        if (!confirm(`Delete ${u.email}${maps}? This cannot be undone.`)) return;
-        act(u.id, () => deleteUser(u.id));
+        const yes = await confirm({
+            title: `Delete ${u.name}?`,
+            body: `The account ${u.email}${maps} will be removed for good. This cannot be undone.`,
+            confirmLabel: 'Delete account',
+            danger: true,
+        });
+        if (yes) act(u.id, () => deleteUser(u.id));
     };
 
     return (
         <section className="panel">
+            {dialogs}
             <header className="panel-head">
                 <h2>Users</h2>
                 <input

@@ -3,6 +3,7 @@ import { listMaps } from './api';
 import { listBackups, readBackup, deleteBackup } from './backup';
 import Account from './Account';
 import Teams from './Teams';
+import useDialogs from '../ui/useDialogs';
 
 const DISCLAIMER_KEY = 'studio_disclaimer_closed';
 
@@ -35,20 +36,31 @@ export default function StartScreen({
     const [disclaimer, setDisclaimer] = useState(() => !readClosed());
     const [error, setError] = useState('');
     const fileRef = useRef(null);
+    const { dialogs, notice, confirm, ask } = useDialogs();
 
     const personal = mine.filter((m) => !m.team_id);
 
     const restore = (name) => {
         const parts = readBackup(name);
         if (!parts) {
-            alert(`The local copy of ${name}.json could not be read.`);
+            notice({
+                title: 'That copy could not be read',
+                body: `The copy of ${name}.json stored in this browser is unreadable, so it cannot be restored.`,
+            });
+
             return;
         }
         onRestore(name, parts);
     };
 
-    const forget = (name) => {
-        if (!confirm(`Delete the copy of ${name}.json stored on this device?`)) return;
+    const forget = async (name) => {
+        const yes = await confirm({
+            title: `Delete the local copy of ${name}.json?`,
+            body: 'Only the copy kept in this browser goes. Whatever is saved in the cloud is untouched.',
+            confirmLabel: 'Delete copy',
+            danger: true,
+        });
+        if (!yes) return;
         deleteBackup(name);
         setBackups(listBackups());
     };
@@ -72,11 +84,17 @@ export default function StartScreen({
         refresh();
     };
 
-    const create = (teamId = null) => {
-        const name = prompt('New map name (letters, digits, - and _):');
-        if (!name) return;
-        if (!/^[A-Za-z0-9_-]{1,64}$/.test(name)) { alert('Invalid name.'); return; }
-        onCreate(name, teamId);
+    const create = async (teamId = null) => {
+        const team = teams.find((t) => t.id === teamId);
+        const name = await ask({
+            title: team ? `New map in ${team.name}` : 'New map',
+            label: 'Map name',
+            placeholder: 'my-level',
+            validate: (v) => (/^[A-Za-z0-9_-]{1,64}$/.test(v)
+                ? '' : 'Use only letters, digits, - and _ (up to 64 characters).'),
+            confirmLabel: 'Create',
+        });
+        if (name) onCreate(name, teamId);
     };
 
     const pickFile = () => fileRef.current?.click();
@@ -96,12 +114,13 @@ export default function StartScreen({
                 .slice(0, 64) || 'uploaded';
             onUpload(name, parts);
         } catch (err) {
-            alert(`Could not read that file: ${err.message}`);
+            notice({ title: 'That file could not be read', body: String(err.message ?? err) });
         }
     };
 
     return (
         <div className="start">
+            {dialogs}
             <div className="account-corner">
                 <Account account={account} ttl={ttl} onChange={accountChanged} />
                 {claimed > 0 && (

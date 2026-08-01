@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { deleteMap, listMaps } from './api';
 import useList from './useList';
+import useDialogs from '../ui/useDialogs';
 import Pager from './Pager';
 
 const when = (s) => new Date(s.replace(' ', 'T') + 'Z').toLocaleString();
@@ -11,9 +12,16 @@ export default function Maps({ onChanged }) {
     const list = useList(useCallback((p) => listMaps(p), []));
     const [busy, setBusy] = useState(null);
     const [error, setError] = useState(null);
+    const { dialogs, confirm } = useDialogs();
 
     const remove = async (m) => {
-        if (!confirm(`Delete "${m.name}"? This cannot be undone.`)) return;
+        const yes = await confirm({
+            title: `Delete "${m.name}"?`,
+            body: 'The map and everything in it go for good. This cannot be undone.',
+            confirmLabel: 'Delete map',
+            danger: true,
+        });
+        if (!yes) return;
         setBusy(m.id);
         setError(null);
         try {
@@ -29,6 +37,7 @@ export default function Maps({ onChanged }) {
 
     return (
         <section className="panel">
+            {dialogs}
             <header className="panel-head">
                 <h2>Maps</h2>
                 <input

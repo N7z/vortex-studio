@@ -32,6 +32,7 @@ import useLive from './useLive';
 import { decodeImage, imageMeta } from './image';
 import { buildVoxels, loadModel } from './model';
 import { convertRoblox, importSummary } from './roblox';
+import useDialogs from '../ui/useDialogs';
 import {
     applyGroupOp, newGroupId, pruneGroups, takeLegacyGroups, ungroupIds,
 } from './groups';
@@ -105,6 +106,7 @@ export default function App() {
     // The stored version this copy was built on; a save that does not match it is refused.
     const versionRef = useRef(null);
     const staleSeen = useRef(false);
+    const { dialogs, confirm, ask } = useDialogs();
 
     const flash = useCallback((msg) => {
         setStatus(msg);
@@ -660,8 +662,14 @@ export default function App() {
         }
     };
 
-    const pasteRoblox = () => {
-        const text = prompt('Paste the exported Roblox JSON:');
+    const pasteRoblox = async () => {
+        const text = await ask({
+            title: 'Import a Roblox place',
+            body: 'Paste the exported JSON below.',
+            multiline: true,
+            placeholder: '{ "parts": [ ... ] }',
+            confirmLabel: 'Import',
+        });
         if (text) importRobloxText(text, null);
     };
 
@@ -750,8 +758,16 @@ export default function App() {
         flash('Left the live session');
     };
 
-    const closeMap = () => {
-        if (dirty.current && !confirm(`${mapName}.json has unsaved changes. Close it anyway?`)) return;
+    const closeMap = async () => {
+        if (dirty.current) {
+            const yes = await confirm({
+                title: `Close ${mapName}.json?`,
+                body: 'It has changes that are not saved. The local copy in this browser keeps them, but the cloud copy will not.',
+                confirmLabel: 'Close anyway',
+                danger: true,
+            });
+            if (!yes) return;
+        }
         if (liveRef.current?.live) live.leave();
         setTeamOpen(false);
         setPlaying(false);
@@ -934,6 +950,7 @@ export default function App() {
 
     return (
         <div className={mobile ? 'studio mobile' : 'studio'}>
+            {dialogs}
             {updateReady && !updateHidden && (
                 <UpdateNotice
                     warning={dirty.current && !canSaveToServer && !live.live
