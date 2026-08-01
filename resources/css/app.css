@@ -1656,3 +1656,24 @@ a.tool-btn { text-decoration: none; }
 .start-body.mobile .scopes { width: auto; flex-direction: row; overflow-x: auto; gap: 6px; }
 .start-body.mobile .scope { border-left: none; border-bottom: 2px solid transparent; border-radius: 4px; }
 .start-body.mobile .scope.on { border-left: none; border-bottom-color: #5b8dd6; }
+
+.cards { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.card-open { padding: 10px; gap: 6px; }
+.card-shot {
+    display: block;
+    aspect-ratio: 1 / 1;
+    border-radius: 5px;
+    overflow: hidden;
+    background: #0f0f13;
+}
+.card-shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.card-blank {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #2f2f38;
+    font-size: 30px;
+    font-weight: 600;
+    text-transform: uppercase;
+}

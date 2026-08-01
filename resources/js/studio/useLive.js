@@ -5,7 +5,7 @@ import { LiveClient } from './live';
 const EMPTY = [];
 
 export default function useLive({
-    onWelcome, onOp, onSnapshot, onGroups, onError, onNotice, onRefused,
+    onWelcome, onOp, onSnapshot, onGroups, onError, onNotice, onRefused, onSaved,
 }) {
     const [status, setStatus] = useState('offline');
     const [code, setCode] = useState(null);
@@ -15,7 +15,7 @@ export default function useLive({
 
     const cbs = useRef({});
     cbs.current = {
-        onWelcome, onOp, onSnapshot, onGroups, onError, onNotice, onRefused,
+        onWelcome, onOp, onSnapshot, onGroups, onError, onNotice, onRefused, onSaved,
     };
 
     const playRef = useRef(new Map());
@@ -84,7 +84,10 @@ export default function useLive({
                 (m) => (m.id === msg.id ? { ...m, view: msg.view } : m),
             )),
             onPlay: (msg) => notePlay(msg.id, msg.play),
-            onSaved: (msg) => setLastSavedAt(msg.at),
+            onSaved: (msg) => {
+                setLastSavedAt(msg.at);
+                cbs.current.onSaved?.(msg);
+            },
             onKicked: (msg) => {
                 setCode(null);
                 setMe(null);

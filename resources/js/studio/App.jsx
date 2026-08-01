@@ -17,7 +17,7 @@ import {
     loadPlugins, setPartLimit, stripId, compilePlugin, saveUserPlugin, deleteUserPlugin,
     userPluginSource, isBuiltin, resetBuiltin,
 } from './plugins';
-import { listTeams, loadAccount, loadMap, loadMapAsAdmin, saveMap } from './api';
+import { listTeams, loadAccount, loadMap, loadMapAsAdmin, putThumb, saveMap } from './api';
 import { writeBackup } from './backup';
 import {
     addOp, applyOp, fillPart, invertOp, patchOp, removeOp, repairParts, stripIds,
@@ -62,6 +62,10 @@ const GROUPS_DEBOUNCE_MS = 400;
 // Heavy work in the same tick as setBusy paints nothing, so the spinner is given a
 // frame of its own first.
 const paint = () => new Promise((r) => requestAnimationFrame(() => r()));
+
+// Autosave runs every 20s; a picture that often is wasted upload for a view that
+// barely changed.
+const THUMB_EVERY_MS = 120_000;
 
 export default function App() {
     const [mapName, setMapName] = useState(null);
@@ -112,6 +116,8 @@ export default function App() {
     // The stored version this copy was built on; a save that does not match it is refused.
     const versionRef = useRef(null);
     const staleSeen = useRef(false);
+    const thumbRef = useRef(null);
+    const thumbAt = useRef(0);
     const { dialogs, confirm, ask } = useDialogs();
     const [busy, setBusy] = useState(null);
     // An admin is trusted with maps of any size, so nothing here caps them.
@@ -222,6 +228,9 @@ export default function App() {
         },
         // A team map only exists inside its session, so being turned away means the
         // map goes too. A personal map keeps its unsaved work and just stays offline.
+        // Somebody in the room persisted the state everyone shares, so nobody is
+        // holding unsaved work any more.
+        onSaved: () => { dirty.current = false; },
         onRefused: (message) => {
             flash(message ?? 'That session turned you away.');
             if (mapTeamRef.current == null) return;
@@ -761,6 +770,18 @@ export default function App() {
 
     const canSaveToServer = !!mapName && (!live.live || live.canEdit) && !viewing;
 
+    // Fire and forget: a picture is never worth failing or delaying a save for.
+    const snapThumb = useCallback((name, team, snapshot, force) => {
+        if (!thumbRef.current || !snapshot.length) return;
+        const now = Date.now();
+        if (!force && now - thumbAt.current < THUMB_EVERY_MS) return;
+        thumbAt.current = now;
+        Promise.resolve()
+            .then(() => thumbRef.current(snapshot))
+            .then((blob) => blob && putThumb(name, team, blob))
+            .catch(() => {});
+    }, []);
+
     const save = useCallback(async (auto) => {
         if (!mapName) return false;
         if (liveRef.current.live && !liveRef.current.canEdit) {
@@ -779,6 +800,8 @@ export default function App() {
             if (partsRef.current === snapshot) dirty.current = false;
             liveRef.current.notifySaved();
             flash(auto === true ? 'Auto-saved' : `Saved ${mapName}.json`);
+            snapThumb(mapName, mapTeamRef.current, snapshot, auto !== true);
+
             return true;
         } catch (e) {
             // A teammate saved in between. Never retry on its own: that would be the
@@ -793,7 +816,7 @@ export default function App() {
                 : String(e.message ?? e));
             return false;
         }
-    }, [mapName, flash]);
+    }, [mapName, flash, snapThumb]);
 
     // Auto-save: every 20 s, but only when there are unsaved changes.
     useEffect(() => {
@@ -1142,6 +1165,7 @@ export default function App() {
                         preview={pluginPreview}
                         spawnRef={spawnRef}
                         busyRef={busyRef}
+                        thumbRef={thumbRef}
                         playing={playing}
                         onExitPlay={() => setPlaying(false)}
                         onPlayError={(m) => flash(`Could not start the play test: ${m}`)}

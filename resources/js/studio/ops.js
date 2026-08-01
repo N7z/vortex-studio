@@ -32,6 +32,9 @@ export function fillPart(part, source) {
 
 export function repairParts(parts) {
     let fixed = 0;
+    // Minting an id is not a repair the user made or needs warning about, so it is
+    // counted apart: it must not mark a freshly opened map as unsaved work.
+    let minted = 0;
     const seen = new Set();
     const out = parts.map((p) => {
         const clean = { _id: p._id };
@@ -39,9 +42,10 @@ export function repairParts(parts) {
         let bad = Object.keys(p).some((k) => k !== '_id' && !PART_KEYS.includes(k));
 
         // Legacy maps carry no id, and a duplicate would make a set op write twice.
-        if (!validId(clean._id) || seen.has(clean._id)) {
+        const hadId = validId(clean._id) && !seen.has(clean._id);
+        if (!hadId) {
             clean._id = newPartId();
-            bad = true;
+            minted += 1;
         }
         seen.add(clean._id);
 
@@ -61,12 +65,13 @@ export function repairParts(parts) {
             bad = true;
         }
 
-        if (!bad) return p;
-        fixed += 1;
+        if (!bad && hadId) return p;
+        if (bad) fixed += 1;
+
         return fillPart(clean, null);
     });
 
-    return { parts: out, fixed };
+    return { parts: out, fixed, minted };
 }
 
 const ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';

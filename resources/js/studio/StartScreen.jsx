@@ -266,6 +266,11 @@ export default function StartScreen({
                                     {rows.map((m) => (
                                         <div className="card" key={m.name}>
                                             <button type="button" className="card-open" onClick={() => openRow(m)}>
+                                                <span className="card-shot">
+                                                    {m.thumb
+                                                        ? <img src={m.thumb} alt="" loading="lazy" />
+                                                        : <span className="card-blank">{m.name.slice(0, 2)}</span>}
+                                                </span>
                                                 <span className="card-name">{m.name}</span>
                                                 <span className="card-when">
                                                     {scope === 'device' ? ago(m.savedAt) : ago(m.modified * 1000)}

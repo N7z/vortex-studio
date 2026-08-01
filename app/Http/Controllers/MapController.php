@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class MapController extends Controller
 {
@@ -31,6 +32,74 @@ class MapController extends Controller
      * An admin is trusted with maps of any size. The request still has to fit PHP's
      * own post_max_size, which is the ceiling nothing here can lift.
      */
+    private const MAX_THUMB_BYTES = 300_000;
+
+    private static function thumbDisk()
+    {
+        return Storage::disk(config('filesystems.thumbs', 'local'));
+    }
+
+    private static function thumbPath(int $id): string
+    {
+        return "thumbs/$id.webp";
+    }
+
+    /**
+     * A bucket serves the file itself; a plain local disk has no public URL, so the
+     * app streams it instead. Both are cache-busted by when it was written.
+     */
+    private static function thumbUrl(?object $row): ?string
+    {
+        if (! $row?->thumb_at) {
+            return null;
+        }
+        $stamp = strtotime($row->thumb_at);
+
+        try {
+            return self::thumbDisk()->url(self::thumbPath($row->id))."?v=$stamp";
+        } catch (\Throwable) {
+            return url("/api/thumbs/{$row->id}.webp")."?v=$stamp";
+        }
+    }
+
+    public function thumb(int $id)
+    {
+        $row = DB::table('maps')->where('id', $id)->first(['id', 'thumb_at']);
+        abort_unless($row?->thumb_at, 404);
+
+        $disk = self::thumbDisk();
+        $path = self::thumbPath($id);
+        abort_unless($disk->exists($path), 404);
+
+        return response($disk->get($path), 200, [
+            'Content-Type' => 'image/webp',
+            'Cache-Control' => 'public, max-age=31536000, immutable',
+        ]);
+    }
+
+    public function putThumb(Request $request, string $name)
+    {
+        $name = $this->validName($name);
+        $row = MapAccess::find($request, $name, $this->teamId($request));
+        abort_unless($row, 404);
+        abort_unless(MapAccess::canEdit($row), 403, 'you can only view this map');
+
+        $body = $request->getContent();
+        abort_unless(is_string($body) && $body !== '', 400, 'no image');
+        abort_if(strlen($body) > self::MAX_THUMB_BYTES, 413, 'thumbnail too large');
+        // Trust the bytes, not the header: this is written to storage and served back.
+        abort_unless(
+            str_starts_with($body, 'RIFF') && substr($body, 8, 4) === 'WEBP',
+            400,
+            'thumbnail must be a webp',
+        );
+
+        self::thumbDisk()->put(self::thumbPath($row->id), $body, 'public');
+        DB::table('maps')->where('id', $row->id)->update(['thumb_at' => now()]);
+
+        return response()->json(['ok' => true]);
+    }
+
     private static function unlimited(): bool
     {
         return (bool) Auth::user()?->is_admin;
@@ -105,12 +174,13 @@ class MapController extends Controller
 
         $mine = MapAccess::visible($request)
             ->orderByDesc('updated_at')
-            ->get(['name', 'updated_at', 'team_id', 'version'])
+            ->get(['id', 'name', 'updated_at', 'team_id', 'version', 'thumb_at'])
             ->map(fn ($m) => [
                 'name' => $m->name,
                 'modified' => strtotime($m->updated_at),
                 'team_id' => $m->team_id,
                 'version' => (int) $m->version,
+                'thumb' => self::thumbUrl($m),
             ]);
 
         $examples = collect(glob($this->examplesDir().DIRECTORY_SEPARATOR.'*.json'))

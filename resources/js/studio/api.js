@@ -91,6 +91,17 @@ export async function moveMap(name, fromTeam, toTeam) {
     return d;
 }
 
+export async function putThumb(name, team, blob) {
+    const url = `/api/maps/${encodeURIComponent(name)}/thumb${team != null ? `?team=${team}` : ''}`;
+    const r = await fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'image/webp', 'X-CSRF-TOKEN': csrf },
+        body: blob,
+    });
+
+    return r.ok;
+}
+
 export const listTeams = () => fetch('/api/teams', { headers: { Accept: 'application/json' } })
     .then((r) => (r.ok ? r.json() : { teams: [] }))
     .catch(() => ({ teams: [] }));

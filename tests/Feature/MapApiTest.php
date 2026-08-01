@@ -4,6 +4,7 @@ use App\Models\User;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 uses(RefreshDatabase::class);
 
@@ -223,4 +224,35 @@ it('lets an admin save past the part and byte caps', function () {
     // The same body from an ordinary account is still refused.
     $this->actingAs(User::factory()->create())
         ->putJson('/api/maps/huge', ['parts' => $parts])->assertStatus(400);
+});
+
+it('stores and serves a map thumbnail', function () {
+    Storage::fake('local');
+    asToken()->putJson('/api/maps/shot', [PART])->assertOk();
+
+    $webp = 'RIFF'.pack('V', 20).'WEBPVP8 '.str_repeat("\0", 12);
+    asToken()->call('PUT', '/api/maps/shot/thumb', [], tokenCookie(), [], ['CONTENT_TYPE' => 'image/webp'], $webp)
+        ->assertOk();
+
+    $id = DB::table('maps')->where('name', 'shot')->value('id');
+    Storage::disk('local')->assertExists("thumbs/$id.webp");
+
+    // A disk with public URLs serves it directly; one without falls back to the app.
+    $listed = asToken()->getJson('/api/maps')->json('mine.0.thumb');
+    expect($listed)->toContain("thumbs/$id.webp")->toContain('?v=');
+
+    $this->get("/api/thumbs/$id.webp")->assertOk()->assertHeader('content-type', 'image/webp');
+});
+
+it('refuses a thumbnail that is not a webp', function () {
+    Storage::fake('local');
+    asToken()->putJson('/api/maps/shot', [PART])->assertOk();
+
+    asToken()->call('PUT', '/api/maps/shot/thumb', [], tokenCookie(), [], ['CONTENT_TYPE' => 'image/webp'], '<?php echo 1;')
+        ->assertStatus(400);
+});
+
+it('lists no thumbnail before one is stored', function () {
+    asToken()->putJson('/api/maps/shot', [PART])->assertOk();
+    expect(asToken()->getJson('/api/maps')->json('mine.0.thumb'))->toBeNull();
 });

@@ -15,6 +15,9 @@ return [
 
     'default' => env('FILESYSTEM_DISK', 'local'),
 
+    // Map thumbnails: a bucket in production, the local disk in development.
+    'thumbs' => env('THUMB_DISK', 'local'),
+
     /*
     |--------------------------------------------------------------------------
     | Filesystem Disks

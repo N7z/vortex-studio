@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { labelMaterial } from './play/label';
+import { captureThumb } from './thumb';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import {
@@ -156,7 +157,7 @@ export default function Viewport({
     parts, selectedIds, setSelectedId, selectMany, tool, snap, onTransform, onTransformMany,
     mapName, graphics, preview, spawnRef, busyRef, canEdit = true, peers, onView,
     faces, showFaces = false, statsRef,
-    playing = false, onExitPlay, onPlayError, touchRef, playRef, onPlayState, members = [],
+    playing = false, onExitPlay, onPlayError, touchRef, playRef, onPlayState, members = [], thumbRef,
 }) {
     const mountRef = useRef(null);
     const ctx = useRef(null);
@@ -1136,6 +1137,9 @@ export default function Viewport({
         c.playRef = playRef ?? null;
         c.memberNames = new Map(members.map((m) => [m.id, { name: m.name, color: m.color }]));
         if (spawnRef) spawnRef.current = c.spawnPoint;
+        if (thumbRef) {
+            thumbRef.current = (parts) => captureThumb(c.renderer, c.scene, parts);
+        }
     });
 
     useEffect(() => {

@@ -12,6 +12,15 @@ pest()->extend(TestCase::class)->in('Feature');
  * ourselves, since withCookie() alone doesn't produce what EncryptCookies
  * accepts, and the middleware silently drops the cookie.
  */
+/** The raw cookie asToken() sends, for call() which does not carry the pending ones. */
+function tokenCookie(): array
+{
+    $enc = app(Encrypter::class);
+    $value = CookieValuePrefix::create('studio_token', $enc->getKey()).str_repeat('A', 40);
+
+    return ['studio_token' => $enc->encrypt($value, false)];
+}
+
 function asToken(): TestCase
 {
     $enc = app(Encrypter::class);
