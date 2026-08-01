@@ -83,6 +83,14 @@ export default function StatsPanel({ parts, selectedIds, groups, mapName, statsR
                             hint="Main-thread time inside the viewport's own frame. If this is well under the frame time, the cost is elsewhere on the page"
                         />
                         <Row
+                            label="Blocked"
+                            value={`${render.blocked ?? 0} %`}
+                            hint="Share of the last half second spent in long tasks. High here with a low Viewport CPU means something outside the renderer is holding the main thread"
+                        />
+                        {render.heap == null ? null : (
+                            <Row label="JS heap" value={`${n(render.heap)} MB`} />
+                        )}
+                        <Row
                             label="Draw calls"
                             value={n(render.calls)}
                             hint="Without batching this would be roughly one per part, or three with studs"

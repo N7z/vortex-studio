@@ -964,10 +964,29 @@ export default function Viewport({
         let fpsCount = 0;
         let fps = 0;
         let cpu = 0;
+        let blocked = 0;
+        let blockedAt = 0;
+        let longTasks = null;
+        if (typeof PerformanceObserver === 'function') {
+            try {
+                longTasks = new PerformanceObserver((list) => {
+                    for (const entry of list.getEntries()) {
+                        blocked += entry.duration;
+                        blockedAt = entry.startTime + entry.duration;
+                    }
+                });
+                longTasks.observe({ entryTypes: ['longtask'] });
+            } catch {
+                longTasks = null;
+            }
+        }
+        let blockedPct = 0;
         const countFps = (now) => {
             fpsCount++;
             if (now - fpsMark >= 500) {
                 fps = Math.round((fpsCount * 1000) / (now - fpsMark));
+                blockedPct = Math.min(100, Math.round((blocked / (now - fpsMark)) * 100));
+                blocked = 0;
                 fpsCount = 0;
                 fpsMark = now;
             }
@@ -979,6 +998,10 @@ export default function Viewport({
             c.statsRef.current = {
                 fps,
                 cpu: Math.round(cpu * 10) / 10,
+                blocked: blockedPct,
+                heap: performance.memory
+                    ? Math.round(performance.memory.usedJSHeapSize / 1048576)
+                    : null,
                 calls: info.calls,
                 triangles: info.triangles,
                 batches: batches.size,
@@ -1204,6 +1227,7 @@ export default function Viewport({
 
         return () => {
             cancelAnimationFrame(raf);
+            longTasks?.disconnect();
             ro.disconnect();
             renderer.domElement.removeEventListener('pointerdown', onDown);
             renderer.domElement.removeEventListener('pointermove', onMove);
@@ -1456,7 +1480,10 @@ export default function Viewport({
         onBuild?.(0);
         build();
 
-        return () => { cancelled = true; };
+        return () => {
+            cancelled = true;
+            onBuild?.(null);
+        };
     }, [parts, studs, mode]);
 
     useEffect(() => {
