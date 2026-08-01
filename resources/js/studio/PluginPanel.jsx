@@ -78,6 +78,12 @@ export default function PluginPanel({
                                     {info.w}×{info.h}×{info.d}, {info.count.toLocaleString()} blocks
                                     {countNote && <> {'→'} <b>{countNote}</b></>}
                                 </span>
+                                <span className="dim">
+                                    {info.source === 'texture' && 'coloured from its texture'}
+                                    {info.source === 'vertex' && 'coloured from its vertex colours'}
+                                    {info.source !== 'texture' && info.source !== 'vertex'
+                                        && 'no texture or vertex colours: one flat colour'}
+                                </span>
                             </div>
                         )}
                     </div>

@@ -57,6 +57,9 @@ function collect(object) {
     return meshes;
 }
 
+const toSrgb = (v) => (v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055);
+const byte = (v) => Math.max(0, Math.min(255, Math.round(toSrgb(v) * 255)));
+
 function materialOf(mesh) {
     const m = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
     if (!m) return { rgb: [170, 170, 170], sample: null };
@@ -115,6 +118,9 @@ export function voxelize(object, res, maxRes = MAX_RES) {
     const na = new THREE.Vector3();
     const nb = new THREE.Vector3();
     const nc = new THREE.Vector3();
+    // What the colours ended up coming from, so the panel can say why a model
+    // came out flat instead of leaving the user to guess.
+    let source = 'flat';
 
     for (const mesh of meshes) {
         const { rgb, sample } = materialOf(mesh);
@@ -124,6 +130,8 @@ export function voxelize(object, res, maxRes = MAX_RES) {
         // The artist's own normals, which on a smooth-shaded model describe the
         // surface the mesh stands for rather than the triangles it is made of.
         const nrm = geo.attributes.normal;
+        // Scans and sculpts usually carry their colour per vertex, not in a texture.
+        const vcol = geo.attributes.color;
         normalMatrix.getNormalMatrix(mesh.matrixWorld);
         const index = geo.index;
         const faces = index ? index.count / 3 : pos.count / 3;
@@ -145,12 +153,21 @@ export function voxelize(object, res, maxRes = MAX_RES) {
                 nc.fromBufferAttribute(nrm, i2).applyMatrix3(normalMatrix);
             }
 
-            let colour = rgb;
-            if (uv) {
-                const u = (uv.getX(i0) + uv.getX(i1) + uv.getX(i2)) / 3;
-                const v = (uv.getY(i0) + uv.getY(i1) + uv.getY(i2)) / 3;
-                colour = sample(u, v) ?? rgb;
-            }
+            const u0 = uv ? uv.getX(i0) : 0;
+            const u1 = uv ? uv.getX(i1) : 0;
+            const u2 = uv ? uv.getX(i2) : 0;
+            const v0 = uv ? uv.getY(i0) : 0;
+            const v1 = uv ? uv.getY(i1) : 0;
+            const v2 = uv ? uv.getY(i2) : 0;
+            const cr0 = vcol ? vcol.getX(i0) : 0;
+            const cg0 = vcol ? vcol.getY(i0) : 0;
+            const cb0 = vcol ? vcol.getZ(i0) : 0;
+            const cr1 = vcol ? vcol.getX(i1) : 0;
+            const cg1 = vcol ? vcol.getY(i1) : 0;
+            const cb1 = vcol ? vcol.getZ(i1) : 0;
+            const cr2 = vcol ? vcol.getX(i2) : 0;
+            const cg2 = vcol ? vcol.getY(i2) : 0;
+            const cb2 = vcol ? vcol.getZ(i2) : 0;
 
             const steps = Math.max(
                 Math.ceil(a.distanceTo(b) * scale),
@@ -169,6 +186,21 @@ export function voxelize(object, res, maxRes = MAX_RES) {
                         a.y * w0 + b.y * w1 + c.y * w2,
                         a.z * w0 + b.z * w1 + c.z * w2,
                     );
+                    let colour = rgb;
+                    if (uv) {
+                        const hit = sample(u0 * w0 + u1 * w1 + u2 * w2, v0 * w0 + v1 * w1 + v2 * w2);
+                        if (hit) {
+                            colour = hit;
+                            source = 'texture';
+                        }
+                    } else if (vcol) {
+                        colour = [
+                            byte(cr0 * w0 + cr1 * w1 + cr2 * w2),
+                            byte(cg0 * w0 + cg1 * w1 + cg2 * w2),
+                            byte(cb0 * w0 + cb1 * w1 + cb2 * w2),
+                        ];
+                        source = 'vertex';
+                    }
                     if (nrm) {
                         face.set(
                             na.x * w0 + nb.x * w1 + nc.x * w2,
@@ -188,7 +220,7 @@ export function voxelize(object, res, maxRes = MAX_RES) {
         }
     }
 
-    return { dim, cells, norms };
+    return { dim, cells, norms, source };
 }
 
 export function fillInside(grid) {
@@ -260,7 +292,9 @@ export function encode(grid) {
             + nhex(n ? n[0] * s : 0) + nhex(n ? n[1] * s : 0) + nhex(n ? n[2] * s : 0),
         );
     }
-    return { w: dim.x, h: dim.y, d: dim.z, count: keys.length, data: out.join('') };
+    return {
+        w: dim.x, h: dim.y, d: dim.z, count: keys.length, data: out.join(''), source: grid.source,
+    };
 }
 
 export async function buildVoxels(object, res, solid, maxRes = MAX_RES) {
