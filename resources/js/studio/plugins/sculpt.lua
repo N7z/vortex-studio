@@ -1,5 +1,5 @@
 plugin = {
-    name = "Sculpt",
+    name = "Model",
     icon = Icons.Gem,
     ui = {
         { id = "model", type = "model", label = "Model", res = "res", solid = "solid" },
@@ -13,7 +13,7 @@ plugin = {
         { id = "core", type = "checkbox", label = "Keep a solid core", default = false },
         { id = "flat", type = "number", label = "Keep flat faces square", default = 0.985 },
         { id = "ground", type = "checkbox", label = "Sit on the selected part", default = true },
-        { id = "build", type = "button", label = "Sculpt model" },
+        { id = "build", type = "button", label = "Build model" },
     },
 }
 
