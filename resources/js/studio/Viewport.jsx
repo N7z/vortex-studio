@@ -219,6 +219,8 @@ export default function Viewport({
         cam.left = cam.bottom = -250;
         cam.right = cam.top = 250;
         cam.far = 800;
+        sun.shadow.normalBias = 0.08;
+        sun.shadow.bias = -0.0005;
         scene.add(sun);
 
         const grid = new THREE.GridHelper(400, 100, 0x999999, 0xb5b5b5);
