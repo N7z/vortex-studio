@@ -1510,3 +1510,21 @@ a.tool-btn { text-decoration: none; }
 }
 .member-x:hover { color: #e05252; }
 .member-x:disabled { opacity: 0.4; cursor: default; }
+
+.map-row { display: flex; align-items: center; margin-bottom: 10px; }
+.map-row a { margin-bottom: 0; }
+.map-move {
+    margin-left: 12px;
+    padding: 1px 8px;
+    border: 1px solid #26262e;
+    border-radius: 3px;
+    background: none;
+    color: #6e6e78;
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 120ms;
+}
+.map-row:hover .map-move, .map-move:focus { opacity: 1; }
+.map-move:hover { color: #5b8dd6; border-color: #5b8dd6; }

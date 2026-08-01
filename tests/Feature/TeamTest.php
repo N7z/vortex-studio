@@ -310,3 +310,85 @@ it('keeps usernames unique, whatever the case', function () {
         'password' => 'correct horse', 'password_confirmation' => 'correct horse',
     ])->assertStatus(422);
 });
+
+it('moves a personal map into a team and back out', function () {
+    $a = User::factory()->create();
+    $team = makeTeam($a);
+    $this->actingAs($a)->putJson('/api/maps/castle', ['parts' => [TPART]])->assertOk();
+
+    $this->actingAs($a)->patchJson('/api/maps/castle', ['to_team' => $team])
+        ->assertOk()->assertJsonPath('team_id', $team);
+    expect(DB::table('maps')->where('name', 'castle')->value('team_id'))->toBe($team);
+    $this->actingAs($a)->getJson("/api/maps/castle?team=$team")->assertOk()->assertJsonCount(1, 'parts');
+
+    $this->actingAs($a)->patchJson("/api/maps/castle?team=$team", ['to_team' => null])->assertOk();
+    expect(DB::table('maps')->where('name', 'castle')->value('team_id'))->toBeNull();
+});
+
+it('keeps the map contents and groups when it moves', function () {
+    $a = User::factory()->create();
+    $team = makeTeam($a);
+    $part = TPART + ['_id' => 'p1'];
+    $this->actingAs($a)->putJson('/api/maps/castle', [
+        'parts' => [$part], 'groups' => [['id' => 'g1', 'name' => 'Wall', 'ids' => ['p1']]],
+    ])->assertOk();
+
+    $this->actingAs($a)->patchJson('/api/maps/castle', ['to_team' => $team])->assertOk();
+
+    $this->actingAs($a)->getJson("/api/maps/castle?team=$team")->assertOk()
+        ->assertJsonPath('parts.0._id', 'p1')
+        ->assertJsonPath('groups.0.name', 'Wall');
+});
+
+it('refuses a move onto a name already taken there', function () {
+    $a = User::factory()->create();
+    $team = makeTeam($a);
+    $this->actingAs($a)->putJson('/api/maps/castle', ['parts' => [TPART]])->assertOk();
+    $this->actingAs($a)->putJson("/api/maps/castle?team=$team", ['parts' => [TPART, TPART]])->assertOk();
+
+    $this->actingAs($a)->patchJson('/api/maps/castle', ['to_team' => $team])->assertStatus(422);
+    expect(DB::table('maps')->where('name', 'castle')->whereNull('team_id')->count())->toBe(1);
+});
+
+it('lets an editor move a map in but only the owner move one out', function () {
+    $a = User::factory()->create();
+    $b = User::factory()->create();
+    $team = makeTeam($a);
+    addTo($team, $a, $b);
+
+    $this->actingAs($b)->putJson('/api/maps/theirs', ['parts' => [TPART]])->assertOk();
+    $this->actingAs($b)->patchJson('/api/maps/theirs', ['to_team' => $team])->assertOk();
+
+    $this->actingAs($b)->patchJson("/api/maps/theirs?team=$team", ['to_team' => null])->assertStatus(403);
+    $this->actingAs($a)->patchJson("/api/maps/theirs?team=$team", ['to_team' => null])->assertOk();
+    expect(DB::table('maps')->where('name', 'theirs')->value('user_id'))->toBe($a->id);
+});
+
+it('refuses a move into a team you cannot edit', function () {
+    $a = User::factory()->create();
+    $b = User::factory()->create();
+    $c = User::factory()->create();
+    $team = makeTeam($a);
+    addTo($team, $a, $b, 'viewer');
+
+    $this->actingAs($b)->putJson('/api/maps/mine', ['parts' => [TPART]])->assertOk();
+    $this->actingAs($b)->patchJson('/api/maps/mine', ['to_team' => $team])->assertStatus(403);
+
+    $this->actingAs($c)->putJson('/api/maps/mine', ['parts' => [TPART]])->assertOk();
+    $this->actingAs($c)->patchJson('/api/maps/mine', ['to_team' => $team])->assertNotFound();
+});
+
+it('refuses a move that would break the destination quota', function () {
+    $a = User::factory()->create();
+    $team = makeTeam($a);
+    $this->actingAs($a)->putJson('/api/maps/castle', ['parts' => [TPART]])->assertOk();
+
+    for ($i = 0; $i < 200; $i++) {
+        DB::table('maps')->insert([
+            'token' => str_repeat('A', 40), 'name' => "t$i", 'data' => '[]', 'parts' => 0,
+            'user_id' => $a->id, 'team_id' => $team, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+
+    $this->actingAs($a)->patchJson('/api/maps/castle', ['to_team' => $team])->assertStatus(403);
+});

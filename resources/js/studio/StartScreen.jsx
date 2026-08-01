@@ -4,6 +4,7 @@ import { listBackups, readBackup, deleteBackup } from './backup';
 import Account from './Account';
 import Teams from './Teams';
 import useDialogs from '../ui/useDialogs';
+import MoveMap from './MoveMap';
 
 const DISCLAIMER_KEY = 'studio_disclaimer_closed';
 
@@ -37,6 +38,7 @@ export default function StartScreen({
     const [error, setError] = useState('');
     const fileRef = useRef(null);
     const { dialogs, notice, confirm, ask } = useDialogs();
+    const [moving, setMoving] = useState(null);
 
     const personal = mine.filter((m) => !m.team_id);
 
@@ -121,6 +123,14 @@ export default function StartScreen({
     return (
         <div className="start">
             {dialogs}
+            {moving && (
+                <MoveMap
+                    map={moving}
+                    teams={teams}
+                    onClose={() => setMoving(null)}
+                    onDone={() => { setMoving(null); refresh(); }}
+                />
+            )}
             <div className="account-corner">
                 <Account account={account} ttl={ttl} onChange={accountChanged} />
                 {claimed > 0 && (
@@ -157,11 +167,18 @@ export default function StartScreen({
                             </span>
                         </h2>
                         {personal.map((m) => (
-                            <a key={m.name} onClick={() => onOpen(m.name, null)}>
-                                {m.name}.json
-                                {m.name === openName && openTeam == null
-                                    && <span className="ttl-note">open</span>}
-                            </a>
+                            <div className="map-row" key={m.name}>
+                                <a onClick={() => onOpen(m.name, null)}>
+                                    {m.name}.json
+                                    {m.name === openName && openTeam == null
+                                        && <span className="ttl-note">open</span>}
+                                </a>
+                                {account && teams.some((t) => t.role !== 'viewer') && (
+                                    <button type="button" className="map-move" onClick={() => setMoving(m)}>
+                                        Move
+                                    </button>
+                                )}
+                            </div>
                         ))}
                     </>
                 )}
@@ -176,11 +193,18 @@ export default function StartScreen({
                                 <a onClick={() => create(t.id)}>New map in {t.name}</a>
                             )}
                             {rows.map((m) => (
-                                <a key={m.name} onClick={() => onOpen(m.name, t.id)}>
-                                    {m.name}.json
-                                    {m.name === openName && openTeam === t.id
-                                        && <span className="ttl-note">open</span>}
-                                </a>
+                                <div className="map-row" key={m.name}>
+                                    <a onClick={() => onOpen(m.name, t.id)}>
+                                        {m.name}.json
+                                        {m.name === openName && openTeam === t.id
+                                            && <span className="ttl-note">open</span>}
+                                    </a>
+                                    {t.role === 'owner' && (
+                                        <button type="button" className="map-move" onClick={() => setMoving(m)}>
+                                            Move
+                                        </button>
+                                    )}
+                                </div>
                             ))}
                         </React.Fragment>
                     );

@@ -24,6 +24,7 @@ Route::middleware('throttle:60,1')->group(function () {
     Route::get('/api/maps', [MapController::class, 'index']);
     Route::get('/api/maps/{name}', [MapController::class, 'show']);
     Route::put('/api/maps/{name}', [MapController::class, 'save']);
+    Route::patch('/api/maps/{name}', [MapController::class, 'move']);
 
     Route::get('/api/teams', [TeamController::class, 'index']);
     Route::post('/api/teams', [TeamController::class, 'store']);

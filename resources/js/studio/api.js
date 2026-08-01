@@ -79,6 +79,18 @@ export async function saveMap(name, parts, groups, team = null, version = null) 
     return d;
 }
 
+export async function moveMap(name, fromTeam, toTeam) {
+    const r = await fetch(mapUrl(name, fromTeam), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf },
+        body: JSON.stringify({ to_team: toTeam }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.message || 'that map could not be moved');
+
+    return d;
+}
+
 export const listTeams = () => fetch('/api/teams', { headers: { Accept: 'application/json' } })
     .then((r) => (r.ok ? r.json() : { teams: [] }))
     .catch(() => ({ teams: [] }));

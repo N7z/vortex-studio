@@ -147,6 +147,52 @@ class MapController extends Controller
         return $this->document(file_get_contents($file), null, 0);
     }
 
+    public function move(Request $request, string $name)
+    {
+        $name = $this->validName($name);
+        $id = Auth::id();
+        abort_unless($id, 401, 'sign in first');
+
+        $from = $this->teamId($request);
+        $raw = $request->json('to_team');
+        $to = $raw === null || $raw === '' ? null : (int) $raw;
+        abort_if($to !== null && ! is_numeric($raw), 400, 'bad team');
+        abort_if($to === $from, 422, 'it is already there');
+
+        $row = MapAccess::find($request, $name, $from);
+        abort_unless($row, 404);
+        abort_unless(MapAccess::canEdit($row), 403, 'you can only view this map');
+
+        // Taking a map out of a team removes it from everyone else in that team.
+        if ($from !== null) {
+            abort_unless(MapAccess::teamRole($from) === MapAccess::OWNER, 403, 'only the team owner can move a map out');
+        }
+        if ($to !== null) {
+            $role = MapAccess::teamRole($to);
+            abort_unless($role !== null, 404);
+            abort_if($role === MapAccess::VIEWER, 403, 'you can only view that team');
+        }
+
+        abort_if(
+            MapAccess::find($request, $name, $to) !== null,
+            422,
+            'a map called that is already there, rename one of them first',
+        );
+
+        $count = $to === null
+            ? MapAccess::personal($request)->count()
+            : DB::table('maps')->where('team_id', $to)->count();
+        abort_if($count >= ($to === null ? self::MAX_MAPS_PER_OWNER : self::MAX_MAPS_PER_TEAM), 403, 'map limit reached');
+
+        DB::table('maps')->where('id', $row->id)->update([
+            'team_id' => $to,
+            'user_id' => $to === null ? $id : $row->user_id,
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['ok' => true, 'team_id' => $to]);
+    }
+
     /** Parts and groups travel together, so the stored JSON is wrapped rather than re-encoded. */
     private function document(string $parts, ?string $groups, int $version)
     {
