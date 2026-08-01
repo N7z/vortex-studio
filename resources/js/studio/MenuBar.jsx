@@ -1,5 +1,7 @@
+import { Maximize, Minimize } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import { loadStats } from './api';
+import useFullscreen, { canFullscreen } from './useFullscreen';
 import { MODES, PRESETS, SCALES, SHADOW_RES, presetName } from './graphics';
 
 const SEP = { sep: true };
@@ -78,6 +80,7 @@ export default function MenuBar({
     const robloxRef = useRef(null);
     const [pop, setPop] = useState(null); // null | 'gfx' | 'stats' | 'help'
     const [stats, setStats] = useState(null);
+    const [full, toggleFull] = useFullscreen();
 
     useEffect(() => {
         if (!openMenu && !pop) return;
@@ -180,6 +183,15 @@ export default function MenuBar({
             ))}
             {account && (
                 <button className="menu-title" onClick={onTeams}>Teams</button>
+            )}
+            {canFullscreen() && (
+                <button
+                    className="menu-title menu-full"
+                    onClick={toggleFull}
+                    title={full ? 'Exit fullscreen' : 'Fullscreen'}
+                >
+                    {full ? <Minimize size={14} /> : <Maximize size={14} />}
+                </button>
             )}
             {openMenu && <div className="help-backdrop menu-backdrop" onClick={() => setOpenMenu(null)} />}
             {pop === 'gfx' && (

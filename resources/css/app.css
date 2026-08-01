@@ -1324,6 +1324,7 @@ a.tool-btn { text-decoration: none; }
     border-radius: 3px;
 }
 .menu-title:hover { background: #1d1d24; color: #e2e2e8; }
+.menu-full { margin-left: auto; display: flex; align-items: center; padding: 0 12px; }
 .menu-title.open { background: #2563eb; color: #fff; }
 
 .menu-drop {

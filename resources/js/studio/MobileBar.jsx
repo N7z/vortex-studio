@@ -1,11 +1,10 @@
 import { Magnet, Maximize, Minimize } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import {
     SelectIcon, MoveIcon, RotateIcon, ScaleIcon,
     UndoIcon, RedoIcon, PartIcon, DeleteIcon, SaveIcon, PlayIcon, StopIcon, TeamIcon,
 } from './icons';
-
-const canFullscreen = () => typeof document.documentElement.requestFullscreen === 'function';
+import useFullscreen, { canFullscreen } from './useFullscreen';
 
 const TOOLS = [
     ['select', SelectIcon],
@@ -21,19 +20,7 @@ export default function MobileBar({
     live, teamOpen, onToggleTeam, snap, setSnap,
 }) {
     const snapOn = snap.moveOn && snap.rotateOn;
-    const [full, setFull] = useState(false);
-
-    useEffect(() => {
-        const on = () => setFull(!!document.fullscreenElement);
-        document.addEventListener('fullscreenchange', on);
-
-        return () => document.removeEventListener('fullscreenchange', on);
-    }, []);
-
-    const toggleFull = () => {
-        if (document.fullscreenElement) document.exitFullscreen?.();
-        else document.documentElement.requestFullscreen?.().catch(() => {});
-    };
+    const [full, toggleFull] = useFullscreen();
 
     return (
         <div className="mobilebar">
