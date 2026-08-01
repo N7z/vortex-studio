@@ -58,8 +58,13 @@ export function deleteBackup(name) {
  * first evicts the oldest *other* backups, since the map being saved now is the one
  * the user is actually working on.
  */
-export function writeBackup(name, parts) {
-    const body = JSON.stringify(parts);
+// Browsers give an origin about 5 MB in total, so a map past this can never fit and
+// trying would only evict every other backup on the way to failing.
+const TOO_BIG = 4 * 1024 * 1024;
+
+export function writeBackup(name, parts, body = null) {
+    body ??= JSON.stringify(parts);
+    if (body.length > TOO_BIG) return false;
     const index = readIndex();
     let stale = listBackups().filter((b) => b.name !== name).reverse();
 

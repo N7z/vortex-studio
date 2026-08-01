@@ -15,6 +15,47 @@ it('round-trips a save and load', function () {
     asToken()->getJson('/api/maps/mymap')->assertOk()->assertJson(['parts' => [PART], 'groups' => []]);
 });
 
+it('accepts a gzipped body', function () {
+    $body = gzencode(json_encode(['parts' => [PART], 'groups' => [], 'version' => null]));
+
+    asToken()->call(
+        'PUT', '/api/maps/zipped', [], tokenCookie(), [], [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_X_BODY_ENCODING' => 'gzip',
+        ], $body
+    )->assertOk()->assertJson(['ok' => true]);
+
+    asToken()->getJson('/api/maps/zipped')->assertOk()->assertJson(['parts' => [PART]]);
+});
+
+it('refuses a body that says gzip and is not', function () {
+    asToken()->call(
+        'PUT', '/api/maps/broken', [], tokenCookie(), [], [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_X_BODY_ENCODING' => 'gzip',
+        ], 'this is not gzip'
+    )->assertStatus(400);
+});
+
+it('gzips a map far past what PHP would take uncompressed', function () {
+    $parts = [];
+    for ($i = 0; $i < 20000; $i++) {
+        $parts[] = ['_id' => str_pad((string) $i, 10, 'a', STR_PAD_LEFT)] + PART;
+    }
+    $plain = json_encode(['parts' => $parts, 'groups' => [], 'version' => null]);
+    $body = gzencode($plain);
+    expect(strlen($body))->toBeLessThan(strlen($plain) / 4);
+
+    asToken()->call(
+        'PUT', '/api/maps/huge', [], tokenCookie(), [], [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_X_BODY_ENCODING' => 'gzip',
+        ], $body
+    )->assertOk();
+
+    expect(DB::table('maps')->where('name', 'huge')->value('parts'))->toBe(20000);
+});
+
 it('rejects a JSON object body', function () {
     $this->putJson('/api/maps/mymap', ['a' => 1])->assertStatus(400);
 });

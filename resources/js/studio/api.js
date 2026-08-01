@@ -66,11 +66,31 @@ export class StaleError extends Error {
     }
 }
 
-export async function saveMap(name, parts, groups, team = null, version = null) {
+// PHP discards a request body over post_max_size (8 MB by default) before any code
+// sees it, and a big map is mostly repeated key names, so it gzips to about a fifth.
+// Sent under our own header: nginx and Cloudflare do not touch request bodies, but
+// they do act on Content-Encoding.
+const GZIP_OVER = 512 * 1024;
+
+const gzip = async (text) => new Response(
+    new Blob([text]).stream().pipeThrough(new CompressionStream('gzip')),
+).arrayBuffer();
+
+/** The JSON a save would send, so a caller can size it without building it twice. */
+export const saveBody = (parts, groups, version) => JSON.stringify({ parts, groups, version });
+
+export async function saveMap(name, parts, groups, team = null, version = null, body = null) {
+    const text = body ?? saveBody(parts, groups, version);
+    const headers = { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf };
+    let payload = text;
+    if (text.length > GZIP_OVER && typeof CompressionStream === 'function') {
+        payload = await gzip(text);
+        headers['X-Body-Encoding'] = 'gzip';
+    }
     const r = await fetch(mapUrl(name, team), {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf },
-        body: JSON.stringify({ parts, groups, version }),
+        headers,
+        body: payload,
     });
     const d = await r.json().catch(() => ({}));
     if (r.status === 409) throw new StaleError(d.version ?? null);

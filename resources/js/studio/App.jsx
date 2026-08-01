@@ -19,7 +19,9 @@ import {
     loadPlugins, setPartLimit, stripId, compilePlugin, saveUserPlugin, deleteUserPlugin,
     userPluginSource, isBuiltin, resetBuiltin, onPluginPrint,
 } from './plugins';
-import { listTeams, loadAccount, loadMap, loadMapAsAdmin, putThumb, saveMap } from './api';
+import {
+    listTeams, loadAccount, loadMap, loadMapAsAdmin, putThumb, saveBody, saveMap,
+} from './api';
 import { writeBackup } from './backup';
 import {
     addOp, applyOp, fillPart, invertOp, patchOp, removeOp, repairParts, stripIds,
@@ -73,6 +75,9 @@ const paint = () => new Promise((r) => {
 // Autosave runs every 20s; a picture that often is wasted upload for a view that
 // barely changed.
 const THUMB_EVERY_MS = 120_000;
+
+// A save the user asked for is worth a fresher picture, but not one per Ctrl+S.
+const THUMB_MIN_MS = 15_000;
 
 export default function App() {
     const [mapName, setMapName] = useState(null);
@@ -846,10 +851,14 @@ export default function App() {
     const canSaveToServer = !!mapName && (!live.live || live.canEdit) && !viewing;
 
     // Fire and forget: a picture is never worth failing or delaying a save for.
+    // Rendering one means drawing the whole map offscreen and encoding it, which on
+    // a large map is slower than the save itself. A manual save asks for a fresher
+    // picture than autosave does, but neither gets one on every keystroke of Ctrl+S.
     const snapThumb = useCallback((name, team, snapshot, force) => {
         if (!thumbRef.current || !snapshot.length) return;
         const now = Date.now();
-        if (!force && now - thumbAt.current < THUMB_EVERY_MS) return;
+        const wait = force ? THUMB_MIN_MS : THUMB_EVERY_MS;
+        if (now - thumbAt.current < wait) return;
         thumbAt.current = now;
         Promise.resolve()
             .then(() => thumbRef.current(snapshot))
@@ -865,11 +874,16 @@ export default function App() {
         }
         const snapshot = partsRef.current;
         const grouped = groupsRef.current;
+        // Serialised once and handed to both: on a large map this is the single most
+        // expensive thing a save does, and it used to happen twice over.
+        const body = saveBody(snapshot, grouped, versionRef.current);
         // Mirror locally first: the copy that matters most is the one for a save that
         // is about to fail. A save also restarts the server-side 24h TTL for this map.
-        const backed = writeBackup(mapName, snapshot);
+        const backed = writeBackup(mapName, snapshot, body);
         try {
-            const r = await saveMap(mapName, snapshot, grouped, mapTeamRef.current, versionRef.current);
+            const r = await saveMap(
+                mapName, snapshot, grouped, mapTeamRef.current, versionRef.current, body,
+            );
             versionRef.current = r.version ?? null;
             // Edits made while the request was in flight must stay dirty.
             if (partsRef.current === snapshot) dirty.current = false;

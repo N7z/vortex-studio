@@ -397,10 +397,33 @@ class MapController extends Controller
             ->header('Content-Type', 'application/json');
     }
 
+    /**
+     * The request body, gunzipped when the client says it is compressed. A big map
+     * is mostly repeated key names and gzips to about a fifth, which is what keeps
+     * it under PHP's post_max_size: over that, PHP drops the body before this runs
+     * and all the app can see is that nothing arrived.
+     */
+    private function body(Request $request): mixed
+    {
+        $raw = $request->getContent();
+
+        if (strtolower((string) $request->header('X-Body-Encoding')) === 'gzip') {
+            $plain = @gzdecode($raw);
+            abort_unless(is_string($plain), 400, 'the compressed body could not be read');
+            $raw = $plain;
+        }
+
+        if ($raw === '' && (int) $request->server('CONTENT_LENGTH') > 0) {
+            abort(413, 'the map was too large for the server to accept');
+        }
+
+        return json_decode($raw, true);
+    }
+
     public function save(Request $request, string $name)
     {
         $name = $this->validName($name);
-        $body = $request->json()->all();
+        $body = $this->body($request);
         abort_unless(is_array($body), 400, 'body must be a JSON array of parts');
 
         // The bare list is the old shape. Its groups are null, meaning "leave the
