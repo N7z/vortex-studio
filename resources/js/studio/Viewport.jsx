@@ -159,6 +159,7 @@ function snapNormal(n) {
 }
 
 const MAX_OUTLINES = 192;
+const DRAG_PREVIEW = 5000;
 const MAX_PREVIEWS = 256;
 
 const readTransform = (m) => ({
@@ -714,14 +715,17 @@ export default function Viewport({
             const bounds = new THREE.Box3();
             for (const m of meshes) bounds.expandByObject(m);
 
+            const preview = meshes.length > DRAG_PREVIEW;
             drag = {
                 meshes,
                 targets,
-                index: meshes.indexOf(mesh),
+                preview,
+                index: preview ? 0 : meshes.indexOf(mesh),
+                anchor: mesh.position.clone(),
                 baseY: bounds.min.y,
                 offX: mesh.position.x - hit.x,
                 offZ: mesh.position.z - hit.z,
-                start: meshes.map((m) => m.position.clone()),
+                start: preview ? null : meshes.map((m) => m.position.clone()),
                 delta: new THREE.Vector3(),
             };
             orbit.enabled = false;
@@ -740,14 +744,17 @@ export default function Viewport({
                 x = Math.round(x / grid) * grid;
                 z = Math.round(z / grid) * grid;
             }
-            const y = drag.start[drag.index].y + (hit.y - drag.baseY);
-            drag.delta.set(x, y, z).sub(drag.start[drag.index]);
+            const from = drag.preview ? drag.anchor : drag.start[drag.index];
+            const y = from.y + (hit.y - drag.baseY);
+            drag.delta.set(x, y, z).sub(from);
+            if (drag.preview) return;
             for (let i = 0; i < drag.meshes.length; i++) {
                 drag.meshes[i].position.copy(drag.start[i]).add(drag.delta);
             }
         };
 
         const rotateDrag = () => {
+            if (drag.preview) return;
             const center = new THREE.Vector3();
             for (const p of drag.start) center.add(p);
             center.divideScalar(drag.start.length);
@@ -769,16 +776,26 @@ export default function Viewport({
             pending = null;
             if (!drag) return;
             const moved = drag.meshes;
+            const shift = drag.preview ? drag.delta.clone() : null;
             drag = null;
             orbit.enabled = true;
             settleBumped();
             syncBusy();
+            if (ctx.current) ctx.current.bulk = null;
             if (e && renderer.domElement.hasPointerCapture(e.pointerId)) {
                 renderer.domElement.releasePointerCapture(e.pointerId);
             }
-            ctx.current?.onTransformMany(
-                moved.map((m) => ({ id: m.userData.id, ...readTransform(m) })),
-            );
+            ctx.current?.onTransformMany(moved.map((m) => {
+                const t = readTransform(m);
+                if (shift) {
+                    t.P = [
+                        round(m.position.x + shift.x),
+                        round(m.position.y + shift.y),
+                        round(m.position.z + shift.z),
+                    ];
+                }
+                return { id: m.userData.id, ...t };
+            }));
         };
 
         let longPress = null;
@@ -1037,7 +1054,7 @@ export default function Viewport({
             orbit.update();
             const c = ctx.current;
             if (flying || marquee?.active) invalidate();
-            if (drag !== null || gizmo.dragging) reshadow();
+            if ((drag !== null && !drag.preview) || gizmo.dragging) reshadow();
             if (dirty <= 0) {
                 countFps(now);
                 publishStats(c);
@@ -1046,26 +1063,35 @@ export default function Viewport({
             dirty -= 1;
             const sel = c?.selectedMeshes ?? [];
             if (drag) {
-                for (const m of drag.meshes) bumpBatch(m);
+                if (!drag.preview) for (const m of drag.meshes) bumpBatch(m);
             } else if (gizmo.dragging) {
                 for (const m of sel) bumpBatch(m);
             }
             let shown = 0;
             if (sel.length > MAX_OUTLINES) {
-                bulkMin.set(Infinity, Infinity, Infinity);
-                bulkMax.set(-Infinity, -Infinity, -Infinity);
-                for (const m of sel) {
-                    const { position: p, scale: s } = m;
-                    bulkMin.set(
-                        Math.min(bulkMin.x, p.x - s.x / 2),
-                        Math.min(bulkMin.y, p.y - s.y / 2),
-                        Math.min(bulkMin.z, p.z - s.z / 2),
-                    );
-                    bulkMax.set(
-                        Math.max(bulkMax.x, p.x + s.x / 2),
-                        Math.max(bulkMax.y, p.y + s.y / 2),
-                        Math.max(bulkMax.z, p.z + s.z / 2),
-                    );
+                if (!c.bulk || (drag && !drag.preview) || gizmo.dragging) {
+                    bulkMin.set(Infinity, Infinity, Infinity);
+                    bulkMax.set(-Infinity, -Infinity, -Infinity);
+                    for (const m of sel) {
+                        const { position: p, scale: s } = m;
+                        bulkMin.set(
+                            Math.min(bulkMin.x, p.x - s.x / 2),
+                            Math.min(bulkMin.y, p.y - s.y / 2),
+                            Math.min(bulkMin.z, p.z - s.z / 2),
+                        );
+                        bulkMax.set(
+                            Math.max(bulkMax.x, p.x + s.x / 2),
+                            Math.max(bulkMax.y, p.y + s.y / 2),
+                            Math.max(bulkMax.z, p.z + s.z / 2),
+                        );
+                    }
+                    c.bulk = { min: bulkMin.clone(), max: bulkMax.clone() };
+                }
+                bulkMin.copy(c.bulk.min);
+                bulkMax.copy(c.bulk.max);
+                if (drag?.preview) {
+                    bulkMin.add(drag.delta);
+                    bulkMax.add(drag.delta);
                 }
                 const b = selBoxes[0] ?? selBox();
                 bulkPos.addVectors(bulkMin, bulkMax).multiplyScalar(0.5);
@@ -1217,6 +1243,7 @@ export default function Viewport({
             studsOn: gfxRef.current.studs,
             mode: gfxRef.current.mode ?? 'lit',
             selectedMeshes: [],
+            bulk: null,
             tool: 'select',
             onTransform: () => {},
             onTransformMany: () => {},
@@ -1521,6 +1548,7 @@ export default function Viewport({
         if (c.gizmo.dragging) return;
         const meshes = selectedIds.map((id) => c.meshes.get(id)).filter(Boolean);
         c.selectedMeshes = meshes;
+        c.bulk = null;
         const mode = canEdit ? TOOL_MODE[tool] : null;
         if (!meshes.length || !mode) {
             c.gizmo.detach();
