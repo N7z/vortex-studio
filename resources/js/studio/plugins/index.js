@@ -10,6 +10,7 @@ import gapFillSrc from './gapfill.lua?raw';
 import imageMakerSrc from './imagemaker.lua?raw';
 import mirrorSrc from './mirror.lua?raw';
 import scatterSrc from './scatter.lua?raw';
+import sculptSrc from './sculpt.lua?raw';
 import stairsSrc from './stairs.lua?raw';
 import terrainSrc from './terrain.lua?raw';
 import textSrc from './text.lua?raw';
@@ -22,6 +23,7 @@ const BUNDLED = [
     { id: 'imagemaker', src: imageMakerSrc },
     { id: 'mirror', src: mirrorSrc },
     { id: 'scatter', src: scatterSrc },
+    { id: 'sculpt', src: sculptSrc },
     { id: 'stairs', src: stairsSrc },
     { id: 'terrain', src: terrainSrc },
     { id: 'text', src: textSrc },
