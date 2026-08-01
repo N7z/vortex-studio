@@ -76,6 +76,9 @@ const paint = () => new Promise((r) => {
 // barely changed.
 const THUMB_EVERY_MS = 120_000;
 
+// What the game itself will load. Larger than this is refused on its side.
+const ENGINE_MAX_BYTES = 10 * 1024 * 1024;
+
 // A save the user asked for is worth a fresher picture, but not one per Ctrl+S.
 const THUMB_MIN_MS = 15_000;
 
@@ -828,7 +831,14 @@ export default function App() {
 
     const download = () => {
         if (!mapName) return;
-        const blob = new Blob([JSON.stringify(parts)], { type: 'application/json' });
+        // `_id` is the editor's own handle, worth about a sixth of the file and not
+        // something the game reads. The engine refuses a map over 10 MB outright.
+        const text = JSON.stringify(stripIds(parts));
+        if (text.length > ENGINE_MAX_BYTES) {
+            flash(`This map is ${(text.length / 1048576).toFixed(1)} MB, over the 10 MB the game `
+                + 'accepts. Rebuild it with a lower Detail or a higher Merge angle.');
+        }
+        const blob = new Blob([text], { type: 'application/json' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = `${mapName}.json`;
