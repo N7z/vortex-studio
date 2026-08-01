@@ -75,6 +75,7 @@ export default function MenuBar({
     statsOpen, onToggleStats,
     plugins, activePluginId, onTogglePlugin, onNewPlugin, mobile,
     account, onTeams,
+    onHide, onShowAll, onLock, onUnlockAll, hiddenCount = 0, lockedCount = 0,
 }) {
     const [openMenu, setOpenMenu] = useState(null);
     const robloxRef = useRef(null);
@@ -131,6 +132,11 @@ export default function MenuBar({
             { label: 'Spawn', onClick: onAddSpawn, disabled: noEdit },
         ]],
         ['View', [
+            { label: 'Hide selection', shortcut: 'H', onClick: onHide, disabled: !hasSelection },
+            { label: `Show all${hiddenCount ? ` (${hiddenCount})` : ''}`, shortcut: 'Shift+H', onClick: onShowAll, disabled: !hiddenCount },
+            { label: 'Lock selection', shortcut: 'L', onClick: onLock, disabled: !hasSelection },
+            { label: `Unlock all${lockedCount ? ` (${lockedCount})` : ''}`, shortcut: 'Shift+L', onClick: onUnlockAll, disabled: !lockedCount },
+            SEP,
             { label: 'Studs', checked: !!graphics.studs, onClick: () => onGraphics({ studs: !graphics.studs }) },
             { label: 'Graphics...', onClick: () => setPop('gfx') },
             { label: 'Team panel', checked: !!teamOpen, onClick: onToggleTeam, disabled: !hasMap },
@@ -325,6 +331,8 @@ export default function MenuBar({
                             <li><b>Ctrl+C / Ctrl+V</b> copy and paste, <b>Ctrl+D</b> duplicates in place, <b>Delete</b> removes. All of them work on the whole selection</li>
                             <li><b>Ctrl+G</b> groups the selection, <b>Ctrl+Shift+G</b> ungroups. Click a group to select it, double-click to rename</li>
                             <li>Groups are Explorer-only: nothing changes in the map, and they are stored in this browser</li>
+                            <li><b>H</b> hides the selection and <b>L</b> locks it, <b>Shift+H</b> and <b>Shift+L</b> put everything back. Both are yours alone: they stay in this browser and never reach the saved or downloaded map</li>
+                            <li>With two or more parts selected, <b>Arrange</b> under Properties aligns them, spreads them evenly and drops them onto whatever is below</li>
                             <li><b>Ctrl+Z</b> undoes the last action, <b>Ctrl+Y</b> redoes it</li>
                             <li><b>Ctrl+S</b> saves</li>
                             <li><b>Graphics</b> drops quality on heavy maps. Shadows off is the biggest win</li>

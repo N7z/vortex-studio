@@ -344,6 +344,63 @@ a.tool-btn { text-decoration: none; }
 .twist.open { transform: rotate(90deg); }
 .twist:hover { color: #ddd; }
 
+.tree-flags { margin-left: auto; display: flex; align-items: center; gap: 1px; flex: none; }
+.tree-item .flag {
+    display: flex;
+    align-items: center;
+    padding: 0 2px;
+    border: none;
+    background: none;
+    color: #6a6a74;
+    cursor: pointer;
+    opacity: 0;
+}
+.tree-item:hover .flag, .tree-item .flag.on { opacity: 1; }
+.tree-item .flag:hover { color: #ddd; }
+.tree-item .flag.on { color: #d0a24a; }
+.tree-item.is-hidden { color: #5e5e68; }
+.tree-item.is-hidden .icon { opacity: 0.4; }
+.tree-item.is-hidden, .tree-item.is-locked { cursor: default; }
+
+@media (pointer: coarse) {
+    .tree-item .flag { opacity: 1; padding: 0 5px; }
+}
+
+/* ---------- arrange ---------- */
+
+.panel.arrange { flex: none; border-bottom: 4px solid #08080a; }
+.panel.arrange .panel-body { overflow: visible; padding: 8px 10px; }
+.arrange-grid { display: flex; flex-direction: column; gap: 4px; }
+.arrange-row, .arrange-gap { display: flex; align-items: center; gap: 4px; }
+.arrange-axis { width: 12px; flex: none; color: #999; font-size: 12px; }
+.panel.arrange button {
+    flex: 1;
+    min-width: 0;
+    padding: 4px 2px;
+    border: 1px solid #26262e;
+    border-radius: 3px;
+    background: #16161c;
+    color: #c8c8ce;
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+}
+.panel.arrange button:hover:not(:disabled) { border-color: #2563eb; color: #fff; }
+.panel.arrange button:disabled { color: #4a4a52; cursor: default; }
+.arrange-gap { margin-top: 8px; }
+.arrange-gap > span { width: 26px; flex: none; color: #999; font-size: 11px; }
+.arrange-gap .num {
+    width: 44px;
+    flex: none;
+    background: #000;
+    border: 1px solid #26262e;
+    color: #ddd;
+    padding: 3px 5px;
+    border-radius: 3px;
+    font-size: 12px;
+}
+.arrange-drop { width: 100%; margin-top: 8px; }
+
 /* ---------- properties ---------- */
 
 .props { padding: 4px 10px; display: flex; flex-direction: column; gap: 8px; }

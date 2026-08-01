@@ -1,6 +1,8 @@
+import { Eye, EyeOff, Lock, LockOpen } from 'lucide-react';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { WorkspaceIcon, LightingIcon, cubeIcon, FolderIcon, ChevronIcon } from './icons';
 import { groupIndex } from './groups';
+import { EMPTY, isHidden, isLocked } from './flags';
 
 const ICON_COLOR = {
     Part: '#b9b9c0',
@@ -15,6 +17,7 @@ const OVERSCAN = 8;
 
 export default function Explorer({
     parts, selectedIds, setSelectedId, selectMany, groups = [], onUngroup, onRenameGroup, mapName,
+    flags = EMPTY, onFlag, onClearFlags,
 }) {
     const listRef = useRef(null);
     const [query, setQuery] = useState('');
@@ -80,17 +83,43 @@ export default function Explorer({
         else if (y + ROW_H > el.scrollTop + el.clientHeight) el.scrollTop = y + ROW_H - el.clientHeight;
     }, [primary]);
 
-    const partRow = ({ p, i }, nested) => (
-        <div
-            key={p._id}
-            className={`tree-item child ${nested ? 'nested' : ''} ${selected.has(p._id) ? 'selected' : ''}`}
-            onClick={(e) => setSelectedId(p._id, e.ctrlKey || e.metaKey)}
-        >
-            <span className="icon">{cubeIcon(ICON_COLOR[p.T] ?? '#b9b9c0')}</span>
-            {p.T}
-            <span className="tree-index">#{i}</span>
-        </div>
+    const toggles = (ids, hidden, locked) => (
+        <span className="tree-flags">
+            <button
+                className={`flag ${hidden ? 'on' : ''}`}
+                title={hidden ? 'Show' : 'Hide'}
+                onClick={(e) => { e.stopPropagation(); onFlag?.('hide', ids, !hidden); }}
+            >
+                {hidden ? <EyeOff size={13} /> : <Eye size={13} />}
+            </button>
+            <button
+                className={`flag ${locked ? 'on' : ''}`}
+                title={locked ? 'Unlock' : 'Lock'}
+                onClick={(e) => { e.stopPropagation(); onFlag?.('lock', ids, !locked); }}
+            >
+                {locked ? <Lock size={13} /> : <LockOpen size={13} />}
+            </button>
+        </span>
     );
+
+    const partRow = ({ p, i }, nested) => {
+        const hidden = isHidden(flags, p);
+        const locked = isLocked(flags, p);
+
+        return (
+            <div
+                key={p._id}
+                className={`tree-item child ${nested ? 'nested' : ''} ${selected.has(p._id) ? 'selected' : ''}`
+                    + `${hidden ? ' is-hidden' : ''}${locked ? ' is-locked' : ''}`}
+                onClick={(e) => setSelectedId(p._id, e.ctrlKey || e.metaKey)}
+            >
+                <span className="icon">{cubeIcon(ICON_COLOR[p.T] ?? '#b9b9c0')}</span>
+                {p.T}
+                <span className="tree-index">#{i}</span>
+                {toggles([p._id], hidden, locked)}
+            </div>
+        );
+    };
 
     const groupRow = (g) => (
         <div key={g.id} className={`tree-item group ${g.ids.some((id) => selected.has(id)) ? 'selected' : ''}`}>
@@ -128,6 +157,7 @@ export default function Explorer({
                 </span>
             )}
             <span className="count">{g.ids.length}</span>
+            {toggles(g.ids, g.ids.every((id) => isHidden(flags, id)), g.ids.every((id) => isLocked(flags, id)))}
             <button className="clear" onClick={() => onUngroup?.(g.id)} title="Ungroup (the parts stay)">×</button>
         </div>
     );
@@ -160,6 +190,26 @@ export default function Explorer({
                                     <div className="tree-item" key="ws" onClick={() => setSelectedId(null)}>
                                         <span className="icon"><WorkspaceIcon /></span>
                                         Workspace{mapName ? `: ${mapName}` : ''}
+                                        <span className="tree-flags">
+                                            {!!flags.hide.size && (
+                                                <button
+                                                    className="flag on"
+                                                    title={`Show all ${flags.hide.size} hidden`}
+                                                    onClick={(e) => { e.stopPropagation(); onClearFlags?.('hide'); }}
+                                                >
+                                                    <EyeOff size={13} />
+                                                </button>
+                                            )}
+                                            {!!flags.lock.size && (
+                                                <button
+                                                    className="flag on"
+                                                    title={`Unlock all ${flags.lock.size}`}
+                                                    onClick={(e) => { e.stopPropagation(); onClearFlags?.('lock'); }}
+                                                >
+                                                    <Lock size={13} />
+                                                </button>
+                                            )}
+                                        </span>
                                     </div>
                                 );
                             }

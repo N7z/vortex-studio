@@ -8,6 +8,7 @@ import StartScreen from './StartScreen';
 import Teams from './Teams';
 import Explorer from './Explorer';
 import Properties from './Properties';
+import Arrange from './Arrange';
 import Viewport from './Viewport';
 import PluginPanel from './PluginPanel';
 import TabBar from './TabBar';
@@ -38,6 +39,7 @@ import Busy from '../ui/Busy';
 import {
     applyGroupOp, newGroupId, pruneGroups, takeLegacyGroups, ungroupIds,
 } from './groups';
+import * as flagStore from './flags';
 
 const HISTORY_LIMIT = 100;
 
@@ -86,6 +88,7 @@ export default function App() {
     const [pluginModels, setPluginModels] = useState({});
     const loadedModels = useRef({});
     const [groups, setGroups] = useState([]);
+    const [flags, setFlags] = useState(flagStore.EMPTY);
     const [tabs, setTabs] = useState([]);
     const [activeTab, setActiveTab] = useState('home');
     const mobile = useIsMobile();
@@ -111,6 +114,8 @@ export default function App() {
     partsRef.current = parts;
     const groupsRef = useRef([]);
     groupsRef.current = groups;
+    const flagsRef = useRef(flags);
+    flagsRef.current = flags;
     const loadedGroups = useRef(groups);
     const mapNameRef = useRef(null);
     const mapTeamRef = useRef(null);
@@ -188,6 +193,7 @@ export default function App() {
         history.current = [];
         future.current = [];
         dirty.current = isDirty || fixed > 0 || legacy.length > 0;
+        setFlags(flagStore.prune(flagStore.load(flagStore.mapKey(name, teamId)), data));
 
         return { parts: data, groups: next };
     };
@@ -305,6 +311,7 @@ export default function App() {
     const activeModels = activePlugin ? pluginModels[activePlugin.id] ?? null : null;
 
     const select = useCallback((id, additive, normal) => {
+        if (id != null && !flagStore.selectable(flagsRef.current, [id]).length) return;
         setSelectedIds((cur) => {
             if (id == null) return additive ? cur : [];
             if (!additive) return [id];
@@ -321,10 +328,11 @@ export default function App() {
     const setSelectedId = select;
 
     const selectMany = useCallback((ids, additive) => {
+        const free = flagStore.selectable(flagsRef.current, ids);
         setSelectedIds((cur) => {
-            if (!additive) return [...ids];
+            if (!additive) return [...free];
             const seen = new Set(cur);
-            return [...cur, ...ids.filter((id) => !seen.has(id))];
+            return [...cur, ...free.filter((id) => !seen.has(id))];
         });
         if (!additive) setFaces({});
     }, []);
@@ -883,6 +891,28 @@ export default function App() {
         resetDocument(null, [], false);
     };
 
+    // Lock and hide never leave this browser: see flags.js.
+    useEffect(() => {
+        flagStore.save(flagStore.mapKey(mapName, mapTeam), flags);
+    }, [flags, mapName, mapTeam]);
+
+    const setFlag = useCallback((kind, ids, on) => {
+        setFlags((cur) => flagStore.apply(cur, kind, ids, on));
+        if (on) {
+            const drop = new Set(ids);
+            setSelectedIds((cur) => cur.filter((id) => !drop.has(id)));
+        }
+    }, []);
+
+    const clearFlag = useCallback((kind) => setFlags((cur) => flagStore.clear(cur, kind)), []);
+
+    // Dropping onto something out of sight would be baffling, so Arrange only sees
+    // what is on screen.
+    const visibleParts = useMemo(
+        () => (flags.hide.size ? parts.filter((p) => !flagStore.isHidden(flags, p)) : parts),
+        [parts, flags],
+    );
+
     // A property edit applies to every selected part, not just the primary one.
     const updateSelected = (patch) => {
         if (!selectedIds.length) return;
@@ -1038,7 +1068,15 @@ export default function App() {
             }
             else if (e.ctrlKey && e.key.toLowerCase() === 'a') {
                 e.preventDefault();
-                setSelectedIds(partsRef.current.map((p) => p._id));
+                selectMany(partsRef.current.map((p) => p._id));
+            }
+            else if (!e.ctrlKey && e.key.toLowerCase() === 'h') {
+                if (e.shiftKey) clearFlag('hide');
+                else if (selectedIds.length) setFlag('hide', selectedIds, true);
+            }
+            else if (!e.ctrlKey && e.key.toLowerCase() === 'l') {
+                if (e.shiftKey) clearFlag('lock');
+                else if (selectedIds.length) setFlag('lock', selectedIds, true);
             }
             else if (e.key === '1') setTool('select');
             else if (e.key === '2') setTool('move');
@@ -1054,7 +1092,7 @@ export default function App() {
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
     }, [save, removeSelected, undo, redo, selected, selectedIds, parts, activeTab, tabs,
-        groupSelection, ungroupSelection, playing, mapName]);
+        groupSelection, ungroupSelection, playing, mapName, selectMany, setFlag, clearFlag]);
 
     return (
         <div className={mobile ? 'studio mobile' : 'studio'}>
@@ -1091,7 +1129,7 @@ export default function App() {
                 onUndo={undo} onRedo={redo}
                 onCopy={copy} onPaste={paste} onDuplicate={duplicate}
                 onDelete={removeSelected}
-                onSelectAll={() => setSelectedIds(partsRef.current.map((p) => p._id))}
+                onSelectAll={() => selectMany(partsRef.current.map((p) => p._id))}
                 onGroup={groupSelection} onUngroup={ungroupSelection}
                 onAddPart={() => addPart(NEW_PART)}
                 onAddSpawn={() => addPart(NEW_SPAWN)}
@@ -1101,6 +1139,11 @@ export default function App() {
                 plugins={plugins} activePluginId={activePluginId}
                 onTogglePlugin={togglePlugin} onNewPlugin={openNewPluginTab}
                 account={account} onTeams={() => setTeamsOpen(true)}
+                onHide={() => setFlag('hide', selectedIds, true)}
+                onLock={() => setFlag('lock', selectedIds, true)}
+                onShowAll={() => clearFlag('hide')}
+                onUnlockAll={() => clearFlag('lock')}
+                hiddenCount={flags.hide.size} lockedCount={flags.lock.size}
             />
             {mobile ? (mapName && activeTab === 'game' && (
                 <MobileBar
@@ -1207,6 +1250,7 @@ export default function App() {
                         onExitPlay={() => setPlaying(false)}
                         onPlayError={(m) => flash(`Could not start the play test: ${m}`)}
                         touchRef={touchRef}
+                        flags={flags}
                         playRef={live.live ? live.playRef : null}
                         onPlayState={live.live ? live.sendPlay : null}
                     />
@@ -1298,6 +1342,17 @@ export default function App() {
                             onUngroup={ungroup}
                             onRenameGroup={renameGroup}
                             mapName={mapName}
+                            flags={flags}
+                            onFlag={setFlag}
+                            onClearFlags={clearFlag}
+                        />
+                    )}
+                    {(!mobile || drawerTab === 'properties') && selectedIds.length > 1 && (
+                        <Arrange
+                            selected={selectedParts}
+                            parts={visibleParts}
+                            onTransform={transformMany}
+                            readOnly={!canEdit}
                         />
                     )}
                     {(!mobile || drawerTab === 'properties') && (

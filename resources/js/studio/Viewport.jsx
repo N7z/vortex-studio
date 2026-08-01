@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { labelMaterial } from './play/label';
 import { captureThumb } from './thumb';
+import { EMPTY, isHidden, isLocked } from './flags';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import {
@@ -158,6 +159,7 @@ export default function Viewport({
     mapName, graphics, preview, spawnRef, busyRef, canEdit = true, peers, onView,
     faces, showFaces = false, statsRef,
     playing = false, onExitPlay, onPlayError, touchRef, playRef, onPlayState, members = [], thumbRef,
+    flags = EMPTY,
 }) {
     const mountRef = useRef(null);
     const ctx = useRef(null);
@@ -334,7 +336,19 @@ export default function Viewport({
             const c = ctx.current;
             if (!c) return;
             const members = new Map();
+            c.solidList = [];
+            c.selectList = [];
             for (const mesh of c.meshList) {
+                const id = mesh.userData.id;
+                if (isHidden(c.flags, id)) {
+                    mesh.visible = false;
+                    mesh.userData.batch = null;
+                    mesh.userData.slot = -1;
+                    continue;
+                }
+                c.solidList.push(mesh);
+                if (!isLocked(c.flags, id)) c.selectList.push(mesh);
+
                 const set = mesh.userData.set;
                 const key = set && !set.transparent ? set.key : null;
                 mesh.userData.batch = key;
@@ -387,7 +401,7 @@ export default function Viewport({
                 dropBatch(inst);
                 batches.delete(key);
             }
-            c.loose = c.meshList.length - [...members.values()].reduce((n, l) => n + l.length, 0);
+            c.loose = c.solidList.length - [...members.values()].reduce((n, l) => n + l.length, 0);
         };
 
         const bumpBatch = (mesh) => {
@@ -551,7 +565,7 @@ export default function Viewport({
             const c = ctx.current;
             if (!c) return;
             const ids = [];
-            for (const m of c.meshList) {
+            for (const m of c.selectList) {
                 m.updateWorldMatrix(true, false);
                 bandPoint.setFromMatrixPosition(m.matrixWorld).project(camera);
                 if (bandPoint.z < -1 || bandPoint.z > 1) continue;
@@ -575,7 +589,7 @@ export default function Viewport({
             const c = ctx.current;
             if (!c) return null;
             castPointer(e);
-            const hits = raycaster.intersectObjects(c.meshList, false);
+            const hits = raycaster.intersectObjects(c.selectList, false);
             if (!hits.length) return null;
             const tied = hits.filter((h) => h.distance <= hits[0].distance + 0.01);
             const selected = tied.find((h) => c.selectedMeshes.includes(h.object));
@@ -588,7 +602,7 @@ export default function Viewport({
             if (!c) return null;
             castPointer(e);
             pickBuf.length = 0;
-            for (const m of c.meshList) if (!exclude.has(m)) pickBuf.push(m);
+            for (const m of c.solidList) if (!exclude.has(m)) pickBuf.push(m);
             const hits = raycaster.intersectObjects(pickBuf, false);
             if (hits.length) return hits[0].point.clone();
             return raycaster.ray.intersectPlane(dragPlane, planeHit) ? planeHit.clone() : null;
@@ -757,7 +771,7 @@ export default function Viewport({
                 -((e.clientY - rect.top) / rect.height) * 2 + 1,
             );
             raycaster.setFromCamera(ndc, camera);
-            const hits = raycaster.intersectObjects(c.meshList, false);
+            const hits = raycaster.intersectObjects(c.selectList, false);
             if (e.pointerType !== 'mouse') {
                 const t = performance.now();
                 const near = Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 24;
@@ -792,7 +806,7 @@ export default function Viewport({
         const spawnPoint = (height) => {
             const c = ctx.current;
             raycaster.setFromCamera(spawnNdc, camera);
-            const hits = raycaster.intersectObjects(c?.meshList ?? [], false);
+            const hits = raycaster.intersectObjects(c?.solidList ?? [], false);
             if (hits.length && hits[0].distance <= 400) {
                 const p = hits[0].point;
                 return [round(p.x), round(p.y + height / 2), round(p.z)];
@@ -1046,6 +1060,10 @@ export default function Viewport({
             peers: [],
             meshes: new Map(),
             meshList: [],
+            // meshList minus what is hidden (solidList) and minus locks too (selectList).
+            solidList: [],
+            selectList: [],
+            flags: EMPTY,
             geometry: makePartGeometry(),
             trussGeometry: makeTrussGeometry(),
             sets: makeMaterialSets(tex),
@@ -1273,6 +1291,13 @@ export default function Viewport({
         }
         c.syncBatches();
     }, [parts, studs, mode]);
+
+    useEffect(() => {
+        const c = ctx.current;
+        if (!c) return;
+        c.flags = flags;
+        c.syncBatches();
+    }, [flags]);
 
     useEffect(() => {
         const c = ctx.current;
