@@ -4,16 +4,28 @@ export default function Modal({
     title, subtitle, onClose, children, footer, wide,
 }) {
     const card = useRef(null);
+    const close = useRef(onClose);
+    close.current = onClose;
 
     useEffect(() => {
         const onKey = (e) => {
-            if (e.key === 'Escape') onClose?.();
+            if (e.key === 'Escape') close.current?.();
         };
         window.addEventListener('keydown', onKey);
-        card.current?.querySelector('input, select, button')?.focus();
 
         return () => window.removeEventListener('keydown', onKey);
-    }, [onClose]);
+    }, []);
+
+    // Once, on open. A caller's onClose is a fresh function on every render, so
+    // depending on it re-focused the dialog on each keystroke. And a selector list
+    // matches in document order, so asking for `input, button` handed back the close
+    // button in the header rather than the field in the body.
+    useEffect(() => {
+        const box = card.current;
+        if (!box) return;
+        const field = box.querySelector('.modal-body input, .modal-body select, .modal-body textarea');
+        (field ?? box.querySelector('.modal-foot button') ?? box.querySelector('button'))?.focus();
+    }, []);
 
     return (
         <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
