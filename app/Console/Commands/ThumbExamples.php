@@ -16,8 +16,14 @@ class ThumbExamples extends Command
 
     protected $description = 'Render a thumbnail for every example map';
 
+    /**
+     * Shade per face. The three facing away are drawn first and darker: without them
+     * you see straight through a hollow building into the background.
+     */
     private const FACES = [
-        // [corner offsets, shade] painted far to near: left, right, then top.
+        'under' => 0.30,
+        'back-left' => 0.42,
+        'back-right' => 0.52,
         'left' => 0.62,
         'right' => 0.78,
         'top' => 1.0,
@@ -121,10 +127,40 @@ class ThumbExamples extends Command
         usort($boxes, fn ($a, $b) => $depth($a) <=> $depth($b));
 
         foreach ($boxes as $b) {
+            if ($this->isCeiling($b, $framing)) {
+                continue;
+            }
             $this->box($img, $to, $b);
         }
 
         return $this->encode($img);
+    }
+
+    /**
+     * A roof or a floor slab hides everything under it, and a map is recognised by
+     * its inside. Thin, wide and high up is what one looks like.
+     */
+    private function isCeiling(array $b, array $framing): bool
+    {
+        static $limits = null;
+        if ($limits === null) {
+            $lowY = INF;
+            $highY = -INF;
+            $area = 0.0;
+            foreach ($framing as $f) {
+                $lowY = min($lowY, $f['p'][1]);
+                $highY = max($highY, $f['p'][1]);
+                $area = max($area, abs($f['s'][0]) * abs($f['s'][2]));
+            }
+            $limits = ['low' => $lowY, 'high' => $highY, 'area' => $area];
+        }
+
+        $height = max($limits['high'] - $limits['low'], 1e-6);
+        $thin = abs($b['s'][1]) <= max(2.0, $height * 0.08);
+        $wide = abs($b['s'][0]) * abs($b['s'][2]) >= $limits['area'] * 4;
+        $up = $b['p'][1] >= $limits['low'] + $height * 0.5;
+
+        return $thin && $wide && $up;
     }
 
     private function corners(array $b): array
@@ -150,12 +186,15 @@ class ThumbExamples extends Command
         [$lo, $hi] = [[$x - $sx, $y - $sy, $z - $sz], [$x + $sx, $y + $sy, $z + $sz]];
 
         $faces = [
+            'under' => [[$lo[0], $lo[1], $lo[2]], [$hi[0], $lo[1], $lo[2]], [$hi[0], $lo[1], $hi[2]], [$lo[0], $lo[1], $hi[2]]],
+            'back-left' => [[$lo[0], $lo[1], $lo[2]], [$hi[0], $lo[1], $lo[2]], [$hi[0], $hi[1], $lo[2]], [$lo[0], $hi[1], $lo[2]]],
+            'back-right' => [[$lo[0], $lo[1], $lo[2]], [$lo[0], $lo[1], $hi[2]], [$lo[0], $hi[1], $hi[2]], [$lo[0], $hi[1], $lo[2]]],
             'top' => [[$lo[0], $hi[1], $lo[2]], [$hi[0], $hi[1], $lo[2]], [$hi[0], $hi[1], $hi[2]], [$lo[0], $hi[1], $hi[2]]],
             'left' => [[$lo[0], $lo[1], $hi[2]], [$hi[0], $lo[1], $hi[2]], [$hi[0], $hi[1], $hi[2]], [$lo[0], $hi[1], $hi[2]]],
             'right' => [[$hi[0], $lo[1], $lo[2]], [$hi[0], $lo[1], $hi[2]], [$hi[0], $hi[1], $hi[2]], [$hi[0], $hi[1], $lo[2]]],
         ];
 
-        foreach (['left', 'right', 'top'] as $face) {
+        foreach (['under', 'back-left', 'back-right', 'left', 'right', 'top'] as $face) {
             $shade = self::FACES[$face];
             $colour = imagecolorallocate(
                 $img,
