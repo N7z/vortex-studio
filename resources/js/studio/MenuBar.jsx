@@ -179,7 +179,7 @@ export default function MenuBar({
                 />
             ))}
             {account && (
-                <button className="menu-title menubar-right" onClick={onTeams}>Teams</button>
+                <button className="menu-title" onClick={onTeams}>Teams</button>
             )}
             {openMenu && <div className="help-backdrop menu-backdrop" onClick={() => setOpenMenu(null)} />}
             {pop === 'gfx' && (
