@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { deleteMap, listMaps, renameMap } from './api';
 import { listBackups, readBackup, deleteBackup } from './backup';
-import Account from './Account';
+import UserMenu from './UserMenu';
 import Teams from './Teams';
 import useDialogs from '../ui/useDialogs';
 import MoveMap from './MoveMap';
@@ -225,14 +225,7 @@ export default function StartScreen({
 
             <header className="start-top">
                 <h1>Paulin Studio</h1>
-                <div className="start-account">
-                    <Account account={account} ttl={ttl} onChange={accountChanged} />
-                    {claimed > 0 && (
-                        <div className="account-claimed">
-                            {claimed} map{claimed === 1 ? '' : 's'} from this browser moved to your account.
-                        </div>
-                    )}
-                </div>
+                <UserMenu account={account} ttl={ttl} onChange={accountChanged} claimed={claimed} />
             </header>
 
             {joining && (

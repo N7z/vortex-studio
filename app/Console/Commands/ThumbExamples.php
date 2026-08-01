@@ -82,8 +82,19 @@ class ThumbExamples extends Command
             ($x + $z) * 0.5 - $y,
         ];
 
+        // A baseplate is one part the size of the whole map, and framing on it turns
+        // everything built on top into a speck. The frame follows the ordinary parts
+        // and lets the outsized ones run off the edge.
+        $widest = array_map(fn ($b) => max(array_map('abs', $b['s'])), $boxes);
+        sort($widest);
+        $median = $widest[intdiv(count($widest), 2)] ?: 1;
+        $framing = array_values(array_filter(
+            $boxes,
+            fn ($b) => max(array_map('abs', $b['s'])) <= $median * 6,
+        )) ?: $boxes;
+
         [$minX, $minY, $maxX, $maxY] = [INF, INF, -INF, -INF];
-        foreach ($boxes as $b) {
+        foreach ($framing as $b) {
             foreach ($this->corners($b) as $c) {
                 [$sx, $sy] = $project(...$c);
                 $minX = min($minX, $sx);
@@ -103,11 +114,10 @@ class ThumbExamples extends Command
             return [$sx * $zoom + $offX, $sy * $zoom + $offY];
         };
 
-        // Painter's algorithm. The view looks down the (1,1,1) diagonal, so depth
-        // towards the camera is x+y+z, measured at each box's nearest corner.
-        $depth = fn ($b) => ($b['p'][0] + abs($b['s'][0]) / 2)
-            + ($b['p'][1] + abs($b['s'][1]) / 2)
-            + ($b['p'][2] + abs($b['s'][2]) / 2);
+        // Painter's algorithm, by centre. The view looks down the (1,1,1) diagonal,
+        // so depth towards the camera is x+y+z. Measuring at the nearest corner
+        // instead lets a huge baseplate outrank everything standing on it.
+        $depth = fn ($b) => $b['p'][0] + $b['p'][1] + $b['p'][2];
         usort($boxes, fn ($a, $b) => $depth($a) <=> $depth($b));
 
         foreach ($boxes as $b) {

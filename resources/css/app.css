@@ -1544,7 +1544,7 @@ a.tool-btn { text-decoration: none; }
     padding: 24px 34px 18px;
 }
 .start-top h1 { flex: 1; font-size: 24px; font-weight: 400; color: #eee; margin: 0; }
-.start-account { width: 300px; flex: none; }
+.user-menu { position: relative; flex: none; }
 .start-error { margin: 0 34px 12px; color: #e05252; font-size: 13px; }
 
 .start-body {
@@ -1724,3 +1724,42 @@ a.tool-btn { text-decoration: none; }
 .menu-pop button:hover { background: #25252d; }
 .menu-pop button.danger { color: #c2606a; }
 .menu-pop button.danger:hover { background: #2a1a1e; color: #e05252; }
+
+.user-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px 5px 5px;
+    border: 1px solid #26262e;
+    border-radius: 20px;
+    background: #14141a;
+    color: #bcbcc4;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+.user-btn:hover, .user-btn.on { border-color: #3a3a44; color: #eee; }
+.user-face {
+    width: 24px;
+    height: 24px;
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: #3a6cb0;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 600;
+}
+.user-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.user-pop {
+    position: absolute;
+    top: 40px;
+    right: 0;
+    z-index: 61;
+    width: 300px;
+    animation: modal-rise 140ms ease-out;
+}
+.user-pop .account { box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5); }
