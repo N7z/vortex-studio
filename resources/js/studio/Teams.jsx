@@ -152,7 +152,7 @@ function ManageTeam({ team, me, onClose, onChanged }) {
                             <Avatar member={m} />
                             <div className="member-who">
                                 <b>{m.name}{m.id === me && <span className="tag">you</span>}</b>
-                                <span>{m.email}</span>
+                                {m.email ? <span>{m.email}</span> : null}
                             </div>
                             {owner && m.role !== 'owner' ? (
                                 <select

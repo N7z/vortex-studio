@@ -95,7 +95,8 @@ class TeamController extends Controller
 
     public function members(int $team)
     {
-        $this->member($team);
+        $me = $this->member($team);
+        $owner = $me->role === MapAccess::OWNER;
 
         return response()->json([
             'members' => DB::table('team_members')
@@ -104,7 +105,10 @@ class TeamController extends Controller
                 ->orderBy('team_members.created_at')
                 ->get(['users.id', 'users.name', 'users.email', 'team_members.role'])
                 ->map(fn ($m) => [
-                    'id' => $m->id, 'name' => $m->name, 'email' => $m->email, 'role' => $m->role,
+                    'id' => $m->id,
+                    'name' => $m->name,
+                    'email' => $owner || $m->id === $this->me() ? $m->email : null,
+                    'role' => $m->role,
                 ]),
         ]);
     }

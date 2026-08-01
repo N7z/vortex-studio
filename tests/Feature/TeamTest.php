@@ -160,6 +160,26 @@ it('only lets the owner manage members', function () {
     expect(DB::table('team_members')->where('user_id', $b->id)->value('role'))->toBe('viewer');
 });
 
+it('shows addresses to the owner only, plus your own', function () {
+    $a = User::factory()->create();
+    $b = User::factory()->create();
+    $c = User::factory()->create();
+    $team = makeTeam($a);
+    addTo($team, $a, $b);
+    addTo($team, $a, $c);
+
+    $seen = collect($this->actingAs($a)->getJson("/api/teams/$team/members")->json('members'))
+        ->pluck('email', 'id');
+    expect($seen[$b->id])->toBe($b->email);
+    expect($seen[$c->id])->toBe($c->email);
+
+    $seen = collect($this->actingAs($b)->getJson("/api/teams/$team/members")->json('members'))
+        ->pluck('email', 'id');
+    expect($seen[$b->id])->toBe($b->email);
+    expect($seen[$a->id])->toBeNull();
+    expect($seen[$c->id])->toBeNull();
+});
+
 it('lets a member leave but not the owner', function () {
     $a = User::factory()->create();
     $b = User::factory()->create();
