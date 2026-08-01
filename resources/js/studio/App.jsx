@@ -58,6 +58,11 @@ const NEW_SPAWN = {
 
 
 const MAX_PLUGIN_PARTS = 60000;
+// The only two controls the voxeliser reads. Everything else on a panel is the
+// plugin's own business, and re-reading the model for it costs seconds.
+const modelSig = (c, values) => `${values?.[c.res] ?? ''}/${values?.[c.solid] ?? ''}`;
+// A number field commits on every keystroke, so 700 arrives as 7, 70, 700.
+const VOXEL_DEBOUNCE = 300;
 const MAX_MODEL_VOXELS = 400000;
 
 const MAX_MAP_PARTS = 60000;
@@ -101,6 +106,7 @@ export default function App() {
     const [pluginImages, setPluginImages] = useState({});
     const [pluginModels, setPluginModels] = useState({});
     const loadedModels = useRef({});
+    const modelSigs = useRef({});
     const [groups, setGroups] = useState([]);
     const [flags, setFlags] = useState(flagStore.EMPTY);
     const [tabs, setTabs] = useState([]);
@@ -548,6 +554,7 @@ export default function App() {
         const control = plugin.ui.find((c) => c.id === ctrlId);
         const res = Number(values?.[control?.res]) || 32;
         const solid = !!values?.[control?.solid];
+        modelSigs.current[`${plugin.id}:${ctrlId}`] = modelSig(control, values);
         const grid = await buildVoxels(entry.object, res, solid, resCap);
         await plugin.setModel(grid);
         setPluginModels((all) => ({
@@ -580,15 +587,25 @@ export default function App() {
     };
 
     useEffect(() => {
-        if (!activePlugin) return;
+        if (!activePlugin) return undefined;
+        const jobs = [];
         for (const c of activePlugin.ui) {
             if (c.type !== 'model') continue;
-            const entry = loadedModels.current[`${activePlugin.id}:${c.id}`];
-            if (!entry) continue;
-            voxelise(activePlugin, c.id, entry, activeValues).catch((e) => {
-                flash(`Could not voxelise: ${e.message ?? e}`);
-            });
+            const key = `${activePlugin.id}:${c.id}`;
+            const entry = loadedModels.current[key];
+            if (!entry || modelSigs.current[key] === modelSig(c, activeValues)) continue;
+            jobs.push({ c, entry });
         }
+        if (!jobs.length) return undefined;
+        const timer = setTimeout(() => {
+            for (const { c, entry } of jobs) {
+                voxelise(activePlugin, c.id, entry, activeValues).catch((e) => {
+                    flash(`Could not voxelise: ${e.message ?? e}`);
+                });
+            }
+        }, VOXEL_DEBOUNCE);
+
+        return () => clearTimeout(timer);
     }, [activePlugin, activeValues]);
 
     const pluginButton = async (btnId) => {

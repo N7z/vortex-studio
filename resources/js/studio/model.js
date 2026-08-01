@@ -53,11 +53,18 @@ function wrapped(t, mode) {
     return Math.min(Math.max(t, 0), 1);
 }
 
-function textureSampler(map) {
+// No more of the atlas than the grid can tell apart. Reading a 4096 square for a
+// 48 cell model costs seconds and resolves nothing.
+function texCap(size) {
+    const want = 1 << Math.ceil(Math.log2(Math.max(size, 1) * 4));
+    return Math.min(MAX_TEX, Math.max(64, want));
+}
+
+function textureSampler(map, cap) {
     const img = map?.image;
     if (!img || !img.width || !img.height) return null;
-    const w = Math.min(img.width, MAX_TEX);
-    const h = Math.min(img.height, MAX_TEX);
+    const w = Math.min(img.width, cap);
+    const h = Math.min(img.height, cap);
     const canvas = document.createElement('canvas');
     canvas.width = w;
     canvas.height = h;
@@ -104,7 +111,7 @@ function collect(object) {
     return meshes;
 }
 
-function describe(m) {
+function describe(m, cap) {
     if (!m) {
         return {
             rgb: GREY,
@@ -126,7 +133,7 @@ function describe(m) {
     return {
         rgb,
         linear: rgb.map((b) => SRGB_TO_LINEAR[b]),
-        sample: textureSampler(map),
+        sample: textureSampler(map, cap),
         tint,
         uvSet: map?.channel === 1 ? 1 : 0,
         // A blend material this faint is a helper plane, not something anyone can
@@ -153,6 +160,7 @@ export function voxelize(object, res, maxRes = MAX_RES) {
     const size = Math.min(Math.max(Math.floor(res) || 32, 4), maxRes, MAX_DIM);
     const meshes = collect(object);
     if (!meshes.length) throw new Error('this file has no meshes');
+    const cap = texCap(size);
 
     const box = new THREE.Box3();
     for (const mesh of meshes) box.expandByObject(mesh);
@@ -214,7 +222,7 @@ export function voxelize(object, res, maxRes = MAX_RES) {
 
     for (const mesh of meshes) {
         const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-        const mats = list.map(describe);
+        const mats = list.map((m) => describe(m, cap));
         const geo = mesh.geometry;
         const pos = geo.attributes.position;
         const uvs = [geo.attributes.uv ?? null, geo.attributes.uv1 ?? geo.attributes.uv ?? null];
