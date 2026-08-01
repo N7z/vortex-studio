@@ -1,7 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import useDraggable from './useDraggable';
+import { ENGINE_MAX_BYTES, stripIds } from './ops';
 
 const n = (v) => (v ?? 0).toLocaleString();
+
+const SIZE_SLICE = 5000;
+
+const bytesLabel = (b) => {
+    if (b < 1024) return `${b} B`;
+    if (b < 1048576) return `${(b / 1024).toFixed(1)} KB`;
+    return `${(b / 1048576).toFixed(2)} MB`;
+};
 
 function Row({ label, value, hint }) {
     return (
@@ -16,11 +25,40 @@ export default function StatsPanel({ parts, selectedIds, groups, mapName, statsR
     const { style, onPointerDown } = useDraggable('stats');
     const [render, setRender] = useState(null);
 
+    const [bytes, setBytes] = useState(null);
+
     useEffect(() => {
         const t = setInterval(() => setRender(statsRef?.current ?? null), 500);
 
         return () => clearInterval(t);
     }, [statsRef]);
+
+    useEffect(() => {
+        if (!parts.length) {
+            setBytes(0);
+            return undefined;
+        }
+        let cancelled = false;
+        let at = 0;
+        let inner = 0;
+        let chunks = 0;
+        setBytes(null);
+        const step = () => {
+            if (cancelled) return;
+            const end = Math.min(at + SIZE_SLICE, parts.length);
+            inner += JSON.stringify(stripIds(parts.slice(at, end))).length - 2;
+            chunks += 1;
+            at = end;
+            if (at < parts.length) {
+                setTimeout(step, 0);
+                return;
+            }
+            setBytes(inner + chunks + 1);
+        };
+        step();
+
+        return () => { cancelled = true; };
+    }, [parts]);
 
     const map = useMemo(() => {
         const types = new Map();
@@ -68,6 +106,16 @@ export default function StatsPanel({ parts, selectedIds, groups, mapName, statsR
                         <Row label="Groups" value={n(groups.length)} />
                         <Row label="Colours" value={n(map.colors)} hint="Distinct part colours" />
                         <Row label="Extent" value={map.size} hint="Bounding box in studs, W x H x D" />
+                        <Row
+                            label="File size"
+                            value={bytes == null ? '...' : bytesLabel(bytes)}
+                            hint={`What this map saves as. The game refuses anything over ${bytesLabel(ENGINE_MAX_BYTES)}`}
+                        />
+                        {bytes != null && bytes > ENGINE_MAX_BYTES ? (
+                            <span className="team-hint">
+                                {`Over the ${bytesLabel(ENGINE_MAX_BYTES)} the game accepts.`}
+                            </span>
+                        ) : null}
                     </>
                 )}
 

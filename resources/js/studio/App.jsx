@@ -26,6 +26,7 @@ import {
 } from './api';
 import { writeBackup } from './backup';
 import {
+    ENGINE_MAX_BYTES,
     addOp, applyOp, fillPart, invertOp, patchOp, removeOp, repairParts, stripIds,
     transformOp, withNewId,
 } from './ops';
@@ -84,9 +85,6 @@ const paint = () => new Promise((r) => {
 // Autosave runs every 20s; a picture that often is wasted upload for a view that
 // barely changed.
 const THUMB_EVERY_MS = 120_000;
-
-// What the game itself will load. Larger than this is refused on its side.
-const ENGINE_MAX_BYTES = 10 * 1024 * 1024;
 
 // A save the user asked for is worth a fresher picture, but not one per Ctrl+S.
 const THUMB_MIN_MS = 15_000;

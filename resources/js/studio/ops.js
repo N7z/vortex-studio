@@ -94,6 +94,8 @@ export const withNewId = (part) => ({ ...part, _id: newPartId() });
 
 export const stripIds = (parts) => parts.map(({ _id, ...rest }) => rest);
 
+export const ENGINE_MAX_BYTES = 10 * 1024 * 1024;
+
 export const addOp = (parts) => ({ t: 'add', items: parts.map((part) => ({ part })) });
 
 export const removeOp = (ids) => ({ t: 'remove', ids: [...ids] });
