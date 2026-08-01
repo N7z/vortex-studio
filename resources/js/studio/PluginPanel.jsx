@@ -103,7 +103,7 @@ export default function PluginPanel({
             {numbers.length > 0 && (
                 <div className="arch-axes">
                     {numbers.map((c) => (
-                        <label key={c.id}>
+                        <label key={c.id} title={c.label}>
                             {c.label}
                             <NumberInput
                                 value={values[c.id] ?? 0}

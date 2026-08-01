@@ -1,6 +1,6 @@
 plugin = {
     name = "Model",
-    version = "2.0",
+    version = "2.1",
     icon = Icons.Gem,
     ui = {
         { id = "model", type = "model", label = "Model", res = "res", solid = "solid" },
@@ -12,9 +12,9 @@ plugin = {
         { id = "thick", type = "number", label = "Shell thickness", default = 0.5 },
         { id = "cover", type = "number", label = "Plate overlap", default = 1.7 },
         { id = "core", type = "checkbox", label = "Keep a solid core", default = false },
-        { id = "flat", type = "number", label = "Keep flat faces square", default = 0.985 },
+        { id = "flat", type = "number", label = "Flat faces", default = 0.985 },
         { id = "palette", type = "number", label = "Colours", default = 24 },
-        { id = "clean", type = "number", label = "Clean up speckles", default = 1 },
+        { id = "clean", type = "number", label = "Despeckle", default = 1 },
         { id = "ground", type = "checkbox", label = "Sit on the selected part", default = true },
         { id = "build", type = "button", label = "Build model" },
     },

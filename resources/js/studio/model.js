@@ -58,6 +58,9 @@ function textureSampler(map) {
     canvas.width = w;
     canvas.height = h;
     const g = canvas.getContext('2d', { willReadFrequently: true });
+    // An atlas is islands of colour on blank padding, and a smoothed downscale
+    // averages the two together along every island border.
+    g.imageSmoothingEnabled = false;
     let data;
     try {
         // Five arguments: the three-argument form draws at intrinsic size and
@@ -98,7 +101,16 @@ function collect(object) {
 }
 
 function describe(m) {
-    if (!m) return { rgb: GREY, linear: GREY.map((b) => SRGB_TO_LINEAR[b]), sample: null, tint: null, uvSet: 0 };
+    if (!m) {
+        return {
+            rgb: GREY,
+            linear: GREY.map((b) => SRGB_TO_LINEAR[b]),
+            sample: null,
+            tint: null,
+            uvSet: 0,
+            skip: false,
+        };
+    }
     const map = m.map ?? m.emissiveMap ?? null;
     const c = m.color ? m.color.clone().convertLinearToSRGB() : null;
     const rgb = c ? [Math.round(c.r * 255), Math.round(c.g * 255), Math.round(c.b * 255)] : GREY;
@@ -113,6 +125,9 @@ function describe(m) {
         sample: textureSampler(map),
         tint,
         uvSet: map?.channel === 1 ? 1 : 0,
+        // A blend material this faint is a helper plane, not something anyone can
+        // see, and it would paint solid blocks over what is behind it.
+        skip: m.transparent === true && m.opacity < 0.5,
     };
 }
 
@@ -210,6 +225,7 @@ export function voxelize(object, res, maxRes = MAX_RES) {
 
         for (let f = 0; f < faces; f++) {
             const mat = mats[perFace ? perFace[f] : 0] ?? mats[0];
+            if (mat.skip) continue;
             const uv = mat.sample ? uvs[mat.uvSet] : null;
             const i0 = index ? index.getX(f * 3) : f * 3;
             const i1 = index ? index.getX(f * 3 + 1) : f * 3 + 1;
@@ -273,6 +289,13 @@ export function voxelize(object, res, maxRes = MAX_RES) {
                             lr *= tint[0];
                             lg *= tint[1];
                             lb *= tint[2];
+                        }
+                        // glTF multiplies COLOR_0 into the base colour, and a
+                        // mesh often carries its shading there.
+                        if (vcol) {
+                            lr *= cr0 * w0 + cr1 * w1 + cr2 * w2;
+                            lg *= cg0 * w0 + cg1 * w1 + cg2 * w2;
+                            lb *= cb0 * w0 + cb1 * w1 + cb2 * w2;
                         }
                         used.texture += 1;
                     } else if (vcol) {
