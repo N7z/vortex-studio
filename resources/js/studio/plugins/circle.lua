@@ -1,6 +1,6 @@
 plugin = {
     name = "Circle",
-    version = "1.0",
+    version = "1.1",
     icon = Icons.Circle,
     ui = {
         { id = "radius", type = "number", label = "Radius", default = 12 },
@@ -84,7 +84,6 @@ local function emit(part, p, s, r)
     return out
 end
 
--- The two in-plane axes and the stacking axis, as indices into P/S.
 local function plane(upright)
     if upright then return 1, 2, 3 end
     return 1, 3, 2
@@ -130,22 +129,34 @@ local function blocks(part, values, limit)
     return out
 end
 
-local function ring(part, values, limit)
-    local radius = clamp(values.radius, 0.1, 4000)
-    local layers = math.floor(clamp(values.layers, 1, 4000))
-    local count = math.floor(clamp(values.segments, 3, MAX_SEGMENTS))
+local function smooth_setup(part, values)
     local upright = values.upright == true
     local iu, iv, inml = plane(upright)
-
     local u, v = { 0, 0, 0 }, { 0, 0, 0 }
     u[iu], v[iv] = 1, 1
-    local cn = math.max(math.abs(part.S[inml]), 0.05)
 
-    -- Chord length, so consecutive segments meet end to end.
-    local length = 2 * radius * math.sin(math.pi / count)
-    local cap = limit or maxParts()
+    local radius = clamp(values.radius, 0.1, 4000)
+    local width = clamp(values.width, 0.05, radius)
+    local step = upright and width or math.max(math.abs(part.S[2]), 0.05)
 
-    local out = {}
+    return {
+        u = u,
+        v = v,
+        upright = upright,
+        inml = inml,
+        radius = radius,
+        width = width,
+        step = step,
+        layers = math.floor(clamp(values.layers, 1, 4000)),
+        count = math.floor(clamp(values.segments, 3, MAX_SEGMENTS)),
+    }
+end
+
+local function arc(part, ctx, out, cap, outer, w, count)
+    local mid = outer - w / 2
+    local length = 2 * outer * math.tan(math.pi / count)
+    local u, v = ctx.u, ctx.v
+
     for i = 0, count - 1 do
         local a = 2 * math.pi * i / count
         local ca, sa = math.cos(a), math.sin(a)
@@ -159,31 +170,59 @@ local function ring(part, values, limit)
             -u[2] * sa + v[2] * ca,
             -u[3] * sa + v[3] * ca,
         }
-        -- Flat: the part keeps world up and its depth points outward. Upright: its
-        -- height points outward, which is how a wheel rim sits.
-        local ay = upright and radial or { 0, 1, 0 }
+        local ay = ctx.upright and radial or { 0, 1, 0 }
         local ax = cross(ay, az)
         local r = axes_to_euler(ax, ay, az)
 
-        for k = 0, layers - 1 do
-            if #out >= cap then return out end
+        for k = 0, ctx.layers - 1 do
+            if #out >= cap then return false end
             local p = {
-                part.P[1] + radial[1] * radius,
-                part.P[2] + radial[2] * radius,
-                part.P[3] + radial[3] * radius,
+                part.P[1] + radial[1] * mid,
+                part.P[2] + radial[2] * mid,
+                part.P[3] + radial[3] * mid,
             }
-            p[inml] = p[inml] + k * cn
+            p[ctx.inml] = p[ctx.inml] + k * ctx.step
             local s = { part.S[1], part.S[2], part.S[3] }
+            s[1] = w
             s[3] = length
             out[#out + 1] = emit(part, p, s, r)
         end
-        progress(i + 1, count)
+    end
+    return true
+end
+
+local function ring(part, values, limit)
+    local ctx = smooth_setup(part, values)
+    local out = {}
+    arc(part, ctx, out, limit or maxParts(), ctx.radius, ctx.width, ctx.count)
+    progress(1, 1)
+    return out
+end
+
+local function disc(part, values, limit)
+    local ctx = smooth_setup(part, values)
+    local cap = limit or maxParts()
+    local out = {}
+    local outer = ctx.radius
+    local rings = math.ceil(ctx.radius / ctx.width)
+
+    for i = 1, rings do
+        local n = math.floor(ctx.count * outer / ctx.radius + 0.5)
+        if n < 3 then n = 3 end
+        local next_outer = outer - ctx.width
+        if next_outer < 0.001 then next_outer = 0 end
+        local w = outer - next_outer * math.cos(math.pi / n)
+        if not arc(part, ctx, out, cap, outer, w, n) then return out end
+        outer = next_outer
+        progress(i, rings)
+        if outer <= 0 then break end
     end
     return out
 end
 
 local function build(part, values, limit)
-    if values.smooth == true and values.fill ~= true then
+    if values.smooth == true then
+        if values.fill == true then return disc(part, values, limit) end
         return ring(part, values, limit)
     end
     return blocks(part, values, limit)
