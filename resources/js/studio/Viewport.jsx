@@ -1223,6 +1223,36 @@ export default function Viewport({
             invalidate();
         };
 
+        // Where each builder is looking from, drawn in play mode as well, so a tester
+        // sees the editors move around the map while they play.
+        const stepMarks = (c) => {
+            let k = 0;
+            const playing = c?.playRef?.current;
+            for (const peer of c?.peers ?? []) {
+                // Someone testing stops updating their camera, so their last view would
+                // hang in the air beside the character drawn for them.
+                if (!peer.view || playing?.has(peer.id)) continue;
+                const { cone, label } = marks[k] ?? mark();
+                k++;
+                const [px, py, pz] = peer.view.p;
+                const [dx, dy, dz] = peer.view.d;
+                cone.position.set(px, py, pz);
+                markTarget.set(px + dx, py + dy, pz + dz);
+                cone.lookAt(markTarget);
+                cone.material = markMat(peer.color);
+                cone.visible = true;
+                const { material, aspect } = labelMat(peer.name, peer.color);
+                label.material = material;
+                label.scale.set(LABEL_HEIGHT * aspect, LABEL_HEIGHT, 1);
+                label.position.set(px, py + 2.2, pz);
+                label.visible = true;
+            }
+            for (let i = k; i < marks.length; i++) {
+                marks[i].cone.visible = false;
+                marks[i].label.visible = false;
+            }
+        };
+
         const tick = () => {
             raf = requestAnimationFrame(tick);
             const at = performance.now();
@@ -1239,6 +1269,7 @@ export default function Viewport({
                 const states = ctx.current.playRef?.current;
                 if (states) s.setPeers(states, ctx.current.memberNames);
                 s.update(dt);
+                stepMarks(ctx.current);
                 ctx.current.onPlayState?.(s.state);
                 renderer.shadowMap.needsUpdate = true;
                 renderer.render(scene, camera);
@@ -1346,28 +1377,7 @@ export default function Viewport({
             }
             for (let i = n; i < peerBoxes.length; i++) peerBoxes[i].visible = false;
 
-            let k = 0;
-            for (const peer of c?.peers ?? []) {
-                if (!peer.view) continue;
-                const { cone, label } = marks[k] ?? mark();
-                k++;
-                const [px, py, pz] = peer.view.p;
-                const [dx, dy, dz] = peer.view.d;
-                cone.position.set(px, py, pz);
-                markTarget.set(px + dx, py + dy, pz + dz);
-                cone.lookAt(markTarget);
-                cone.material = markMat(peer.color);
-                cone.visible = true;
-                const { material, aspect } = labelMat(peer.name, peer.color);
-                label.material = material;
-                label.scale.set(LABEL_HEIGHT * aspect, LABEL_HEIGHT, 1);
-                label.position.set(px, py + 2.2, pz);
-                label.visible = true;
-            }
-            for (let i = k; i < marks.length; i++) {
-                marks[i].cone.visible = false;
-                marks[i].label.visible = false;
-            }
+            stepMarks(c);
 
             if (c?.onView) {
                 camera.getWorldDirection(viewDir);
@@ -1415,7 +1425,6 @@ export default function Viewport({
                 for (const b of selBoxes) b.visible = false;
                 for (const b of peerBoxes) b.visible = false;
                 for (const q of faceQuads) q.visible = false;
-                for (const m of marks) { m.cone.visible = false; m.label.visible = false; }
                 grid.visible = false;
                 keys.clear();
                 setFlying(false);
