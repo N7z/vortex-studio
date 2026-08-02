@@ -466,6 +466,24 @@ a.tool-btn { text-decoration: none; }
     color: #e5e5ea;
 }
 .arch-text input:focus { outline: none; border-color: #2f7fd9; }
+.arch-color {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 11px;
+    color: #8f8f98;
+    margin-bottom: 8px;
+}
+.arch-color input {
+    width: 46px;
+    height: 22px;
+    padding: 0;
+    background: #0e0e12;
+    border: 1px solid #2c2c35;
+    border-radius: 4px;
+    cursor: pointer;
+}
 .arch-head h3 { font-size: 14px; font-weight: 600; color: #e5e5ea; flex: 1; }
 .arch-ver { font-size: 10px; color: #6b6b73; letter-spacing: .02em; }
 .arch-edit {

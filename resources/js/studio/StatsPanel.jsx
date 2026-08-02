@@ -5,6 +5,7 @@ import { ENGINE_MAX_BYTES, stripIds } from './ops';
 const n = (v) => (v ?? 0).toLocaleString();
 
 const SIZE_SLICE = 5000;
+const SETTLE_MS = 250;
 
 const bytesLabel = (b) => {
     if (b < 1024) return `${b} B`;
@@ -26,6 +27,13 @@ export default function StatsPanel({ parts, selectedIds, groups, mapName, statsR
     const [render, setRender] = useState(null);
 
     const [bytes, setBytes] = useState(null);
+    const [settled, setSettled] = useState(parts);
+
+    useEffect(() => {
+        const t = setTimeout(() => setSettled(parts), SETTLE_MS);
+
+        return () => clearTimeout(t);
+    }, [parts]);
 
     useEffect(() => {
         const t = setInterval(() => setRender(statsRef?.current ?? null), 500);
@@ -34,7 +42,7 @@ export default function StatsPanel({ parts, selectedIds, groups, mapName, statsR
     }, [statsRef]);
 
     useEffect(() => {
-        if (!parts.length) {
+        if (!settled.length) {
             setBytes(0);
             return undefined;
         }
@@ -45,11 +53,11 @@ export default function StatsPanel({ parts, selectedIds, groups, mapName, statsR
         setBytes(null);
         const step = () => {
             if (cancelled) return;
-            const end = Math.min(at + SIZE_SLICE, parts.length);
-            inner += JSON.stringify(stripIds(parts.slice(at, end))).length - 2;
+            const end = Math.min(at + SIZE_SLICE, settled.length);
+            inner += JSON.stringify(stripIds(settled.slice(at, end))).length - 2;
             chunks += 1;
             at = end;
-            if (at < parts.length) {
+            if (at < settled.length) {
                 setTimeout(step, 0);
                 return;
             }
@@ -58,7 +66,7 @@ export default function StatsPanel({ parts, selectedIds, groups, mapName, statsR
         step();
 
         return () => { cancelled = true; };
-    }, [parts]);
+    }, [settled]);
 
     const map = useMemo(() => {
         const types = new Map();
@@ -66,7 +74,7 @@ export default function StatsPanel({ parts, selectedIds, groups, mapName, statsR
         const min = [Infinity, Infinity, Infinity];
         const max = [-Infinity, -Infinity, -Infinity];
         let studs = 0;
-        for (const p of parts) {
+        for (const p of settled) {
             types.set(p.T, (types.get(p.T) ?? 0) + 1);
             colors.add(p.C ?? 'a3a2a5');
             studs += (p.S?.[0] ?? 0) * (p.S?.[2] ?? 0);
@@ -80,11 +88,11 @@ export default function StatsPanel({ parts, selectedIds, groups, mapName, statsR
             types: [...types.entries()].sort((a, b) => b[1] - a[1]),
             colors: colors.size,
             studs,
-            size: parts.length
+            size: settled.length
                 ? [0, 1, 2].map((i) => Math.round(max[i] - min[i])).join(' x ')
                 : null,
         };
-    }, [parts]);
+    }, [settled]);
 
     return (
         <div className="team-panel stats-panel" style={style}>

@@ -10,6 +10,7 @@ export default function PluginPanel({
     const pickers = useRef({});
     const { style, onPointerDown } = useDraggable('plugin');
     const texts = plugin.ui.filter((c) => c.type === 'text');
+    const swatches = plugin.ui.filter((c) => c.type === 'color');
     const numbers = plugin.ui.filter((c) => c.type === 'number');
     const checks = plugin.ui.filter((c) => c.type === 'checkbox');
     const buttons = plugin.ui.filter((c) => c.type === 'button');
@@ -97,6 +98,16 @@ export default function PluginPanel({
                         value={values[c.id] ?? ''}
                         maxLength={c.max ?? 64}
                         onChange={(e) => setValue(c.id, e.target.value)}
+                    />
+                </label>
+            ))}
+            {swatches.map((c) => (
+                <label className="arch-color" key={c.id}>
+                    {c.label}
+                    <input
+                        type="color"
+                        value={`#${String(values[c.id] ?? '').replace(/^#/, '') || '000000'}`}
+                        onChange={(e) => setValue(c.id, e.target.value.slice(1))}
                     />
                 </label>
             ))}

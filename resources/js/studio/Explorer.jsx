@@ -1,5 +1,5 @@
 import { Eye, EyeOff, Lock, LockOpen } from 'lucide-react';
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { WorkspaceIcon, LightingIcon, cubeIcon, FolderIcon, ChevronIcon } from './icons';
 import { groupIndex } from './groups';
 import { EMPTY, isHidden, isLocked } from './flags';
@@ -27,30 +27,37 @@ export default function Explorer({
     const primary = selectedIds.length ? selectedIds[selectedIds.length - 1] : null;
 
     const q = query.trim().toLowerCase();
-    const match = ({ p, i }) => !q || p.T.toLowerCase().includes(q) || `#${i}`.includes(q) || String(i) === q;
-    const rows = parts.map((p, i) => ({ p, i })).filter(match);
-
-    const byPart = groupIndex(groups);
-    const buckets = new Map(groups.map((g) => [g.id, []]));
-    const loose = [];
-    for (const row of rows) {
-        const g = byPart.get(row.p._id);
-        if (g) buckets.get(g.id).push(row);
-        else loose.push(row);
-    }
     const isOpen = (g) => open[g.id] ?? (g.ids.length <= AUTO_OPEN_MAX);
-    const selected = new Set(selectedIds);
+    const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
 
-    const items = [];
-    if (!q) items.push({ k: 'ws' });
-    for (const g of groups) {
-        const rowsIn = buckets.get(g.id) ?? [];
-        if (q && !rowsIn.length) continue;
-        items.push({ k: 'group', g });
-        if (isOpen(g)) for (const row of rowsIn) items.push({ k: 'part', row, nested: true });
-    }
-    for (const row of loose) items.push({ k: 'part', row });
-    if (!q) items.push({ k: 'light' });
+    const items = useMemo(() => {
+        const match = ({ p, i }) => !q || p.T.toLowerCase().includes(q) || `#${i}`.includes(q) || String(i) === q;
+        const rows = parts.map((p, i) => ({ p, i })).filter(match);
+
+        const byPart = groupIndex(groups);
+        const buckets = new Map(groups.map((g) => [g.id, []]));
+        const loose = [];
+        for (const row of rows) {
+            const g = byPart.get(row.p._id);
+            if (g) buckets.get(g.id).push(row);
+            else loose.push(row);
+        }
+
+        const out = [];
+        if (!q) out.push({ k: 'ws' });
+        for (const g of groups) {
+            const rowsIn = buckets.get(g.id) ?? [];
+            if (q && !rowsIn.length) continue;
+            out.push({ k: 'group', g });
+            if (open[g.id] ?? (g.ids.length <= AUTO_OPEN_MAX)) {
+                for (const row of rowsIn) out.push({ k: 'part', row, nested: true });
+            }
+        }
+        for (const row of loose) out.push({ k: 'part', row });
+        if (!q) out.push({ k: 'light' });
+
+        return out;
+    }, [parts, groups, q, open]);
 
     const first = Math.max(0, Math.floor(view.top / ROW_H) - OVERSCAN);
     const last = Math.min(items.length, Math.ceil((view.top + view.h) / ROW_H) + OVERSCAN);

@@ -175,7 +175,7 @@ const readTransform = (m) => ({
 export default function Viewport({
     parts, selectedIds, setSelectedId, selectMany, tool, snap, onTransform, onTransformMany,
     mapName, graphics, preview, spawnRef, busyRef, canEdit = true, peers, onView,
-    faces, showFaces = false, statsRef, onBuild,
+    faces, showFaces = false, statsRef, onBuild, brush = null, onBrush = null, tintRef,
     playing = false, onExitPlay, onPlayError, touchRef, playRef, onPlayState, members = [], thumbRef,
     flags = EMPTY,
 }) {
@@ -468,6 +468,7 @@ export default function Viewport({
                 }
                 inst.instanceMatrix.needsUpdate = true;
                 if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+                inst.userData.members = list;
                 inst.computeBoundingSphere();
             }
 
@@ -478,6 +479,24 @@ export default function Viewport({
             }
             c.loose = c.solidList.length - [...members.values()].reduce((n, l) => n + l.length, 0);
             reshadow();
+        };
+
+        const tintParts = (patches) => {
+            const c = ctx.current;
+            if (!c) return;
+            const touched = new Set();
+            for (const { id, C } of patches) {
+                if (!C) continue;
+                const mesh = c.meshes.get(id);
+                if (!mesh || !mesh.userData.set?.instanced || mesh.userData.slot < 0) continue;
+                const inst = batches.get(mesh.userData.batch);
+                if (!inst?.instanceColor) continue;
+                mesh.userData.part = { ...mesh.userData.part, C };
+                inst.setColorAt(mesh.userData.slot, instColor(C));
+                touched.add(inst);
+            }
+            for (const inst of touched) inst.instanceColor.needsUpdate = true;
+            if (touched.size) invalidate();
         };
 
         const bumpBatch = (mesh) => {
@@ -543,8 +562,9 @@ export default function Viewport({
 
         const keys = new Set();
         let flying = false;
+        let brushing = false;
         const syncBusy = () => {
-            if (busyRef) busyRef.current = flying || drag !== null || !!marquee?.active;
+            if (busyRef) busyRef.current = flying || brushing || drag !== null || !!marquee?.active;
         };
         const setFlying = (v) => {
             flying = v;
@@ -668,8 +688,8 @@ export default function Viewport({
             c.selectMany(ids, additive);
         };
 
-        const castPointer = (e) => {
-            refreshProxies();
+        const castPointer = (e, withProxies = true) => {
+            if (withProxies) refreshProxies();
             const rect = renderer.domElement.getBoundingClientRect();
             pointerNdc.set(
                 ((e.clientX - rect.left) / rect.width) * 2 - 1,
@@ -678,24 +698,134 @@ export default function Viewport({
             raycaster.setFromCamera(pointerNdc, camera);
         };
 
-        const pickMesh = (e) => {
+        const castList = [];
+        const pickTargets = () => {
             const c = ctx.current;
-            if (!c) return null;
-            castPointer(e);
-            const hits = raycaster.intersectObjects(c.selectList, false);
-            if (!hits.length) return null;
-            const tied = hits.filter((h) => h.distance <= hits[0].distance + 0.01);
-            const selected = tied.find((h) => c.selectedMeshes.includes(h.object));
-            return (selected ?? hits[0]).object;
+            castList.length = 0;
+            for (const inst of batches.values()) castList.push(inst);
+            if (c) for (const mesh of c.solidList) if (mesh.visible) castList.push(mesh);
+            return castList;
         };
 
-        const pickSurface = (e, targets) => {
+        const hitMesh = (hit) => (hit.object.isInstancedMesh
+            ? hit.object.userData.members?.[hit.instanceId] ?? null
+            : hit.object);
+
+        const castAll = (e) => {
+            castPointer(e, false);
+            return raycaster.intersectObjects(pickTargets(), false);
+        };
+
+        const pickHit = (e) => {
             const c = ctx.current;
             if (!c) return null;
-            castPointer(e);
-            const hits = raycaster.intersectObjects(targets, false);
-            if (hits.length) return hits[0].point.clone();
+            let first = null;
+            for (const hit of castAll(e)) {
+                const mesh = hitMesh(hit);
+                if (!mesh || isLocked(c.flags, mesh.userData.id)) continue;
+                if (!first) first = { mesh, face: hit.face, distance: hit.distance };
+                else if (hit.distance > first.distance + 0.01) break;
+                if (c.selectedMeshes.includes(mesh)) return { mesh, face: hit.face };
+            }
+            return first;
+        };
+
+        const pickMesh = (e) => pickHit(e)?.mesh ?? null;
+
+        const pickSurface = (e, exclude) => {
+            const c = ctx.current;
+            if (!c) return null;
+            for (const hit of castAll(e)) {
+                if (exclude?.has(hitMesh(hit))) continue;
+                return hit.point.clone();
+            }
             return raycaster.ray.intersectPlane(dragPlane, planeHit) ? planeHit.clone() : null;
+        };
+
+        const brushRing = new THREE.Mesh(
+            new THREE.RingGeometry(0.94, 1, 56),
+            new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.75,
+                depthTest: false,
+                side: THREE.DoubleSide,
+            }),
+        );
+        brushRing.renderOrder = 999;
+        brushRing.visible = false;
+        scene.add(brushRing);
+
+        const ringUp = new THREE.Vector3(0, 0, 1);
+        const brushNormal = new THREE.Vector3();
+        const brushTargets = [];
+        const instanceAt = new THREE.Matrix4();
+
+        const pickBrush = (e) => {
+            const c = ctx.current;
+            if (!c) return null;
+            castPointer(e, false);
+            brushTargets.length = 0;
+            for (const inst of batches.values()) brushTargets.push(inst);
+            for (const mesh of c.solidList) if (mesh.visible) brushTargets.push(mesh);
+            const hits = raycaster.intersectObjects(brushTargets, false);
+            if (hits.length) {
+                const hit = hits[0];
+                brushNormal.set(0, 1, 0);
+                if (hit.face) {
+                    brushNormal.copy(hit.face.normal);
+                    if (hit.object.isInstancedMesh && hit.instanceId !== undefined) {
+                        hit.object.getMatrixAt(hit.instanceId, instanceAt);
+                        brushNormal.transformDirection(instanceAt);
+                    } else {
+                        brushNormal.transformDirection(hit.object.matrixWorld);
+                    }
+                }
+                return { point: hit.point.clone(), normal: brushNormal.clone() };
+            }
+            if (!raycaster.ray.intersectPlane(dragPlane, planeHit)) return null;
+            return { point: planeHit.clone(), normal: new THREE.Vector3(0, 1, 0) };
+        };
+
+        const showRing = (hit) => {
+            const radius = ctx.current?.brush?.radius ?? 0;
+            if (!hit || radius <= 0) {
+                brushRing.visible = false;
+                return;
+            }
+            brushRing.position.copy(hit.point).addScaledVector(hit.normal, 0.05);
+            brushRing.quaternion.setFromUnitVectors(ringUp, hit.normal);
+            brushRing.scale.setScalar(radius);
+            brushRing.visible = true;
+            invalidate();
+        };
+
+        let brushAt = null;
+        let brushRaf = 0;
+        const queueBrush = (e) => {
+            brushAt = { clientX: e.clientX, clientY: e.clientY };
+            if (brushRaf) return;
+            brushRaf = requestAnimationFrame(() => {
+                brushRaf = 0;
+                const at = brushAt;
+                brushAt = null;
+                const c = ctx.current;
+                if (!at || !c?.brush) return;
+                const hit = pickBrush(at);
+                showRing(hit);
+                if (brushing && hit) c.onBrush?.(hit.point, 'move');
+            });
+        };
+
+        const endBrush = (e) => {
+            if (!brushing) return;
+            brushing = false;
+            orbit.enabled = true;
+            syncBusy();
+            if (e && renderer.domElement.hasPointerCapture(e.pointerId)) {
+                renderer.domElement.releasePointerCapture(e.pointerId);
+            }
+            ctx.current?.onBrush?.(null, 'end');
         };
 
         const startDrag = (e) => {
@@ -709,9 +839,7 @@ export default function Viewport({
             if (!inSelection) c.setSelectedId(mesh.userData.id, false);
 
             const exclude = new Set(meshes);
-            const targets = [];
-            for (const m of c.solidList) if (!exclude.has(m)) targets.push(m);
-            const hit = pickSurface(e, targets);
+            const hit = pickSurface(e, exclude);
             if (!hit) return;
 
             const bounds = new THREE.Box3();
@@ -720,7 +848,7 @@ export default function Viewport({
             const preview = meshes.length > DRAG_PREVIEW;
             drag = {
                 meshes,
-                targets,
+                exclude,
                 preview,
                 index: preview ? 0 : meshes.indexOf(mesh),
                 anchor: mesh.position.clone(),
@@ -737,7 +865,7 @@ export default function Viewport({
 
         const moveDrag = (e) => {
             const c = ctx.current;
-            const hit = pickSurface(e, drag.targets);
+            const hit = pickSurface(e, drag.exclude);
             if (!hit || !c) return;
             const grid = c.snapMove;
             let x = hit.x + drag.offX;
@@ -810,6 +938,18 @@ export default function Viewport({
             down.y = e.clientY;
             if (e.button === 2) setFlying(true);
             if (e.button !== 0 || gizmo.dragging || gizmo.axis) return;
+            if (ctx.current?.brush && !e.altKey && e.pointerType === 'mouse') {
+                if (!ctx.current.canEdit) return;
+                const hit = pickBrush(e);
+                showRing(hit);
+                if (!hit) return;
+                brushing = true;
+                orbit.enabled = false;
+                syncBusy();
+                renderer.domElement.setPointerCapture(e.pointerId);
+                ctx.current.onBrush?.(hit.point, 'start');
+                return;
+            }
             const mesh = e.altKey ? null : pickMesh(e);
             if (mesh && e.pointerType !== 'mouse') {
                 longFired = false;
@@ -833,6 +973,10 @@ export default function Viewport({
 
         const onMove = (e) => {
             if (ctx.current?.session) return;
+            if (ctx.current?.brush) {
+                queueBrush(e);
+                if (brushing || !drag) return;
+            }
             if (longPress && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) {
                 clearTimeout(longPress);
                 longPress = null;
@@ -851,6 +995,10 @@ export default function Viewport({
         const onUp = (e) => {
             if (ctx.current?.session) return;
             if (e.button !== 0) return;
+            if (brushing) {
+                endBrush(e);
+                return;
+            }
             clearTimeout(longPress);
             longPress = null;
             if (longFired) {
@@ -874,21 +1022,14 @@ export default function Viewport({
             if (gizmo.dragging) return;
             const c = ctx.current;
             if (!c) return;
-            refreshProxies();
-            const rect = renderer.domElement.getBoundingClientRect();
-            const ndc = new THREE.Vector2(
-                ((e.clientX - rect.left) / rect.width) * 2 - 1,
-                -((e.clientY - rect.top) / rect.height) * 2 + 1,
-            );
-            raycaster.setFromCamera(ndc, camera);
-            const hits = raycaster.intersectObjects(c.selectList, false);
+            const hit = pickHit(e);
             if (e.pointerType !== 'mouse') {
                 const t = performance.now();
                 const near = Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 24;
                 if (t - lastTap.t < 320 && near) {
                     lastTap = { t: 0, x: 0, y: 0 };
-                    if (hits.length) {
-                        focusMeshes([hits[0].object], true);
+                    if (hit) {
+                        focusMeshes([hit.mesh], true);
                         return;
                     }
                 } else {
@@ -896,12 +1037,17 @@ export default function Viewport({
                 }
             }
             c.setSelectedId(
-                hits.length ? hits[0].object.userData.id : null,
+                hit ? hit.mesh.userData.id : null,
                 e.ctrlKey || e.metaKey,
-                hits.length ? snapNormal(hits[0].face?.normal) : null,
+                hit ? snapNormal(hit.face?.normal) : null,
             );
         };
         const onAnyPointer = () => invalidate();
+        const onLeave = () => {
+            if (brushing) return;
+            brushRing.visible = false;
+        };
+        renderer.domElement.addEventListener('pointerleave', onLeave);
         renderer.domElement.addEventListener('pointerdown', onDown);
         renderer.domElement.addEventListener('pointermove', onMove);
         renderer.domElement.addEventListener('pointerup', onUp);
@@ -919,10 +1065,8 @@ export default function Viewport({
         const spawnHit = new THREE.Vector3();
         const spawnNdc = new THREE.Vector2(0, 0);
         const spawnPoint = (height) => {
-            const c = ctx.current;
-            refreshProxies();
             raycaster.setFromCamera(spawnNdc, camera);
-            const hits = raycaster.intersectObjects(c?.solidList ?? [], false);
+            const hits = raycaster.intersectObjects(pickTargets(), false);
             if (hits.length && hits[0].distance <= 400) {
                 const p = hits[0].point;
                 return [round(p.x), round(p.y + height / 2), round(p.z)];
@@ -1203,6 +1347,16 @@ export default function Viewport({
             sun, grid, applyScale, syncBatches, setBatchShadows, invalidate, reshadow,
             isDragging: () => drag !== null,
             isDraggingMesh: (m) => !!drag?.meshes.includes(m),
+            brush: null,
+            onBrush: null,
+            tintParts,
+            setBrush: (b) => {
+                ctx.current.brush = b;
+                if (b) return;
+                endBrush(null);
+                brushRing.visible = false;
+                invalidate();
+            },
             snapMove: 0,
             session: null,
             enterPlay: () => {
@@ -1256,6 +1410,7 @@ export default function Viewport({
 
         return () => {
             cancelAnimationFrame(raf);
+            if (brushRaf) cancelAnimationFrame(brushRaf);
             longTasks?.disconnect();
             ro.disconnect();
             renderer.domElement.removeEventListener('pointerdown', onDown);
@@ -1265,6 +1420,10 @@ export default function Viewport({
             renderer.domElement.removeEventListener('pointermove', onAnyPointer);
             renderer.domElement.removeEventListener('pointerup', onAnyPointer);
             renderer.domElement.removeEventListener('pointerleave', onAnyPointer);
+            renderer.domElement.removeEventListener('pointerleave', onLeave);
+            scene.remove(brushRing);
+            brushRing.geometry.dispose();
+            brushRing.material.dispose();
             window.removeEventListener('keydown', onKeyDown);
             window.removeEventListener('keyup', onKeyUp);
             window.removeEventListener('blur', onBlur);
@@ -1323,6 +1482,8 @@ export default function Viewport({
         c.setSelectedId = setSelectedId;
         c.selectMany = selectMany ?? (() => {});
         c.tool = tool;
+        c.onBrush = onBrush ?? null;
+        if ((c.brush?.radius ?? 0) !== (brush?.radius ?? 0)) c.setBrush(brush ?? null);
         c.snapMove = snap.moveOn ? snap.move : 0;
         c.canEdit = canEdit;
         c.peers = peers ?? [];
@@ -1334,6 +1495,7 @@ export default function Viewport({
         c.statsRef = statsRef ?? null;
         c.memberNames = new Map(members.map((m) => [m.id, { name: m.name, color: m.color }]));
         if (spawnRef) spawnRef.current = c.spawnPoint;
+        if (tintRef) tintRef.current = c.tintParts;
         if (thumbRef) {
             thumbRef.current = (parts) => captureThumb(c.renderer, c.scene, parts);
         }

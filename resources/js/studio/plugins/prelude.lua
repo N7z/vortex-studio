@@ -176,6 +176,16 @@ function __set_selection(info_json)
     Selection = json.decode(info_json)
 end
 
+Brush = nil
+
+function __set_brush(info_json)
+    if info_json == nil or info_json == '' then
+        Brush = nil
+        return
+    end
+    Brush = json.decode(info_json)
+end
+
 Model = nil
 Limits = { parts = 50000, voxels = 400000, steps = 1000 }
 
@@ -240,5 +250,10 @@ end
 function __click(id, part_json, values_json)
     if plugin == nil or plugin.click == nil then return nil end
     return plugin.click(id, json.decode(part_json), json.decode(values_json))
+end
+
+function __paint(part_json, values_json)
+    if plugin == nil or plugin.paint == nil then return nil end
+    return plugin.paint(json.decode(part_json), json.decode(values_json))
 end
 

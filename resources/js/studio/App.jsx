@@ -46,6 +46,7 @@ import {
     applyGroupOp, newGroupId, pruneGroups, takeLegacyGroups, ungroupIds,
 } from './groups';
 import * as flagStore from './flags';
+import { buildGrid, nearGrid } from './partgrid';
 
 const HISTORY_LIMIT = 100;
 
@@ -71,6 +72,10 @@ const MAX_MODEL_VOXELS = 400000;
 const MAX_MAP_PARTS = 60000;
 
 const MAX_SELECTION_PARTS = 256;
+
+const MAX_BRUSH_PARTS = 200;
+const MAX_BRUSH_RADIUS = 500;
+const BRUSH_AGAIN = 0.05;
 
 const GROUPS_DEBOUNCE_MS = 400;
 
@@ -300,7 +305,10 @@ export default function App() {
     // The last id added is the "primary" selection: what Properties and plugins act on.
     const selectedId = selectedIds.length ? selectedIds[selectedIds.length - 1] : null;
     const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
-    const selected = parts.find((p) => p._id === selectedId) ?? null;
+    const selected = useMemo(
+        () => parts.find((p) => p._id === selectedId) ?? null,
+        [parts, selectedId],
+    );
     const selectedParts = useMemo(() => (
         selectedIds.length > 1
             ? parts.filter((p) => selectedSet.has(p._id))
@@ -622,6 +630,70 @@ export default function App() {
 
         return () => clearTimeout(timer);
     }, [activePlugin, activeValues]);
+
+    const brushRadius = activePlugin?.usesBrush
+        ? Math.min(MAX_BRUSH_RADIUS, Math.max(0, Number(activeValues?.radius) || 0))
+        : 0;
+    const brushPainted = useRef(new Map());
+    const brushPending = useRef(null);
+    const brushBusy = useRef(false);
+    const brushGrid = useRef(null);
+    const tintRef = useRef(null);
+
+    const commitBrush = () => {
+        const pending = brushPending.current;
+        brushPending.current = null;
+        if (!pending?.size) return;
+        edit(transformOp([...pending.values()]));
+    };
+
+    const brushStroke = async (at, phase) => {
+        if (phase !== 'move') brushPainted.current = new Map();
+        if (phase === 'end') {
+            commitBrush();
+            return;
+        }
+        if (phase === 'start') brushPending.current = new Map();
+        if (!activePlugin?.usesBrush || !at || !canEdit || brushRadius <= 0) return;
+        if (brushBusy.current || !brushPending.current) return;
+        brushBusy.current = true;
+        try {
+            if (brushGrid.current?.parts !== partsRef.current) {
+                brushGrid.current = buildGrid(partsRef.current);
+            }
+            const center = [at.x, at.y, at.z];
+            const done = brushPainted.current;
+            const hits = [];
+            nearGrid(brushGrid.current, center, brushRadius, (part, d) => {
+                const had = done.get(part._id);
+                if (had !== undefined && d >= had - BRUSH_AGAIN) return true;
+                done.set(part._id, d);
+                hits.push({ part, d });
+                return hits.length < MAX_BRUSH_PARTS;
+            });
+            if (!hits.length) return;
+            const free = new Set(flagStore.selectable(
+                flagsRef.current, hits.map((h) => h.part._id),
+            ));
+            await activePlugin.setBrush({ center, radius: brushRadius });
+            const updates = [];
+            for (const { part, d } of hits) {
+                if (!free.has(part._id)) continue;
+                const patch = await activePlugin.paint(
+                    { ...stripId(part), D: Math.round(d * 1000) / 1000 }, activeValues,
+                );
+                if (patch) updates.push({ id: part._id, ...patch });
+            }
+            if (!updates.length) return;
+            for (const u of updates) brushPending.current?.set(u.id, u);
+            tintRef.current?.(updates);
+        } catch (e) {
+            brushPainted.current = new Set();
+            flash(String(e.message ?? e));
+        } finally {
+            brushBusy.current = false;
+        }
+    };
 
     const pluginButton = async (btnId) => {
         if (!activePlugin || !selectedParts.length) return;
@@ -1334,6 +1406,9 @@ export default function App() {
                         selectMany={selectMany}
                         faces={faces}
                         showFaces={!!activePlugin?.usesFaces}
+                        brush={brushRadius > 0 && !playing ? { radius: brushRadius } : null}
+                        onBrush={brushStroke}
+                        tintRef={tintRef}
                         statsRef={statsRef}
                         onBuild={setBuilding}
                         tool={tool}
@@ -1371,9 +1446,11 @@ export default function App() {
                             models={activeModels}
                             onModel={pickModel}
                             hasSelection={selectedParts.length > 0}
-                            targetNote={selectedParts.length > 1
-                                ? `Runs on all ${selectedParts.length} selected parts`
-                                : null}
+                            targetNote={activePlugin.usesBrush
+                                ? 'Hold the left mouse button in the viewport to paint'
+                                : (selectedParts.length > 1
+                                    ? `Runs on all ${selectedParts.length} selected parts`
+                                    : null)}
                             onButton={pluginButton}
                             onEdit={() => openEditTab(activePlugin.id)}
                             onClose={() => setActivePluginId(null)}

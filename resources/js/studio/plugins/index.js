@@ -9,6 +9,7 @@ import arraySrc from './array.lua?raw';
 import gapFillSrc from './gapfill.lua?raw';
 import imageMakerSrc from './imagemaker.lua?raw';
 import mirrorSrc from './mirror.lua?raw';
+import paintbrushSrc from './paintbrush.lua?raw';
 import scatterSrc from './scatter.lua?raw';
 import modelSrc from './model.lua?raw';
 import stairsSrc from './stairs.lua?raw';
@@ -22,6 +23,7 @@ const BUNDLED = [
     { id: 'gapfill', src: gapFillSrc },
     { id: 'imagemaker', src: imageMakerSrc },
     { id: 'mirror', src: mirrorSrc },
+    { id: 'paintbrush', src: paintbrushSrc },
     { id: 'scatter', src: scatterSrc },
     { id: 'model', src: modelSrc },
     { id: 'stairs', src: stairsSrc },
@@ -97,6 +99,39 @@ const toParts = (res) => {
     }).filter(Boolean);
 };
 
+const PATCH_KEYS = ['T', 'C', 'Tr', 'Shape', 'Sh', 'ItemId'];
+
+const hex6 = (v) => {
+    const s = String(v ?? '').replace(/^#/, '').toLowerCase();
+    return /^[0-9a-f]{6}$/.test(s) ? s : null;
+};
+
+export const toPatch = (res) => {
+    if (res == null || typeof res !== 'object') return null;
+    const out = {};
+    for (const k of PATCH_KEYS) {
+        if (res[k] === undefined || res[k] === null) continue;
+        if (k === 'C') {
+            const c = hex6(res[k]);
+            if (c) out.C = c;
+        } else if (k === 'Tr') {
+            const t = Number(res[k]);
+            if (Number.isFinite(t)) out.Tr = Math.min(1, Math.max(0, t));
+        } else if (k === 'ItemId') {
+            const n = Number(res[k]);
+            if (Number.isInteger(n)) out.ItemId = n;
+        } else {
+            out[k] = String(res[k]).slice(0, 32);
+        }
+    }
+    for (const k of ['P', 'S', 'R']) {
+        if (res[k] === undefined || res[k] === null) continue;
+        const v = vec3(res[k]);
+        if (v.every(Number.isFinite)) out[k] = v;
+    }
+    return Object.keys(out).length ? out : null;
+};
+
 // The hook fires every STEP_CHUNK VM instructions; a call that burns more than
 // STEP_BUDGET of them is an endless loop, and without this it freezes the tab.
 const STEP_CHUNK = 1e6;
@@ -127,6 +162,7 @@ do
     end
     __preview = limited(__preview)
     __click = limited(__click)
+    __paint = limited(__paint)
 end
 `;
 
@@ -140,6 +176,7 @@ const meta = (p) => {
         version: p.version == null ? null : String(p.version),
         icon: p.icon,
         usesFaces: p.faces === true,
+        usesBrush: p.brush === true,
         ui,
         defaults: Object.fromEntries(
             ui.filter((c) => !['button', 'image', 'model'].includes(c.type))
@@ -184,9 +221,16 @@ async function startEngine(src) {
         await applyLimits();
         liveLimits.add(applyLimits);
         const luaSetSelection = lua.global.get('__set_selection');
+        const luaPaint = lua.global.get('__paint');
+        const luaSetBrush = lua.global.get('__set_brush');
 
         return {
             plugin: lua.global.get('plugin'),
+            paint: async (part, values) =>
+                toPatch(await luaPaint(JSON.stringify(part), JSON.stringify(values))),
+            setBrush: async (info) => {
+                await luaSetBrush(info ? JSON.stringify(info) : '');
+            },
             preview: async (part, values) =>
                 toParts(await luaPreview(JSON.stringify(part), JSON.stringify(values))),
             // doString runs on a Lua thread, so a yield from progress() suspends the
@@ -240,6 +284,8 @@ function wrap(id, builtin, info, open) {
             openPrints(info.name);
             return (await get()).click(btnId, part, values);
         },
+        paint: async (part, values) => (await get()).paint(part, values),
+        setBrush: async (info) => (await get()).setBrush(info),
         setImage: async (img) => (await get()).setImage(img),
         setSelection: async (sel) => (await get()).setSelection(sel),
         setModel: async (model) => (await get()).setModel(model),

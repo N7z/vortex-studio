@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import NumberInput from './NumberInput';
+
+const COLOR_COMMIT = 150;
 
 function Vec3({ value, onChange, readOnly }) {
     const set = (i) => (v) => {
@@ -17,6 +19,26 @@ function Vec3({ value, onChange, readOnly }) {
 }
 
 export default function Properties({ part, count = 0, onChange, readOnly = false }) {
+    const [draft, setDraft] = useState(null);
+    const timer = useRef(0);
+    const id = part?._id ?? null;
+
+    useEffect(() => {
+        clearTimeout(timer.current);
+        setDraft(null);
+    }, [id]);
+
+    useEffect(() => () => clearTimeout(timer.current), []);
+
+    const setColor = (hex) => {
+        setDraft(hex);
+        clearTimeout(timer.current);
+        timer.current = setTimeout(() => {
+            setDraft(null);
+            onChange({ C: hex });
+        }, COLOR_COMMIT);
+    };
+
     if (!part) {
         return (
             <div className="panel properties">
@@ -60,14 +82,14 @@ export default function Properties({ part, count = 0, onChange, readOnly = false
                         <input
                             type="color"
                             disabled={readOnly}
-                            value={`#${(part.C ?? 'a3a2a5').padStart(6, '0')}`}
-                            onChange={(e) => onChange({ C: e.target.value.slice(1) })}
+                            value={`#${(draft ?? part.C ?? 'a3a2a5').padStart(6, '0')}`}
+                            onChange={(e) => setColor(e.target.value.slice(1))}
                         />
                         <input
                             type="text"
-                            value={part.C ?? ''}
+                            value={draft ?? part.C ?? ''}
                             readOnly={readOnly}
-                            onChange={(e) => onChange({ C: e.target.value.replace(/[^0-9a-fA-F]/g, '').slice(0, 6) })}
+                            onChange={(e) => setColor(e.target.value.replace(/[^0-9a-fA-F]/g, '').slice(0, 6))}
                         />
                     </div>
                     <div className="prop-row">
