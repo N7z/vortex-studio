@@ -14,6 +14,7 @@ import PluginPanel from './PluginPanel';
 import TabBar from './TabBar';
 import StatsPanel from './StatsPanel';
 import TeamPanel from './TeamPanel';
+import ChatPanel from './ChatPanel';
 import ScriptTab, { TEMPLATE } from './ScriptTab';
 import {
     loadPlugins, setPartLimit, setVoxelLimit, setStepBudget, STEP_BUDGET,
@@ -122,6 +123,7 @@ export default function App() {
     const touchRef = useRef(null);
     const [playing, setPlaying] = useState(false);
     const [teamOpen, setTeamOpen] = useState(false);
+    const [chatOpen, setChatOpen] = useState(false);
     const [statsOpen, setStatsOpen] = useState(false);
     const statsRef = useRef(null);
     const [joining, setJoining] = useState(() => roomFromUrl());
@@ -1310,6 +1312,7 @@ export default function App() {
                 onAddSpawn={() => addPart(NEW_SPAWN)}
                 graphics={graphics} onGraphics={changeGraphics}
                 teamOpen={teamOpen} onToggleTeam={() => setTeamOpen((o) => !o)}
+                chatOpen={chatOpen} onToggleChat={() => setChatOpen((o) => !o)} canChat={live.live}
                 statsOpen={statsOpen} onToggleStats={() => setStatsOpen((o) => !o)}
                 plugins={plugins} activePluginId={activePluginId}
                 onTogglePlugin={togglePlugin} onNewPlugin={openNewPluginTab}
@@ -1465,8 +1468,13 @@ export default function App() {
                             playing={playing}
                             teamMap={mapTeam != null}
                             teamName={teams.find((t) => t.id === mapTeam)?.name ?? null}
+                            chatOpen={chatOpen}
+                            onToggleChat={() => setChatOpen((o) => !o)}
                             onClose={() => setTeamOpen(false)}
                         />
+                    )}
+                    {chatOpen && live.live && (
+                        <ChatPanel live={live} onClose={() => setChatOpen(false)} />
                     )}
                     {statsOpen && (
                         <StatsPanel

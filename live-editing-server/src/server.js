@@ -105,6 +105,7 @@ export function createLiveServer({ log = () => {} } = {}) {
             parts: room.parts,
             groups: room.groups,
             lastSavedAt: room.lastSavedAt,
+            chat: room.chat,
             teamMap: room.teamId != null,
             resumed,
             you: {
@@ -317,6 +318,8 @@ export function createLiveServer({ log = () => {} } = {}) {
                 return room.setPlayFrom(member, msg.play);
             case 'selection':
                 return handleSelection(ctx, msg);
+            case 'chat':
+                return room.chatFrom(member, msg.text);
             case 'role':
                 return handleRole(ctx, msg);
             case 'kick':

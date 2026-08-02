@@ -92,6 +92,7 @@ class Room {
         this.teamId = teamId;
         this.parts = parts;
         this.groups = groups;
+        this.chat = [];
         this.pruneGroups();
         this.seq = 0;
         this.members = new Map();
@@ -407,6 +408,25 @@ class Room {
         this.broadcast({ t: 'groups', groups: this.groups, from: member.id }, member.id);
 
         return null;
+    }
+
+    /** Anyone in the room may talk, spectators included: the room is the moderation. */
+    chatFrom(member, text) {
+        if (typeof text !== 'string') return;
+        const body = text.replace(/\s+/g, ' ').trim().slice(0, config.maxChatLength);
+        if (!body) return;
+
+        const message = {
+            id: randomId(),
+            from: member.id,
+            name: member.name,
+            color: member.color,
+            text: body,
+            at: now(),
+        };
+        this.chat.push(message);
+        if (this.chat.length > config.maxChatHistory) this.chat.shift();
+        this.broadcast({ t: 'chat', message });
     }
 }
 

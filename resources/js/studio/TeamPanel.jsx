@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { KickIcon, LeaveIcon, LinkIcon } from './icons';
+import { ChatIcon, KickIcon, LeaveIcon, LinkIcon } from './icons';
 import { shareLink } from './live';
 import useDraggable from './useDraggable';
 
@@ -42,7 +42,7 @@ function Member({ member, isMe, canManage, onRole, onKick, testing }) {
 }
 
 export default function TeamPanel({
-    live, onGoLive, onLeave, onClose, playing, teamMap, teamName,
+    live, onGoLive, onLeave, onClose, onToggleChat, chatOpen, playing, teamMap, teamName,
 }) {
     const testers = live.playingIds ?? [];
     const [copied, setCopied] = useState(false);
@@ -95,6 +95,18 @@ export default function TeamPanel({
                     Team Create
                     {teamName && <span className="team-title-name">{teamName}</span>}
                 </span>
+                {live.live && (
+                    <button
+                        className={chatOpen ? 'team-chat on' : 'team-chat'}
+                        onClick={onToggleChat}
+                        title={chatOpen ? 'Hide the chat' : 'Open the chat'}
+                    >
+                        <ChatIcon />
+                        {!chatOpen && live.unreadChat > 0 && (
+                            <span className="chat-badge">{live.unreadChat > 9 ? '9+' : live.unreadChat}</span>
+                        )}
+                    </button>
+                )}
                 <button className="team-x" onClick={onClose} title="Hide">×</button>
             </div>
 

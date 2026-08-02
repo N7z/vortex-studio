@@ -1054,3 +1054,34 @@ test('a team viewer cannot be promoted to developer in the room', async () => {
     boss.ws.close();
     viewer.ws.close();
 });
+
+test('a chat message reaches everyone, sender included, spectators may talk', async () => {
+    const { c: owner, welcome: hi } = await host();
+    const { c: other, welcome: you } = await guest(hi.code);
+
+    other.send({ t: 'chat', text: '  hello   team  ' });
+    const mine = await other.next('chat');
+    const theirs = await owner.next('chat');
+
+    assert.equal(mine.message.text, 'hello team');
+    assert.equal(mine.message.from, you.you.id);
+    assert.equal(mine.message.name, you.you.name);
+    assert.equal(theirs.message.id, mine.message.id);
+
+    owner.ws.close();
+    other.ws.close();
+});
+
+test('an empty chat message says nothing and history reaches a joiner', async () => {
+    const { c: owner, welcome: hi } = await host();
+    owner.send({ t: 'chat', text: '   ' });
+    owner.send({ t: 'chat', text: 'x'.repeat(500) });
+    const said = await owner.next('chat');
+    assert.equal(said.message.text.length, 400);
+
+    const { c: late, welcome } = await guest(hi.code);
+    assert.deepEqual(welcome.chat.map((m) => m.text), [said.message.text]);
+
+    owner.ws.close();
+    late.ws.close();
+});

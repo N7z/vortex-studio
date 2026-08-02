@@ -242,6 +242,8 @@ export class LiveClient {
                 return this.handlers.onGroupOp?.(msg);
             case 'selection':
                 return this.handlers.onSelection?.(msg);
+            case 'chat':
+                return this.handlers.onChat?.(msg);
             case 'view':
                 return this.handlers.onView?.(msg);
             case 'play':
@@ -285,6 +287,10 @@ export class LiveClient {
 
     sendGroupOp(op) {
         return this.send({ t: 'gop', op });
+    }
+
+    sendChat(text) {
+        return this.send({ t: 'chat', text });
     }
 
     setRole(memberId, role) {

@@ -1,6 +1,7 @@
 import {
     Box, ChartColumn, ChevronRight, CircleHelp, ClipboardPaste, Copy, CopyPlus, Download,
-    Folder, Globe, Grid2x2, Link2, LogOut, MapPin, MonitorCog, MousePointer2, Move, Pencil,
+    Folder, Globe, Grid2x2, Link2, LogOut, MapPin, MessageSquare, MonitorCog, MousePointer2,
+    Move, Pencil,
     Play, Plus, Redo2, RotateCw, Save, Scaling, Square, Trash2, Undo2, UserX, Users, Zap,
 } from 'lucide-react';
 import React from 'react';
@@ -60,6 +61,8 @@ export const LinkIcon = () => <Link2 {...SMALL} />;
 export const LeaveIcon = () => <LogOut {...SMALL} />;
 
 export const KickIcon = () => <UserX {...SMALL} />;
+
+export const ChatIcon = () => <MessageSquare {...SMALL} />;
 
 export const GraphicsIcon = () => <MonitorCog strokeWidth={1.8} />;
 

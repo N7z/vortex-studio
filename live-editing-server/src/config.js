@@ -51,6 +51,8 @@ export const config = {
     maxBansPerRoom: num('MAX_BANS_PER_ROOM', 200),
     maxMessagesPerSecond: num('MAX_MESSAGES_PER_SECOND', 120),
     maxResyncsPerMinute: num('MAX_RESYNCS_PER_MINUTE', 6),
+    maxChatLength: num('MAX_CHAT_LENGTH', 400),
+    maxChatHistory: num('MAX_CHAT_HISTORY', 80),
     maxBufferedBytes: num('MAX_BUFFERED_BYTES', 4_000_000),
 };
 

@@ -3,6 +3,7 @@ import { liveToken } from './api';
 import { LiveClient } from './live';
 
 const EMPTY = [];
+const CHAT_MAX = 200;
 
 export default function useLive({
     onWelcome, onOp, onSnapshot, onGroups, onError, onNotice, onRefused, onSaved,
@@ -12,6 +13,8 @@ export default function useLive({
     const [me, setMe] = useState(null);
     const [members, setMembers] = useState(EMPTY);
     const [lastSavedAt, setLastSavedAt] = useState(null);
+    const [messages, setMessages] = useState(EMPTY);
+    const [unreadChat, setUnreadChat] = useState(0);
 
     const cbs = useRef({});
     cbs.current = {
@@ -62,6 +65,8 @@ export default function useLive({
                 setMembers(msg.members);
                 syncPlay(msg.members);
                 setLastSavedAt(msg.lastSavedAt ?? null);
+                setMessages(msg.chat?.length ? msg.chat : EMPTY);
+                setUnreadChat(0);
                 cbs.current.onWelcome?.(msg);
             },
             onMembers: (msg) => {
@@ -84,6 +89,11 @@ export default function useLive({
                 (m) => (m.id === msg.id ? { ...m, view: msg.view } : m),
             )),
             onPlay: (msg) => notePlay(msg.id, msg.play),
+            onChat: (msg) => {
+                if (!msg.message) return;
+                setMessages((ms) => [...ms, msg.message].slice(-CHAT_MAX));
+                if (msg.message.from !== meId.current) setUnreadChat((n) => n + 1);
+            },
             onSaved: (msg) => {
                 setLastSavedAt(msg.at);
                 cbs.current.onSaved?.(msg);
@@ -92,6 +102,8 @@ export default function useLive({
                 setCode(null);
                 setMe(null);
                 setMembers(EMPTY);
+                setMessages(EMPTY);
+                setUnreadChat(0);
                 cbs.current.onNotice?.(msg.reason);
             },
             onGone: () => {
@@ -99,6 +111,8 @@ export default function useLive({
                 setMe(null);
                 meId.current = null;
                 setMembers(EMPTY);
+                setMessages(EMPTY);
+                setUnreadChat(0);
                 syncPlay([]);
             },
             onError: (message) => cbs.current.onError?.(message),
@@ -127,7 +141,12 @@ export default function useLive({
         setMe(null);
         setMembers(EMPTY);
         setLastSavedAt(null);
+        setMessages(EMPTY);
+        setUnreadChat(0);
     }, []);
+
+    const sendChat = useCallback((text) => client.current.sendChat(text), []);
+    const markChatRead = useCallback(() => setUnreadChat(0), []);
 
     const sendOp = useCallback((op) => client.current.sendOp(op), []);
     const sendGroups = useCallback((groups) => client.current.sendGroups(groups), []);
@@ -162,6 +181,10 @@ export default function useLive({
         isOwner,
         canEdit,
         lastSavedAt,
+        messages,
+        unreadChat,
+        sendChat,
+        markChatRead,
         host,
         join,
         leave,
