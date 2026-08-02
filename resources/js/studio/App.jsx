@@ -437,8 +437,8 @@ export default function App() {
         if (!canPlugins) {
             setPlugins((ps) => { ps.forEach((p) => p.close?.()); return []; });
             setActivePluginId(null);
-            setTabs([]);
-            setActiveTab('game');
+            setTabs((ts) => (ts.length ? [] : ts));
+            setActiveTab((cur) => (cur.startsWith('tab-') ? (mapNameRef.current ? 'game' : 'home') : cur));
             return;
         }
         loadPlugins().then(setPlugins);
