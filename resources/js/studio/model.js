@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-export const MAX_RES = 160;
+export const MAX_RES = 100;
 
 const hex = (n) => n.toString(16).padStart(2, '0');
 // Three digits, because a coordinate is not a byte: an admin may voxelise past 255

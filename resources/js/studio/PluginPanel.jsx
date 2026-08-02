@@ -5,7 +5,7 @@ import useDraggable from './useDraggable';
 
 export default function PluginPanel({
     plugin, values, setValue, images, onImage, models, onModel,
-    hasSelection, targetNote, onButton, onEdit, onClose,
+    hasSelection, targetNote, onButton, onEdit, onClose, resCap = Infinity,
 }) {
     const pickers = useRef({});
     const { style, onPointerDown } = useDraggable('plugin');
@@ -16,6 +16,7 @@ export default function PluginPanel({
     const buttons = plugin.ui.filter((c) => c.type === 'button');
     const pictures = plugin.ui.filter((c) => c.type === 'image');
     const shapes = plugin.ui.filter((c) => c.type === 'model');
+    const capped = new Set(shapes.map((c) => c.res).filter(Boolean));
 
     return (
         <div className="arch-pop" style={style}>
@@ -113,15 +114,19 @@ export default function PluginPanel({
             ))}
             {numbers.length > 0 && (
                 <div className="arch-axes">
-                    {numbers.map((c) => (
-                        <label key={c.id} title={c.label}>
-                            {c.label}
-                            <NumberInput
-                                value={values[c.id] ?? 0}
-                                onChange={(v) => setValue(c.id, v)}
-                            />
-                        </label>
-                    ))}
+                    {numbers.map((c) => {
+                        const cap = capped.has(c.id) && Number.isFinite(resCap) ? resCap : null;
+                        return (
+                            <label key={c.id} title={cap ? `${c.label}, up to ${cap}` : c.label}>
+                                {cap ? `${c.label} (max ${cap})` : c.label}
+                                <NumberInput
+                                    value={values[c.id] ?? 0}
+                                    clamp={cap ? (v) => Math.min(Math.max(Math.round(v), 4), cap) : undefined}
+                                    onChange={(v) => setValue(c.id, v)}
+                                />
+                            </label>
+                        );
+                    })}
                 </div>
             )}
             {checks.map((c) => (

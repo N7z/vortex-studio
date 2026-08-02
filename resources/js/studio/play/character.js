@@ -13,13 +13,28 @@ const falling = (state) => !state.grounded && state.vy < -FALL_SPEED;
 const airborne = (state) => !state.grounded && (state.vy > 0 || falling(state));
 const BLEND = 0.15;
 
-function makeFaceTexture() {
-    const size = 256;
-    const c = document.createElement('canvas');
-    c.width = size;
-    c.height = size;
-    const g = c.getContext('2d');
-    g.clearRect(0, 0, size, size);
+let faceImage = null;
+let facePromise = null;
+
+// The drawn face is the fallback for a face.png that will not load.
+export function loadFace() {
+    if (!facePromise) {
+        facePromise = new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => resolve(null);
+            img.src = `${BASE}/face.png`;
+        }).then((img) => {
+            faceImage = img;
+
+            return img;
+        });
+    }
+
+    return facePromise;
+}
+
+function drawFace(g, size) {
     g.fillStyle = '#1b1b1b';
 
     const eye = (x) => {
@@ -36,6 +51,17 @@ function makeFaceTexture() {
     g.beginPath();
     g.arc(0.5 * size, 0.55 * size, 0.16 * size, 0.18 * Math.PI, 0.82 * Math.PI);
     g.stroke();
+}
+
+export function makeFaceTexture() {
+    const size = 256;
+    const c = document.createElement('canvas');
+    c.width = size;
+    c.height = size;
+    const g = c.getContext('2d');
+    g.clearRect(0, 0, size, size);
+    if (faceImage) g.drawImage(faceImage, 0, 0, size, size);
+    else drawFace(g, size);
 
     const tex = new THREE.CanvasTexture(c);
     tex.flipY = false;
@@ -44,7 +70,7 @@ function makeFaceTexture() {
     return tex;
 }
 
-function applyFace(material, tex) {
+export function applyFace(material, tex) {
     material.defines = { ...material.defines, USE_UV: '' };
     material.onBeforeCompile = (shader) => {
         shader.uniforms.faceMap = { value: tex };
@@ -123,6 +149,7 @@ function loadAssets() {
     if (assets) return assets;
     assets = (async () => {
         const loader = await getLoader();
+        await loadFace();
         const body = await load(loader, `${BASE}/male.glb`);
         const clips = await Promise.all(CLIPS.map((name) => load(loader, `${BASE}/${name}.glb`)
             .then((gltf) => gltf.animations?.[0] ?? null)

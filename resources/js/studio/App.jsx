@@ -1452,6 +1452,7 @@ export default function App() {
                                     ? `Runs on all ${selectedParts.length} selected parts`
                                     : null)}
                             onButton={pluginButton}
+                            resCap={resCap}
                             onEdit={() => openEditTab(activePlugin.id)}
                             onClose={() => setActivePluginId(null)}
                         />

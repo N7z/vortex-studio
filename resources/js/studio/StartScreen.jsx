@@ -5,6 +5,7 @@ import useDialogs from '../ui/useDialogs';
 import History from './History';
 import MoveMap from './MoveMap';
 import UserMenu from './UserMenu';
+import Clothing from './clothing/Clothing';
 
 const DISCLAIMER_KEY = 'studio_disclaimer_closed';
 
@@ -145,6 +146,7 @@ export default function StartScreen({
         { id: 'examples', label: 'Examples', count: examples.length },
         { id: 'device', label: 'On this device', count: backups.length },
         ...(trash.length ? [{ id: 'trash', label: 'Trash', count: trash.length }] : []),
+        { id: 'ugc', label: 'Your UGC', count: '' },
     ], [personal, teams, mine, examples, backups, trash]);
 
     const rows = useMemo(() => {
@@ -311,6 +313,7 @@ export default function StartScreen({
                 </nav>
 
                 <main className="scope-main">
+                    {scope === 'ugc' ? <Clothing /> : (
                     <>
                             <div className="scope-bar">
                                 {canCreate && (
@@ -446,6 +449,7 @@ export default function StartScreen({
                                 </div>
                             )}
                     </>
+                    )}
                 </main>
             </div>
 
