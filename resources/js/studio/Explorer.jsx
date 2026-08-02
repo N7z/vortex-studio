@@ -118,7 +118,7 @@ export default function Explorer({
                 key={p._id}
                 className={`tree-item child ${nested ? 'nested' : ''} ${selected.has(p._id) ? 'selected' : ''}`
                     + `${hidden ? ' is-hidden' : ''}${locked ? ' is-locked' : ''}`}
-                onClick={(e) => setSelectedId(p._id, e.ctrlKey || e.metaKey)}
+                onClick={(e) => setSelectedId(p._id, e.ctrlKey || e.metaKey, null, true)}
             >
                 <span className="icon">{cubeIcon(ICON_COLOR[p.T] ?? '#b9b9c0')}</span>
                 {p.T}

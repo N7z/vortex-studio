@@ -44,7 +44,7 @@ import { convertRoblox, importSummary } from './roblox';
 import useDialogs from '../ui/useDialogs';
 import Busy from '../ui/Busy';
 import {
-    applyGroupOp, newGroupId, pruneGroups, takeLegacyGroups, ungroupIds,
+    applyGroupOp, groupIndex, newGroupId, pruneGroups, takeLegacyGroups, ungroupIds,
 } from './groups';
 import * as flagStore from './flags';
 import { buildGrid, nearGrid } from './partgrid';
@@ -347,10 +347,21 @@ export default function App() {
     const activeImages = activePlugin ? pluginImages[activePlugin.id] ?? null : null;
     const activeModels = activePlugin ? pluginModels[activePlugin.id] ?? null : null;
 
-    const select = useCallback((id, additive, normal) => {
+    const select = useCallback((id, additive, normal, solo) => {
         if (id != null && !flagStore.selectable(flagsRef.current, [id]).length) return;
+        const group = id != null && !solo ? groupIndex(groupsRef.current).get(id) : null;
+        const ids = group ? flagStore.selectable(flagsRef.current, group.ids) : null;
         setSelectedIds((cur) => {
             if (id == null) return additive ? cur : [];
+            if (ids?.length) {
+                if (!additive) return [...ids];
+                const has = new Set(cur);
+                if (ids.every((x) => has.has(x))) {
+                    const drop = new Set(ids);
+                    return cur.filter((x) => !drop.has(x));
+                }
+                return [...cur, ...ids.filter((x) => !has.has(x))];
+            }
             if (!additive) return [id];
             return cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
         });
@@ -1433,6 +1444,7 @@ export default function App() {
                         onPlayError={(m) => flash(`Could not start the play test: ${m}`)}
                         touchRef={touchRef}
                         flags={flags}
+                        groups={groups}
                         playRef={live.live ? live.playRef : null}
                         onPlayState={live.live ? live.sendPlay : null}
                     />

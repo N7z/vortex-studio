@@ -1,8 +1,9 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { labelMaterial } from './play/label';
 import { captureThumb } from './thumb';
 import { EMPTY, isHidden, isLocked } from './flags';
+import { groupIndex } from './groups';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import {
@@ -172,15 +173,18 @@ const readTransform = (m) => ({
     ],
 });
 
+const NO_GROUPS = [];
+
 export default function Viewport({
     parts, selectedIds, setSelectedId, selectMany, tool, snap, onTransform, onTransformMany,
     mapName, graphics, preview, spawnRef, busyRef, canEdit = true, peers, onView,
     faces, showFaces = false, statsRef, onBuild, brush = null, onBrush = null, tintRef,
     playing = false, onExitPlay, onPlayError, touchRef, playRef, onPlayState, members = [], thumbRef,
-    flags = EMPTY,
+    flags = EMPTY, groups = NO_GROUPS,
 }) {
     const mountRef = useRef(null);
     const ctx = useRef(null);
+    const groupMap = useMemo(() => groupIndex(groups), [groups]);
     const partsRef = useRef(parts);
     partsRef.current = parts;
     const gfxRef = useRef(graphics);
@@ -835,8 +839,16 @@ export default function Viewport({
             if (!c || !c.canEdit) return;
 
             const inSelection = c.selectedMeshes.includes(mesh);
-            const meshes = inSelection ? c.selectedMeshes.slice() : [mesh];
-            if (!inSelection) c.setSelectedId(mesh.userData.id, false);
+            let meshes = c.selectedMeshes.slice();
+            if (!inSelection) {
+                c.setSelectedId(mesh.userData.id, false, null, e.altKey);
+                const group = e.altKey ? null : c.groupOf.get(mesh.userData.id);
+                meshes = group
+                    ? group.ids.map((id) => c.meshes.get(id))
+                        .filter((m) => m && !isLocked(c.flags, m.userData.id))
+                    : [mesh];
+                if (!meshes.includes(mesh)) meshes = [mesh];
+            }
 
             const exclude = new Set(meshes);
             const hit = pickSurface(e, exclude);
@@ -1040,6 +1052,7 @@ export default function Viewport({
                 hit ? hit.mesh.userData.id : null,
                 e.ctrlKey || e.metaKey,
                 hit ? snapNormal(hit.face?.normal) : null,
+                e.altKey,
             );
         };
         const onAnyPointer = () => invalidate();
@@ -1405,6 +1418,7 @@ export default function Viewport({
             onTransformMany: () => {},
             setSelectedId: () => {},
             selectMany: () => {},
+            groupOf: new Map(),
             onView: null,
         };
 
@@ -1481,6 +1495,7 @@ export default function Viewport({
         c.onTransformMany = onTransformMany;
         c.setSelectedId = setSelectedId;
         c.selectMany = selectMany ?? (() => {});
+        c.groupOf = groupMap;
         c.tool = tool;
         c.onBrush = onBrush ?? null;
         if ((c.brush?.radius ?? 0) !== (brush?.radius ?? 0)) c.setBrush(brush ?? null);
