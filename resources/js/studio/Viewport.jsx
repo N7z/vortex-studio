@@ -160,6 +160,7 @@ function snapNormal(n) {
 }
 
 const MAX_OUTLINES = 192;
+const EMPTY_PLAY = new Map();
 const DRAG_PREVIEW = 5000;
 const MAX_PREVIEWS = 256;
 
@@ -1187,6 +1188,41 @@ export default function Viewport({
             };
         };
 
+        // Team members testing the map are drawn in the editor too, so a builder who is
+        // not in play mode still sees them move. The session owns them while playing.
+        let livePeers = null;
+        let livePeersPending = false;
+
+        const dropLivePeers = () => {
+            livePeers?.dispose();
+            livePeers = null;
+        };
+
+        const stepLivePeers = (c, dt) => {
+            const states = c?.playRef?.current;
+            const any = (states?.size ?? 0) > 0;
+            if (!livePeers) {
+                if (!any || livePeersPending) return;
+                livePeersPending = true;
+                import('./play/peers').then(({ createPeers }) => {
+                    livePeersPending = false;
+                    if (!ctx.current || ctx.current.session) return;
+                    livePeers = createPeers(scene);
+                }).catch(() => { livePeersPending = false; });
+                return;
+            }
+            const had = livePeers.count;
+            livePeers.set(any ? states : EMPTY_PLAY, c.memberNames);
+            if (!any && !livePeers.count) {
+                // The last tester leaving removes a rig, which needs one more frame.
+                if (had) reshadow();
+                return;
+            }
+            livePeers.step(dt);
+            renderer.shadowMap.needsUpdate = true;
+            invalidate();
+        };
+
         const tick = () => {
             raf = requestAnimationFrame(tick);
             const at = performance.now();
@@ -1198,6 +1234,7 @@ export default function Viewport({
             const dt = Math.min((now - last) / 1000, 0.1);
             last = now;
             if (ctx.current?.session) {
+                dropLivePeers();
                 const s = ctx.current.session;
                 const states = ctx.current.playRef?.current;
                 if (states) s.setPeers(states, ctx.current.memberNames);
@@ -1212,6 +1249,7 @@ export default function Viewport({
             fly(dt);
             orbit.update();
             const c = ctx.current;
+            stepLivePeers(c, dt);
             if (flying || marquee?.active) invalidate();
             if ((drag !== null && !drag.preview) || gizmo.dragging) reshadow();
             if (dirty <= 0) {
@@ -1424,6 +1462,7 @@ export default function Viewport({
 
         return () => {
             cancelAnimationFrame(raf);
+            dropLivePeers();
             if (brushRaf) cancelAnimationFrame(brushRaf);
             longTasks?.disconnect();
             ro.disconnect();
