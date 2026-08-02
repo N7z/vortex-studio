@@ -22,6 +22,15 @@ function Group({ label, className = '', children }) {
     );
 }
 
+function Brand() {
+    return (
+        <div className="toolbar-brand" title="Made in Brasil">
+            <img src="/img/brasil.png" alt="" width="85" height="56" />
+            <span>MADE IN BRASIL</span>
+        </div>
+    );
+}
+
 export default function Toolbar({
     tool, setTool, snap, setSnap,
     hasSelection, hasClipboard, canEdit,
@@ -152,6 +161,7 @@ export default function Toolbar({
                     {live?.live ? `Team ${live.members.length}` : 'Team'}
                 </button>
             </Group>
+            <Brand />
             <Group label="Account" className="account-group">
                 <UserMenu account={account} ttl={ttl} onChange={onAccountChange} claimed={claimed} />
             </Group>

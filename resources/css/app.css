@@ -1965,6 +1965,31 @@ a.tool-btn { text-decoration: none; }
 .user-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .toolbar .account-group { margin-left: auto; }
+
+.toolbar-brand {
+    margin-left: auto;
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 0 10px;
+    opacity: 0.75;
+    user-select: none;
+}
+.toolbar-brand img {
+    display: block;
+    width: 85px;
+    height: 56px;
+}
+.toolbar-brand span {
+    color: #8a8a95;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+}
 .user-menu .tool-btn { gap: 7px; }
 
 .user-pop {
