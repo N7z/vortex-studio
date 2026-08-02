@@ -1599,6 +1599,33 @@ a.tool-btn { text-decoration: none; }
     gap: 2px;
     overflow-y: auto;
 }
+.scope-section { display: flex; flex-direction: column; gap: 2px; }
+.scope-section + .scope-section { margin-top: 16px; }
+.scope-title {
+    padding: 0 10px 4px;
+    color: #55555f;
+    font-size: 10px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+.scope-pick {
+    padding: 6px 9px;
+    background: #101014;
+    border: 1px solid #2c2c33;
+    border-radius: 5px;
+    color: #ddd;
+    font: inherit;
+    font-size: 12px;
+}
+.card-group {
+    display: inline-block;
+    margin-right: 6px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: #23232c;
+    color: #9a9aa4;
+    font-size: 10px;
+}
 .scope {
     display: flex;
     align-items: center;
@@ -1706,6 +1733,7 @@ a.tool-btn { text-decoration: none; }
     scrollbar-width: none;
 }
 .start-body.mobile .scopes::-webkit-scrollbar { display: none; }
+.start-body.mobile .scope-section { display: contents; }
 .start-body.mobile .scope {
     flex: none;
     padding: 9px 12px;

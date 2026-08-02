@@ -43,6 +43,7 @@ export default function StartScreen({
     const [disclaimer, setDisclaimer] = useState(() => !readClosed());
     const [error, setError] = useState('');
     const [scope, setScope] = useState(null);
+    const [group, setGroup] = useState('');
     const [query, setQuery] = useState('');
     const [moving, setMoving] = useState(null);
     const [menu, setMenu] = useState(null);
@@ -75,8 +76,15 @@ export default function StartScreen({
     // Signing in from the toolbar changes which maps and teams there are.
     useEffect(() => { refresh(); }, [accountSeq]);
 
-    const team = scope?.startsWith('team:') ? teams.find((t) => `team:${t.id}` === scope) : null;
+    const only = teams.length === 1 ? String(teams[0].id) : group;
+    const team = scope === 'groups' && only ? teams.find((t) => String(t.id) === only) : null;
     const teamId = team?.id ?? null;
+
+    const roleIn = (id) => teams.find((t) => t.id === id)?.role;
+
+    useEffect(() => {
+        if (account && scope === 'device') setScope('personal');
+    }, [account, scope]);
 
     const create = async () => {
         const name = await ask({
@@ -136,18 +144,25 @@ export default function StartScreen({
 
     const personal = useMemo(() => mine.filter((m) => !m.team_id), [mine]);
 
-    const scopes = useMemo(() => [
-        { id: 'personal', label: 'Your maps', count: personal.length },
-        ...teams.map((t) => ({
-            id: `team:${t.id}`,
-            label: t.name,
-            count: mine.filter((m) => m.team_id === t.id).length,
-        })),
-        { id: 'examples', label: 'Examples', count: examples.length },
-        { id: 'device', label: 'On this device', count: backups.length },
-        ...(trash.length ? [{ id: 'trash', label: 'Trash', count: trash.length }] : []),
-        { id: 'ugc', label: 'Your UGC', count: '' },
-    ], [personal, teams, mine, examples, backups, trash]);
+    const sections = useMemo(() => [
+        {
+            title: 'Maps',
+            items: [
+                { id: 'personal', label: 'Your maps', count: personal.length },
+                ...(teams.length
+                    ? [{
+                        id: 'groups',
+                        label: 'Group maps',
+                        count: mine.filter((m) => m.team_id).length,
+                    }]
+                    : []),
+                { id: 'examples', label: 'Examples', count: examples.length },
+                ...(account ? [] : [{ id: 'device', label: 'On this device', count: backups.length }]),
+                ...(trash.length ? [{ id: 'trash', label: 'Trash', count: trash.length }] : []),
+            ],
+        },
+        { title: 'Create', items: [{ id: 'ugc', label: 'Clothing', count: '' }] },
+    ], [personal, teams, mine, examples, backups, trash, account]);
 
     const rows = useMemo(() => {
         const q = query.trim().toLowerCase();
@@ -155,14 +170,20 @@ export default function StartScreen({
         if (scope === 'examples') return examples.filter((m) => match(m.title ?? m.name));
         if (scope === 'device') return backups.filter((b) => match(b.name));
         if (scope === 'trash') return trash.filter((m) => match(m.name));
-        if (team) return mine.filter((m) => m.team_id === team.id && match(m.name));
+        if (scope === 'groups') {
+            return mine.filter((m) => m.team_id && (!team || m.team_id === team.id) && match(m.name));
+        }
 
         return personal.filter((m) => match(m.name));
     }, [scope, query, examples, backups, trash, mine, personal, team]);
 
     // Examples are read-only fixtures, and a device backup is not a stored map.
-    const canManage = scope !== 'examples' && scope !== 'device' && scope !== 'trash'
-        && (scope === 'personal' || team?.role !== 'viewer');
+    const manageable = (m) => {
+        if (scope === 'examples' || scope === 'device' || scope === 'trash') return false;
+        if (scope === 'groups') return roleIn(m.team_id) !== 'viewer';
+
+        return true;
+    };
 
     const rename = async (m) => {
         setMenu(null);
@@ -235,16 +256,16 @@ export default function StartScreen({
     };
 
     const canCreate = scope === 'personal' || (team && team.role !== 'viewer');
-    const canMove = !!account && (scope === 'personal'
+    const movable = (m) => !!account && (scope === 'personal'
         ? teams.some((t) => t.role !== 'viewer')
-        : team?.role === 'owner');
+        : roleIn(m.team_id) === 'owner');
 
     const openRow = (m) => {
         if (scope === 'trash') return undelete(m);
         if (scope === 'device') return restore(m.name);
         if (scope === 'examples') return onOpen(m.name, null);
 
-        return onOpen(m.name, teamId);
+        return onOpen(m.name, m.team_id ?? null);
     };
 
     const nothingHere = {
@@ -252,9 +273,10 @@ export default function StartScreen({
         examples: 'No examples are installed.',
         device: 'Nothing has been saved from this browser yet.',
         trash: 'The trash is empty.',
-    }[scope] ?? (team?.role === 'viewer'
-        ? 'This team has no maps you can open.'
-        : 'This team has no maps yet.');
+        groups: team?.role === 'viewer'
+            ? 'This group has no maps you can open.'
+            : 'No maps in your groups yet.',
+    }[scope] ?? '';
 
     return (
         <div className="start">
@@ -299,16 +321,21 @@ export default function StartScreen({
 
             <div className={mobile ? 'start-body mobile' : 'start-body'}>
                 <nav className="scopes">
-                    {scopes.map((s) => (
-                        <button
-                            type="button"
-                            key={s.id}
-                            className={scope === s.id ? 'scope on' : 'scope'}
-                            onClick={() => { setScope(s.id); setQuery(''); }}
-                        >
-                            <span className="scope-label">{s.label}</span>
-                            <span className="scope-count">{s.count}</span>
-                        </button>
+                    {sections.map((sec) => (
+                        <div className="scope-section" key={sec.title}>
+                            {!mobile && <div className="scope-title">{sec.title}</div>}
+                            {sec.items.map((s) => (
+                                <button
+                                    type="button"
+                                    key={s.id}
+                                    className={scope === s.id ? 'scope on' : 'scope'}
+                                    onClick={() => { setScope(s.id); setQuery(''); }}
+                                >
+                                    <span className="scope-label">{s.label}</span>
+                                    <span className="scope-count">{s.count}</span>
+                                </button>
+                            ))}
+                        </div>
                     ))}
                 </nav>
 
@@ -330,6 +357,18 @@ export default function StartScreen({
                                             </button>
                                         )}
                                     </>
+                                )}
+                                {scope === 'groups' && teams.length > 1 && (
+                                    <select
+                                        className="scope-pick"
+                                        value={group}
+                                        onChange={(e) => setGroup(e.target.value)}
+                                    >
+                                        <option value="">All groups</option>
+                                        {teams.map((t) => (
+                                            <option key={t.id} value={String(t.id)}>{t.name}</option>
+                                        ))}
+                                    </select>
                                 )}
                                 {rows.length > 6 && (
                                     <input
@@ -364,6 +403,11 @@ export default function StartScreen({
                                                 </span>
                                                 <span className="card-name">{m.title ?? m.name}</span>
                                                 <span className="card-when">
+                                                    {scope === 'groups' && !team && (
+                                                        <span className="card-group">
+                                                            {teams.find((t) => t.id === m.team_id)?.name}
+                                                        </span>
+                                                    )}
                                                     {scope === 'trash'
                                                         ? `Deleted ${ago(m.deleted * 1000)}`
                                                         : scope === 'device'
@@ -371,7 +415,8 @@ export default function StartScreen({
                                                             : ago(m.modified * 1000)}
                                                 </span>
                                             </button>
-                                            {m.name === openName && scope !== 'device' && teamId === openTeam && (
+                                            {m.name === openName && scope !== 'device'
+                                                && (m.team_id ?? null) === openTeam && (
                                                 <span className="card-tag">open</span>
                                             )}
                                             {scope === 'device' && (
@@ -394,7 +439,7 @@ export default function StartScreen({
                                                     ×
                                                 </button>
                                             )}
-                                            {canManage && (
+                                            {manageable(m) && (
                                                 <div className="card-menu">
                                                     <button
                                                         type="button"
@@ -415,7 +460,7 @@ export default function StartScreen({
                                                                         setHistory({
                                                                             ...m,
                                                                             canEdit: scope === 'personal'
-                                                                                || team?.role !== 'viewer',
+                                                                                || roleIn(m.team_id) !== 'viewer',
                                                                         });
                                                                     }}
                                                                 >
@@ -424,7 +469,7 @@ export default function StartScreen({
                                                                 <button type="button" onClick={() => rename(m)}>
                                                                     Rename
                                                                 </button>
-                                                                {canMove && (
+                                                                {movable(m) && (
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => { setMenu(null); setMoving(m); }}
