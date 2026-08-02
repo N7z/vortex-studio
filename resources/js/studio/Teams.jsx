@@ -237,15 +237,15 @@ export default function Teams({ teams, me, onChanged, onClose }) {
                 {teams.length === 0 ? (
                     <p className="modal-text">You are not in a team yet.</p>
                 ) : (
-                    <ul className="team-list">
+                    <ul className="teams-list">
                         {teams.map((t) => (
                             <li key={t.id}>
                                 <button type="button" onClick={() => setManaging(t.id)}>
-                                    <span className="team-list-name">{t.name}</span>
+                                    <span className="teams-list-name">{t.name}</span>
                                     <span className={`role-pill role-${t.role}`}>
                                         {ROLE_LABEL[t.role] ?? t.role}
                                     </span>
-                                    <span className="team-list-go">›</span>
+                                    <span className="teams-list-go">›</span>
                                 </button>
                             </li>
                         ))}

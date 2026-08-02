@@ -1308,6 +1308,7 @@ a.tool-btn { text-decoration: none; }
     flex-direction: column;
     max-height: 232px;
     overflow-y: auto;
+    overflow-x: hidden;
     margin: 1px -4px;
 }
 .team-member {
@@ -2009,9 +2010,9 @@ a.tool-btn { text-decoration: none; }
 .studio.mobile .account-form input, .studio.mobile .account-go { padding: 11px 10px; font-size: 16px; }
 
 
-.team-list { list-style: none; display: flex; flex-direction: column; }
-.team-list li + li { border-top: 1px solid #1f1f27; }
-.team-list button {
+.teams-list { list-style: none; display: flex; flex-direction: column; }
+.teams-list li + li { border-top: 1px solid #1f1f27; }
+.teams-list button {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -2026,9 +2027,9 @@ a.tool-btn { text-decoration: none; }
     text-align: left;
     cursor: pointer;
 }
-.team-list button:hover { background: #1d1d24; }
-.team-list-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.team-list-go { color: #55555f; font-size: 16px; line-height: 1; }
+.teams-list button:hover { background: #1d1d24; }
+.teams-list-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.teams-list-go { color: #55555f; font-size: 16px; line-height: 1; }
 
 .ugc { display: flex; gap: 16px; height: 100%; min-height: 0; align-items: stretch; }
 .ugc-side {
