@@ -60,7 +60,7 @@ class AdminController extends Controller
             ->when($q !== '', fn ($b) => $b->where(function ($w) use ($q) {
                 $w->where('users.name', 'like', "%$q%")->orWhere('users.email', 'like', "%$q%");
             }))
-            ->orderByDesc('users.created_at')
+            ->orderByDesc('users.updated_at')
             ->paginate(self::PER_PAGE, [
                 'users.id', 'users.name', 'users.email', 'users.created_at',
                 'users.is_admin', 'users.can_plugins', 'users.banned_at',
