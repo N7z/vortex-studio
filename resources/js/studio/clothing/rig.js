@@ -6,7 +6,8 @@ export const DEFAULT_SKIN = '#d8b48a';
 
 const BASE = '/play';
 
-const CLOTHED = ['torso', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg'];
+const SLEEVES = ['leftArm', 'rightArm'];
+const LEGS = ['leftLeg', 'rightLeg'];
 
 let loaderPromise = null;
 
@@ -42,13 +43,15 @@ function texture(canvas) {
     return tex;
 }
 
-function bake(image) {
+function bake(layers, skin) {
     const canvas = document.createElement('canvas');
     canvas.width = TEMPLATE_SIZE;
     canvas.height = TEMPLATE_SIZE;
     const g = canvas.getContext('2d');
     g.imageSmoothingEnabled = false;
-    g.drawImage(image, 0, 0, TEMPLATE_SIZE, TEMPLATE_SIZE);
+    g.fillStyle = skin;
+    g.fillRect(0, 0, TEMPLATE_SIZE, TEMPLATE_SIZE);
+    for (const image of layers) g.drawImage(image, 0, 0, TEMPLATE_SIZE, TEMPLATE_SIZE);
 
     return texture(canvas);
 }
@@ -123,15 +126,9 @@ export async function loadRig() {
     };
 }
 
-export function apply(rig, { image, skin }) {
-    const head = rig.parts.head;
-    if (head) {
-        head.color.set(skin);
-        head.needsUpdate = true;
-    }
-
-    const tex = image ? bake(image) : null;
-    for (const name of CLOTHED) {
+function wear(rig, names, layers, skin) {
+    const tex = layers.length ? bake(layers, skin) : null;
+    for (const name of names) {
         const material = rig.parts[name];
         if (!material) continue;
         material.map?.dispose();
@@ -140,6 +137,18 @@ export function apply(rig, { image, skin }) {
         else material.color.set(skin);
         material.needsUpdate = true;
     }
+}
+
+export function apply(rig, { shirt, pants, skin }) {
+    const head = rig.parts.head;
+    if (head) {
+        head.color.set(skin);
+        head.needsUpdate = true;
+    }
+
+    wear(rig, ['torso'], [pants, shirt].filter(Boolean), skin);
+    wear(rig, SLEEVES, shirt ? [shirt] : [], skin);
+    wear(rig, LEGS, pants ? [pants] : [], skin);
 }
 
 export function readTemplate(file) {

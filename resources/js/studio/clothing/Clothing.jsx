@@ -3,12 +3,61 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { DEFAULT_SKIN, TEMPLATE_SIZE, apply, loadRig, readTemplate } from './rig';
 
+const SLOTS = [
+    { id: 'shirt', label: 'Shirt' },
+    { id: 'pants', label: 'Pants' },
+];
+
+function Slot({ slot, item, onPick, onClear }) {
+    const inputRef = useRef(null);
+    const [over, setOver] = useState(false);
+
+    return (
+        <div className="ugc-slot">
+            <div className="ugc-slot-head">
+                <span className="ugc-slot-name">{slot.label}</span>
+                {item && (
+                    <button type="button" className="ugc-clear" onClick={() => onClear(slot.id)}>
+                        Remove
+                    </button>
+                )}
+            </div>
+            <button
+                type="button"
+                className={over ? 'ugc-drop over' : 'ugc-drop'}
+                onClick={() => inputRef.current?.click()}
+                onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+                onDragLeave={() => setOver(false)}
+                onDrop={(e) => {
+                    e.preventDefault();
+                    setOver(false);
+                    onPick(slot.id, e.dataTransfer.files?.[0]);
+                }}
+            >
+                {item ? (
+                    <img src={item.src} alt={slot.label} />
+                ) : (
+                    <span className="ugc-drop-hint">
+                        Drop a {TEMPLATE_SIZE}x{TEMPLATE_SIZE} PNG, or click to choose
+                    </span>
+                )}
+            </button>
+            {item && <p className="ugc-slot-note">{`${item.name} - ${item.width}x${item.height}`}</p>}
+            <input
+                ref={inputRef}
+                type="file"
+                accept="image/png,image/*"
+                style={{ display: 'none' }}
+                onChange={(e) => { onPick(slot.id, e.target.files?.[0]); e.target.value = ''; }}
+            />
+        </div>
+    );
+}
+
 export default function Clothing() {
     const mountRef = useRef(null);
     const rigRef = useRef(null);
-    const inputRef = useRef(null);
-    const [item, setItem] = useState(null);
-    const [over, setOver] = useState(false);
+    const [items, setItems] = useState({ shirt: null, pants: null });
     const [error, setError] = useState('');
     const [status, setStatus] = useState('Loading the character...');
     const [spin, setSpin] = useState(true);
@@ -16,7 +65,7 @@ export default function Clothing() {
     spinRef.current = spin;
     const [skin, setSkin] = useState(DEFAULT_SKIN);
     const lookRef = useRef(null);
-    lookRef.current = { image: item, skin };
+    lookRef.current = { ...items, skin };
 
     useEffect(() => {
         const mount = mountRef.current;
@@ -124,16 +173,16 @@ export default function Clothing() {
     }, []);
 
     useEffect(() => {
-        if (rigRef.current) apply(rigRef.current, { image: item, skin });
-    }, [item, skin]);
+        if (rigRef.current) apply(rigRef.current, { ...items, skin });
+    }, [items, skin]);
 
-    const pick = async (file) => {
+    const pick = async (id, file) => {
         if (!file) return;
         setError('');
         try {
             const image = await readTemplate(file);
             image.name = file.name;
-            setItem(image);
+            setItems((cur) => ({ ...cur, [id]: image }));
             if (image.width !== image.height) {
                 setError(`${file.name} is ${image.width}x${image.height}. A template is square, `
                     + `${TEMPLATE_SIZE}x${TEMPLATE_SIZE}, so this one will look stretched.`);
@@ -143,48 +192,25 @@ export default function Clothing() {
         }
     };
 
+    const clear = (id) => {
+        setError('');
+        setItems((cur) => ({ ...cur, [id]: null }));
+    };
+
     return (
         <div className="ugc">
             <div className="ugc-side">
-                <div className="ugc-slot">
-                    <div className="ugc-slot-head">
-                        <span className="ugc-slot-name">Clothing template</span>
-                        {item && (
-                            <button
-                                type="button"
-                                className="ugc-clear"
-                                onClick={() => { setItem(null); setError(''); }}
-                            >
-                                Remove
-                            </button>
-                        )}
-                    </div>
-                    <button
-                        type="button"
-                        className={over ? 'ugc-drop over' : 'ugc-drop'}
-                        onClick={() => inputRef.current?.click()}
-                        onDragOver={(e) => { e.preventDefault(); setOver(true); }}
-                        onDragLeave={() => setOver(false)}
-                        onDrop={(e) => {
-                            e.preventDefault();
-                            setOver(false);
-                            pick(e.dataTransfer.files?.[0]);
-                        }}
-                    >
-                        {item ? (
-                            <img src={item.src} alt="Clothing template" />
-                        ) : (
-                            <span className="ugc-drop-hint">
-                                Drop a {TEMPLATE_SIZE}x{TEMPLATE_SIZE} PNG, or click to choose
-                            </span>
-                        )}
-                    </button>
-                    <p className="ugc-slot-note">
-                        {item ? `${item.name} - ${item.width}x${item.height}` : 'Torso, arms and legs'}
-                    </p>
-                </div>
-                <div className="ugc-slot">
-                    <div className="ugc-slot-head">
+                {SLOTS.map((slot) => (
+                    <Slot
+                        key={slot.id}
+                        slot={slot}
+                        item={items[slot.id]}
+                        onPick={pick}
+                        onClear={clear}
+                    />
+                ))}
+                <div className="ugc-slot ugc-tools">
+                    <div className="ugc-row">
                         <span className="ugc-slot-name">Skin</span>
                         <input
                             className="ugc-skin"
@@ -193,7 +219,7 @@ export default function Clothing() {
                             onChange={(e) => setSkin(e.target.value)}
                         />
                     </div>
-                    <label className="arch-check ugc-turntable">
+                    <label className="arch-check ugc-row">
                         <input
                             type="checkbox"
                             checked={spin}
@@ -209,14 +235,6 @@ export default function Clothing() {
                 <div className="ugc-canvas" ref={mountRef} />
                 {status && <div className="ugc-status">{status}</div>}
             </div>
-
-            <input
-                ref={inputRef}
-                type="file"
-                accept="image/png,image/*"
-                style={{ display: 'none' }}
-                onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ''; }}
-            />
         </div>
     );
 }
