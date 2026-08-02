@@ -2,13 +2,24 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { DEFAULT_SKIN, TEMPLATE_SIZE, apply, loadRig, readTemplate } from './rig';
+import { recordTurntable } from './gif';
+import { HAT_TYPES, readHat } from './hat';
 
 const SLOTS = [
-    { id: 'shirt', label: 'Shirt' },
-    { id: 'pants', label: 'Pants' },
+    { id: 'shirt', label: 'Shirt', accept: 'image/png,image/*', hint: `${TEMPLATE_SIZE}x${TEMPLATE_SIZE} PNG` },
+    { id: 'pants', label: 'Pants', accept: 'image/png,image/*', hint: `${TEMPLATE_SIZE}x${TEMPLATE_SIZE} PNG` },
+    { id: 'hat', label: 'Hat', accept: HAT_TYPES, hint: 'glb, gltf, fbx or obj' },
 ];
 
-function Slot({ slot, item, onPick, onClear }) {
+const TUNE = [
+    { id: 'size', label: 'Size', min: 0.2, max: 3, step: 0.05 },
+    { id: 'up', label: 'Up', min: -3, max: 3, step: 0.05 },
+    { id: 'forward', label: 'Forward', min: -2, max: 2, step: 0.05 },
+];
+
+const NO_TUNE = { size: 1, up: 0, forward: 0 };
+
+function Slot({ slot, name, onPick, onClear, children }) {
     const inputRef = useRef(null);
     const [over, setOver] = useState(false);
 
@@ -16,7 +27,7 @@ function Slot({ slot, item, onPick, onClear }) {
         <div className="ugc-slot">
             <div className="ugc-slot-head">
                 <span className="ugc-slot-name">{slot.label}</span>
-                {item && (
+                {name && (
                     <button type="button" className="ugc-clear" onClick={() => onClear(slot.id)}>
                         Remove
                     </button>
@@ -34,19 +45,13 @@ function Slot({ slot, item, onPick, onClear }) {
                     onPick(slot.id, e.dataTransfer.files?.[0]);
                 }}
             >
-                {item ? (
-                    <img src={item.src} alt={slot.label} />
-                ) : (
-                    <span className="ugc-drop-hint">
-                        Drop a {TEMPLATE_SIZE}x{TEMPLATE_SIZE} PNG, or click to choose
-                    </span>
-                )}
+                <span className={name ? 'ugc-drop-name' : 'ugc-drop-hint'}>{name ?? slot.hint}</span>
             </button>
-            {item && <p className="ugc-slot-note">{`${item.name} - ${item.width}x${item.height}`}</p>}
+            {name && children}
             <input
                 ref={inputRef}
                 type="file"
-                accept="image/png,image/*"
+                accept={slot.accept}
                 style={{ display: 'none' }}
                 onChange={(e) => { onPick(slot.id, e.target.files?.[0]); e.target.value = ''; }}
             />
@@ -57,15 +62,19 @@ function Slot({ slot, item, onPick, onClear }) {
 export default function Clothing() {
     const mountRef = useRef(null);
     const rigRef = useRef(null);
-    const [items, setItems] = useState({ shirt: null, pants: null });
+    const sceneRef = useRef(null);
+    const busyRef = useRef(false);
+    const [saving, setSaving] = useState(0);
+    const [items, setItems] = useState({ shirt: null, pants: null, hat: null });
     const [error, setError] = useState('');
     const [status, setStatus] = useState('Loading the character...');
     const [spin, setSpin] = useState(true);
     const spinRef = useRef(spin);
     spinRef.current = spin;
     const [skin, setSkin] = useState(DEFAULT_SKIN);
+    const [tune, setTune] = useState(NO_TUNE);
     const lookRef = useRef(null);
-    lookRef.current = { ...items, skin };
+    lookRef.current = { ...items, skin, tune };
 
     useEffect(() => {
         const mount = mountRef.current;
@@ -117,6 +126,7 @@ export default function Clothing() {
         const holder = new THREE.Group();
         holder.rotation.y = Math.PI;
         scene.add(holder);
+        sceneRef.current = { renderer, scene, camera, holder };
 
         let alive = true;
         loadRig()
@@ -128,6 +138,7 @@ export default function Clothing() {
                 rigRef.current = rig;
                 holder.add(rig.object);
                 apply(rig, lookRef.current);
+                if (lookRef.current.hat) rig.setHat(lookRef.current.hat, lookRef.current.tune);
                 const fit = (rig.height / 2) / Math.tan((camera.fov * Math.PI) / 360);
                 orbit.target.set(0, rig.height / 2, 0);
                 camera.position.set(0, rig.height * 0.55, fit * 1.5);
@@ -150,6 +161,7 @@ export default function Clothing() {
         const clock = new THREE.Clock();
         renderer.setAnimationLoop(() => {
             const dt = clock.getDelta();
+            if (busyRef.current) return;
             rigRef.current?.update(dt);
             if (spinRef.current) holder.rotation.y += dt * 0.5;
             orbit.update();
@@ -158,6 +170,7 @@ export default function Clothing() {
 
         return () => {
             alive = false;
+            sceneRef.current = null;
             renderer.setAnimationLoop(null);
             ro.disconnect();
             orbit.dispose();
@@ -176,10 +189,22 @@ export default function Clothing() {
         if (rigRef.current) apply(rigRef.current, { ...items, skin });
     }, [items, skin]);
 
+    useEffect(() => {
+        rigRef.current?.setHat(items.hat ?? null, tune);
+    }, [items.hat, tune]);
+
     const pick = async (id, file) => {
         if (!file) return;
         setError('');
         try {
+            if (id === 'hat') {
+                const model = await readHat(file);
+                model.name = file.name;
+                setTune(NO_TUNE);
+                setItems((cur) => ({ ...cur, hat: model }));
+
+                return;
+            }
             const image = await readTemplate(file);
             image.name = file.name;
             setItems((cur) => ({ ...cur, [id]: image }));
@@ -189,6 +214,27 @@ export default function Clothing() {
             }
         } catch (err) {
             setError(String(err.message ?? err));
+        }
+    };
+
+    const download = async () => {
+        if (!sceneRef.current || busyRef.current) return;
+        setError('');
+        busyRef.current = true;
+        setSaving(0.001);
+        try {
+            const blob = await recordTurntable(sceneRef.current, setSaving);
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'character.gif';
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 10000);
+        } catch (err) {
+            setError(String(err.message ?? err));
+        } finally {
+            busyRef.current = false;
+            setSaving(0);
         }
     };
 
@@ -204,11 +250,36 @@ export default function Clothing() {
                     <Slot
                         key={slot.id}
                         slot={slot}
-                        item={items[slot.id]}
+                        name={items[slot.id]?.name}
                         onPick={pick}
                         onClear={clear}
-                    />
+                    >
+                        {slot.id === 'hat' && TUNE.map((t) => (
+                            <label className="ugc-tune" key={t.id}>
+                                <span>{t.label}</span>
+                                <input
+                                    type="range"
+                                    min={t.min}
+                                    max={t.max}
+                                    step={t.step}
+                                    value={tune[t.id]}
+                                    onChange={(e) => setTune((c) => ({
+                                        ...c,
+                                        [t.id]: Number(e.target.value),
+                                    }))}
+                                />
+                            </label>
+                        ))}
+                    </Slot>
                 ))}
+            </div>
+
+            <div className="ugc-view">
+                <div className="ugc-canvas" ref={mountRef} />
+                {status && <div className="ugc-status">{status}</div>}
+            </div>
+
+            <div className="ugc-side">
                 <div className="ugc-slot ugc-tools">
                     <div className="ugc-row">
                         <span className="ugc-slot-name">Skin</span>
@@ -227,13 +298,16 @@ export default function Clothing() {
                         />
                         Turntable
                     </label>
+                    <button
+                        type="button"
+                        className="btn ugc-download"
+                        disabled={!!saving || !!status}
+                        onClick={download}
+                    >
+                        {saving ? `Recording ${Math.round(saving * 100)}%` : 'Download as gif'}
+                    </button>
+                    {error && <p className="ugc-error">{error}</p>}
                 </div>
-                {error && <p className="ugc-error">{error}</p>}
-            </div>
-
-            <div className="ugc-view">
-                <div className="ugc-canvas" ref={mountRef} />
-                {status && <div className="ugc-status">{status}</div>}
             </div>
         </div>
     );

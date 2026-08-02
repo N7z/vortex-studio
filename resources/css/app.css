@@ -888,7 +888,7 @@ a.tool-btn { text-decoration: none; }
 .start-footer {
     position: absolute;
     right: 34px;
-    bottom: 30px;
+    bottom: 52px;
     padding: 12px 14px;
     max-width: 460px;
     border: 1px solid #26262e;
@@ -899,6 +899,32 @@ a.tool-btn { text-decoration: none; }
     line-height: 1.6;
 }
 .start-footer strong { color: #bcbcc4; }
+
+.start-credit {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 10px 34px;
+    border-top: 1px solid #1c1c23;
+    background: #0d0d11;
+    color: #55555f;
+    font-size: 11px;
+    text-align: center;
+}
+.start-credit a {
+    display: inline;
+    margin: 0;
+    color: #6e6e78;
+    font-size: inherit;
+    text-decoration: none;
+}
+.start-credit a:hover { color: #8f8f98; text-decoration: underline; }
+.studio.mobile .start-credit {
+    position: static;
+    flex: none;
+    padding: 10px 14px;
+}
 
 .start-footer-close {
     float: right;
@@ -1880,7 +1906,7 @@ a.tool-btn { text-decoration: none; }
 .ugc { display: flex; gap: 16px; height: 100%; min-height: 0; align-items: stretch; }
 .ugc-side {
     flex: none;
-    width: 230px;
+    width: 210px;
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -1890,8 +1916,7 @@ a.tool-btn { text-decoration: none; }
     display: flex;
     flex-direction: column;
     gap: 8px;
-    flex: 1 1 0;
-    min-height: 0;
+    flex: none;
     padding: 12px;
     border: 1px solid #1f1f27;
     border-radius: 6px;
@@ -1913,8 +1938,7 @@ a.tool-btn { text-decoration: none; }
     display: flex;
     align-items: center;
     justify-content: center;
-    flex: 1;
-    min-height: 64px;
+    min-height: 44px;
     padding: 8px;
     border: 1px dashed #2b2b34;
     border-radius: 5px;
@@ -1926,13 +1950,14 @@ a.tool-btn { text-decoration: none; }
     cursor: pointer;
 }
 .ugc-drop:hover, .ugc-drop.over { border-color: #5b8dd6; color: #9fb6d8; }
-.ugc-drop img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    image-rendering: pixelated;
+.ugc-drop-hint { line-height: 1.5; }
+.ugc-drop-name {
+    max-width: 100%;
+    color: #bcbcc4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
-.ugc-drop-hint { max-width: 150px; line-height: 1.5; }
 .ugc-slot-note {
     color: #55555f;
     font-size: 11px;
@@ -1953,6 +1978,10 @@ a.tool-btn { text-decoration: none; }
     background: none;
     cursor: pointer;
 }
+.ugc-tune { display: flex; align-items: center; gap: 8px; color: #6e6e78; font-size: 11px; }
+.ugc-tune span { width: 46px; flex: none; }
+.ugc-tune input { flex: 1; min-width: 0; accent-color: #5b8dd6; }
+.ugc-download { width: 100%; margin-top: 6px; text-align: center; }
 .ugc-error { color: #e0a552; font-size: 12px; line-height: 1.5; }
 .ugc-view {
     position: relative;

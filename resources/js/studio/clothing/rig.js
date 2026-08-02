@@ -83,6 +83,7 @@ export async function loadRig() {
 
     const object = gltf.scene;
     const parts = {};
+    const meshes = {};
 
     object.traverse((o) => {
         if (!o.isMesh) return;
@@ -92,7 +93,9 @@ export async function loadRig() {
         const material = (Array.isArray(o.material) ? o.material[0] : o.material).clone();
         if (material.vertexColors) applyFace(material, makeFaceTexture());
         o.material = material;
-        parts[classify(o)] = material;
+        const name = classify(o);
+        parts[name] = material;
+        meshes[name] = o;
     });
 
     let mixer = null;
@@ -107,14 +110,64 @@ export async function loadRig() {
     object.position.z -= (box.min.z + box.max.z) / 2;
     object.position.y -= box.min.y;
 
+    object.updateMatrixWorld(true);
+    const bone = object.getObjectByName('Head');
+    const anchor = bone && meshes.head ? (() => {
+        const head = posedBounds(meshes.head);
+
+        return {
+            at: new THREE.Vector3(
+                (head.min.x + head.max.x) / 2,
+                head.max.y,
+                (head.min.z + head.max.z) / 2,
+            ),
+            wide: head.max.x - head.min.x,
+            toBone: new THREE.Matrix4().copy(bone.matrixWorld).invert(),
+        };
+    })() : null;
+    let hat = null;
+
+    const dropHat = () => {
+        if (!hat) return;
+        hat.parent?.remove(hat);
+        hat = null;
+    };
+
     return {
         object,
         parts,
         height: box.max.y - box.min.y,
+        setHat(model, tune = {}) {
+            dropHat();
+            if (!model || !anchor) return;
+
+            const { size: mul = 1, up = 0, forward = 0 } = tune;
+
+            model.position.set(0, 0, 0);
+            const own = new THREE.Box3().setFromObject(model);
+            const size = own.getSize(new THREE.Vector3());
+            const scale = (anchor.wide / (Math.max(size.x, size.z) || 1)) * mul;
+
+            model.position.sub(own.getCenter(new THREE.Vector3()));
+            model.position.y += size.y / 2;
+
+            const holder = new THREE.Group();
+            holder.add(model);
+            holder.scale.setScalar(scale);
+            holder.position.set(anchor.at.x, anchor.at.y + up, anchor.at.z - forward);
+            holder.applyMatrix4(anchor.toBone);
+            holder.traverse((o) => {
+                if (o.isMesh) o.castShadow = true;
+            });
+
+            bone.add(holder);
+            hat = holder;
+        },
         update(dt) {
             mixer?.update(dt);
         },
         dispose() {
+            dropHat();
             mixer?.stopAllAction();
             object.traverse((o) => {
                 if (!o.isMesh) return;

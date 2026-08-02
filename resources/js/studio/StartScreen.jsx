@@ -506,6 +506,11 @@ export default function StartScreen({
                 onChange={onFile}
             />
 
+            <div className="start-credit">
+                {`© ${new Date().getFullYear()} zPaulinBRz - Not affiliated with `}
+                <a href="https://playvortex.io" target="_blank" rel="noreferrer">https://playvortex.io</a>
+            </div>
+
             {disclaimer && (
                 <div className="start-footer">
                     <button
