@@ -74,7 +74,7 @@ export default function MenuBar({
     teamOpen, onToggleTeam,
     chatOpen, onToggleChat, canChat,
     statsOpen, onToggleStats,
-    plugins, activePluginId, onTogglePlugin, onNewPlugin, mobile,
+    plugins, activePluginId, onTogglePlugin, onNewPlugin, canPlugins, mobile,
     account, onTeams,
     onHide, onShowAll, onLock, onUnlockAll, hiddenCount = 0, lockedCount = 0,
 }) {
@@ -149,7 +149,7 @@ export default function MenuBar({
             checked: (graphics.mode ?? 'lit') === value,
             onClick: () => onGraphics({ mode: value }),
         }))],
-        ...(mobile ? [] : [['Plugins', [
+        ...(mobile || !canPlugins ? [] : [['Plugins', [
             ...plugins.map((p) => ({
                 label: p.name,
                 checked: activePluginId === p.id,
