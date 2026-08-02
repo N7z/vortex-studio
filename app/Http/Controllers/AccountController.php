@@ -22,7 +22,11 @@ class AccountController extends Controller
         $u = Auth::user();
 
         return $u
-            ? ['id' => $u->id, 'name' => $u->name, 'email' => $u->email, 'admin' => (bool) $u->is_admin]
+            ? [
+                'id' => $u->id, 'name' => $u->name, 'email' => $u->email,
+                'admin' => (bool) $u->is_admin,
+                'plugins' => (bool) ($u->is_admin || $u->can_plugins),
+            ]
             : null;
     }
 

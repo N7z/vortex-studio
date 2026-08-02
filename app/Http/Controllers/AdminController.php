@@ -63,7 +63,7 @@ class AdminController extends Controller
             ->orderByDesc('users.created_at')
             ->paginate(self::PER_PAGE, [
                 'users.id', 'users.name', 'users.email', 'users.created_at',
-                'users.is_admin', 'users.banned_at',
+                'users.is_admin', 'users.can_plugins', 'users.banned_at',
                 DB::raw('(select count(*) from maps where maps.user_id = users.id) as maps'),
             ]);
     }
@@ -151,13 +151,27 @@ class AdminController extends Controller
 
     public function updateUser(Request $request, User $user)
     {
-        $data = $request->validate(['banned' => ['required', 'boolean']]);
-        $this->refuseSelf($user);
+        $data = $request->validate([
+            'banned' => ['sometimes', 'boolean'],
+            'plugins' => ['sometimes', 'boolean'],
+        ]);
+        abort_if($data === [], 422, 'Nothing to change.');
 
-        $user->forceFill(['banned_at' => $data['banned'] ? now() : null])->save();
-        Audit::log($data['banned'] ? 'admin.user_ban' : 'admin.user_unban', $user->id, ['name' => $user->name]);
+        if (array_key_exists('banned', $data)) {
+            $this->refuseSelf($user);
+            $user->forceFill(['banned_at' => $data['banned'] ? now() : null])->save();
+            Audit::log($data['banned'] ? 'admin.user_ban' : 'admin.user_unban', $user->id, ['name' => $user->name]);
+        }
 
-        return response()->json(['banned_at' => $user->banned_at]);
+        if (array_key_exists('plugins', $data)) {
+            $user->forceFill(['can_plugins' => $data['plugins']])->save();
+            Audit::log($data['plugins'] ? 'admin.plugins_grant' : 'admin.plugins_revoke', $user->id, ['name' => $user->name]);
+        }
+
+        return response()->json([
+            'banned_at' => $user->banned_at,
+            'can_plugins' => (bool) $user->can_plugins,
+        ]);
     }
 
     public function deleteUser(User $user)

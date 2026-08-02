@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { deleteUser, listUsers, setBanned } from './api';
+import { deleteUser, listUsers, setBanned, setPlugins } from './api';
 import useList from './useList';
 import useDialogs from '../ui/useDialogs';
 import Pager from './Pager';
@@ -27,6 +27,8 @@ export default function Users({ me, onChanged }) {
     };
 
     const ban = (u) => act(u.id, () => setBanned(u.id, !u.banned_at));
+
+    const plugins = (u) => act(u.id, () => setPlugins(u.id, !u.can_plugins));
 
     const remove = async (u) => {
         const maps = u.maps ? ` and ${u.maps} map${u.maps === 1 ? '' : 's'}` : '';
@@ -68,11 +70,18 @@ export default function Users({ me, onChanged }) {
                             <td className="dim">{date(u.created_at)}</td>
                             <td>
                                 {u.is_admin ? <span className="tag tag-admin">Admin</span> : null}
+                                {!u.is_admin && u.can_plugins
+                                    ? <span className="tag tag-plugins">Plugins</span> : null}
                                 {u.banned_at ? <span className="tag tag-banned">Banned</span> : null}
                             </td>
                             <td className="row-actions">
                                 {u.id === me?.id ? <span className="dim">You</span> : (
                                     <>
+                                        {!u.is_admin && (
+                                            <button disabled={busy === u.id} onClick={() => plugins(u)}>
+                                                {u.can_plugins ? 'Revoke plugins' : 'Allow plugins'}
+                                            </button>
+                                        )}
                                         <button disabled={busy === u.id} onClick={() => ban(u)}>
                                             {u.banned_at ? 'Unban' : 'Ban'}
                                         </button>

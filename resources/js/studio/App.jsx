@@ -168,7 +168,7 @@ export default function App() {
     // A coordinate is three hex digits on the wire, so MAX_DIM is the format's own
     // ceiling rather than a policy: past it every field after it shifts.
     const resCap = unlimited ? MAX_DIM : MAX_RES;
-    const canPlugins = !!account?.admin;
+    const canPlugins = !!(account?.plugins ?? account?.admin);
 
     // Only the id travels with a map, so the names are looked up once and again
     // whenever one turns up that this list does not know.
@@ -480,7 +480,7 @@ export default function App() {
     };
 
     const savePlugin = async (id, src) => {
-        if (!canPlugins) return { error: 'Plugins are admin only' };
+        if (!canPlugins) return { error: 'You do not have plugin access' };
         const pid = id ?? `user-${Date.now()}`;
         const builtin = isBuiltin(pid);
         try {
