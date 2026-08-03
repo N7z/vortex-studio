@@ -11,4 +11,4 @@ Artisan::command('inspire', function () {
 
 Schedule::command('stats:snapshot')->dailyAt('23:50')->withoutOverlapping();
 Schedule::command('maps:purge')->dailyAt('04:20')->withoutOverlapping();
-Schedule::call(fn () => MapController::prune())->hourly()->name('maps:prune');
+Schedule::call(fn () => MapController::prune())->twiceDaily(10, 22)->name('maps:prune')->withoutOverlapping();
