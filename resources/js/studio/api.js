@@ -158,6 +158,20 @@ export async function putThumb(name, team, blob) {
     return r.ok;
 }
 
+export function logClothingUpload(meta, file) {
+    const body = new FormData();
+    for (const [k, v] of Object.entries(meta)) {
+        if (v !== null && v !== undefined) body.append(k, v);
+    }
+    if (file) body.append('image', file, file.name);
+
+    return fetch('/api/clothing/log', {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': csrf },
+        body,
+    }).catch(() => {});
+}
+
 export async function renameMap(name, team, to) {
     const r = await fetch(mapUrl(name, team), {
         method: 'PATCH',

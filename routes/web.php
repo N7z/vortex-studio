@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\ClothingController;
 use App\Http\Controllers\MapController;
 use App\Http\Controllers\TeamController;
 use Illuminate\Support\Facades\Route;
@@ -23,6 +24,8 @@ Route::get('/api/thumbs/{key}.webp', [MapController::class, 'thumb'])->where('ke
 
 Route::middleware('throttle:60,1')->group(function () {
     Route::get('/api/maps', [MapController::class, 'index']);
+
+    Route::post('/api/clothing/log', [ClothingController::class, 'log']);
 
     Route::get('/api/maps/trash', [MapController::class, 'trash']);
     Route::post('/api/trash/{id}/restore', [MapController::class, 'restore'])->whereNumber('id');
@@ -59,6 +62,7 @@ Route::prefix('admin')->middleware('admin')->group(function () {
     Route::patch('/users/{user}', [AdminController::class, 'updateUser']);
     Route::delete('/users/{user}', [AdminController::class, 'deleteUser']);
     Route::get('/audit', [AdminController::class, 'audit']);
+    Route::get('/audit/{id}/image', [AdminController::class, 'auditImage'])->whereNumber('id');
     Route::get('/maps', [AdminController::class, 'maps']);
     Route::get('/maps/{id}', [AdminController::class, 'map'])->whereNumber('id');
     Route::delete('/maps/{id}', [AdminController::class, 'deleteMap'])->whereNumber('id');

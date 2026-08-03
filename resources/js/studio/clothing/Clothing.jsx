@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { DEFAULT_SKIN, TEMPLATE_SIZE, apply, loadRig, readTemplate } from './rig';
 import { recordTurntable } from './gif';
 import { HAT_TYPES, readHat } from './hat';
+import { logClothingUpload } from '../api';
 
 const SLOTS = [
     { id: 'shirt', label: 'Shirt', accept: 'image/png,image/*', hint: `${TEMPLATE_SIZE}x${TEMPLATE_SIZE} PNG` },
@@ -207,6 +208,14 @@ export default function Clothing() {
             }
             const image = await readTemplate(file);
             image.name = file.name;
+            logClothingUpload({
+                slot: id,
+                name: file.name,
+                mime: file.type,
+                bytes: file.size,
+                width: image.width,
+                height: image.height,
+            }, file);
             setItems((cur) => ({ ...cur, [id]: image }));
             if (image.width !== image.height) {
                 setError(`${file.name} is ${image.width}x${image.height}. A template is square, `

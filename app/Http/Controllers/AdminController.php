@@ -149,6 +149,15 @@ class AdminController extends Controller
             ]);
     }
 
+    public function auditImage(int $id)
+    {
+        $meta = DB::table('audit_log')->where('id', $id)->value('meta');
+        $path = Audit::imageOf($meta);
+        abort_if($path === null || ! Audit::images()->exists($path), 404);
+
+        return Audit::images()->response($path);
+    }
+
     public function updateUser(Request $request, User $user)
     {
         $data = $request->validate([

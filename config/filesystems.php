@@ -15,6 +15,8 @@ return [
 
     'default' => env('FILESYSTEM_DISK', 'local'),
 
+    'audit' => env('AUDIT_DISK', 'public'),
+
     /*
     |--------------------------------------------------------------------------
     | Filesystem Disks

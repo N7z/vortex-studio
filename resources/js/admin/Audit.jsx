@@ -9,10 +9,19 @@ const describe = (meta) => {
     if (!meta) return '';
     try {
         return Object.entries(JSON.parse(meta))
+            .filter(([k]) => k !== 'image')
             .map(([k, v]) => `${k}: ${v ?? '—'}`)
             .join(', ');
     } catch {
         return meta;
+    }
+};
+
+const hasImage = (meta) => {
+    try {
+        return Boolean(JSON.parse(meta ?? 'null')?.image);
+    } catch {
+        return false;
     }
 };
 
@@ -43,7 +52,14 @@ export default function Audit() {
                             <td className="dim">{when(r.created_at)}</td>
                             <td>{r.who ?? <span className="tag">Anonymous</span>}</td>
                             <td><code>{r.action}</code></td>
-                            <td className="dim">{describe(r.meta)}</td>
+                            <td className="dim">
+                                {hasImage(r.meta) && (
+                                    <a href={`/admin/audit/${r.id}/image`} target="_blank" rel="noreferrer">
+                                        <img className="audit-thumb" src={`/admin/audit/${r.id}/image`} alt="" />
+                                    </a>
+                                )}
+                                {describe(r.meta)}
+                            </td>
                             <td className="dim">{r.ip}</td>
                         </tr>
                     ))}

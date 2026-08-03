@@ -146,6 +146,18 @@ body {
 .grid tr.is-banned td:first-child { color: var(--muted); text-decoration: line-through; }
 .row-actions { display: flex; gap: 6px; justify-content: flex-end; }
 
+.audit-thumb {
+    width: 32px;
+    height: 32px;
+    margin-right: 6px;
+    vertical-align: middle;
+    object-fit: contain;
+    background: #14141a;
+    border: 1px solid #1c1c24;
+    border-radius: 3px;
+    image-rendering: pixelated;
+}
+
 .tag {
     display: inline-block;
     padding: 1px 6px;
