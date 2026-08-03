@@ -49,7 +49,6 @@ export default function StartScreen({
     const [trashDays, setTrashDays] = useState(30);
     const [history, setHistory] = useState(null);
     const [disclaimer, setDisclaimer] = useState(() => !readClosed(DISCLAIMER_KEY));
-    const [examplesGone, setExamplesGone] = useState(() => !readClosed(EXAMPLES_GONE_KEY));
     const [error, setError] = useState('');
     const [scope, setScope] = useState(null);
     const [group, setGroup] = useState('');
@@ -80,6 +79,21 @@ export default function StartScreen({
 
     // Signing in from the toolbar changes which maps and teams there are.
     useEffect(() => { refresh(); }, [accountSeq]);
+
+    // Once per browser: a whole section of the start screen is gone, and nobody can
+    // guess why from the empty space it left. Marked seen as it opens, so dismissing
+    // it any way at all is the last of it.
+    useEffect(() => {
+        if (readClosed(EXAMPLES_GONE_KEY)) return;
+        markClosed(EXAMPLES_GONE_KEY);
+        notice({
+            title: 'The example maps are gone',
+            body: 'Vortex maps are not allowed to be used outside the game itself, so the examples'
+                + ' that used to ship with the editor have been removed at the developers\' request.'
+                + ' Your own maps are untouched: make a new one, or upload a .json you already have.',
+            confirmLabel: 'Got it',
+        });
+    }, []);
 
     const only = teams.length === 1 ? String(teams[0].id) : group;
     const team = scope === 'groups' && only ? teams.find((t) => String(t.id) === only) : null;
@@ -319,22 +333,6 @@ export default function StartScreen({
                 </div>
             )}
             {error && <div className="start-error">{error}</div>}
-
-            {examplesGone && (
-                <div className="start-notice">
-                    <button
-                        className="start-footer-close"
-                        title="Hide this"
-                        onClick={() => { setExamplesGone(false); markClosed(EXAMPLES_GONE_KEY); }}
-                    >
-                        ×
-                    </button>
-                    <strong>The example maps are gone.</strong> Vortex maps are not allowed to be
-                    used outside the game itself, so the examples that used to ship here have been
-                    removed at the developers&apos; request. Your own maps are untouched: make a new
-                    one, or upload a .json you already have.
-                </div>
-            )}
 
             <div className={mobile ? 'start-body mobile' : 'start-body'}>
                 <nav className="scopes">

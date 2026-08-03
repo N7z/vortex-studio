@@ -900,21 +900,6 @@ a.tool-btn { text-decoration: none; }
 }
 .start-footer strong { color: #bcbcc4; }
 
-/* Sits in the flow above the map lists: it explains why a whole section is missing,
-   so it has to be read before anything is clicked, not tucked into a corner. */
-.start-notice {
-    margin: 0 34px 12px;
-    padding: 10px 12px;
-    border: 1px solid #3a3020;
-    border-left: 3px solid #b8862b;
-    border-radius: 6px;
-    background: #1a1610;
-    color: #a09482;
-    font-size: 12px;
-    line-height: 1.6;
-}
-.start-notice strong { color: #d8bf85; }
-
 .start-credit {
     position: absolute;
     left: 0;
@@ -1016,7 +1001,6 @@ a.tool-btn { text-decoration: none; }
 .studio.mobile .start-top { gap: 12px; padding: 12px 14px 10px; }
 .studio.mobile .start-top h1 { font-size: 19px; margin: 0; }
 .studio.mobile .start-error { margin: 0 14px 10px; }
-.studio.mobile .start-notice { margin: 0 14px 10px; }
 .studio.mobile .start-footer {
     position: static;
     flex: none;
