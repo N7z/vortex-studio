@@ -8,12 +8,21 @@ import UserMenu from './UserMenu';
 import Clothing from './clothing/Clothing';
 
 const DISCLAIMER_KEY = 'studio_disclaimer_closed';
+const EXAMPLES_GONE_KEY = 'studio_examples_removed_closed';
 
-const readClosed = () => {
+const readClosed = (key) => {
     try {
-        return localStorage.getItem(DISCLAIMER_KEY) === '1';
+        return localStorage.getItem(key) === '1';
     } catch {
         return false;
+    }
+};
+
+const markClosed = (key) => {
+    try {
+        localStorage.setItem(key, '1');
+    } catch {
+        // Closing it for this visit is still worth doing.
     }
 };
 
@@ -32,7 +41,6 @@ export default function StartScreen({
     accountSeq, onAccountSeen, onAccountChange, claimed,
 }) {
     const [mine, setMine] = useState([]);
-    const [examples, setExamples] = useState([]);
     const [ttl, setTtl] = useState(24);
     const [account, setAccount] = useState(null);
     const [teams, setTeams] = useState([]);
@@ -40,7 +48,8 @@ export default function StartScreen({
     const [trash, setTrash] = useState([]);
     const [trashDays, setTrashDays] = useState(30);
     const [history, setHistory] = useState(null);
-    const [disclaimer, setDisclaimer] = useState(() => !readClosed());
+    const [disclaimer, setDisclaimer] = useState(() => !readClosed(DISCLAIMER_KEY));
+    const [examplesGone, setExamplesGone] = useState(() => !readClosed(EXAMPLES_GONE_KEY));
     const [error, setError] = useState('');
     const [scope, setScope] = useState(null);
     const [group, setGroup] = useState('');
@@ -59,16 +68,12 @@ export default function StartScreen({
 
         return listMaps()
             .then((d) => {
-                const rows = d.mine ?? [];
-                setMine(rows);
-                setExamples(d.examples ?? []);
+                setMine(d.mine ?? []);
                 setTtl(d.ttl_hours ?? 24);
                 setAccount(d.account ?? null);
                 setTeams(d.teams ?? []);
                 onAccountSeen?.(d.account ?? null, d.ttl_hours ?? 24);
-                // Examples are the only useful thing to click with nothing of your own,
-                // and they leave the way as soon as there is a first map.
-                setScope((s) => s ?? (rows.length ? 'personal' : 'examples'));
+                setScope((s) => s ?? 'personal');
             })
             .catch((e) => setError(String(e.message ?? e)));
     };
@@ -156,18 +161,16 @@ export default function StartScreen({
                         count: mine.filter((m) => m.team_id).length,
                     }]
                     : []),
-                { id: 'examples', label: 'Examples', count: examples.length },
                 ...(account ? [] : [{ id: 'device', label: 'On this device', count: backups.length }]),
                 ...(trash.length ? [{ id: 'trash', label: 'Trash', count: trash.length }] : []),
             ],
         },
         { title: 'Create', items: [{ id: 'ugc', label: 'Clothing', count: '' }] },
-    ], [personal, teams, mine, examples, backups, trash, account]);
+    ], [personal, teams, mine, backups, trash, account]);
 
     const rows = useMemo(() => {
         const q = query.trim().toLowerCase();
         const match = (n) => !q || n.toLowerCase().includes(q);
-        if (scope === 'examples') return examples.filter((m) => match(m.title ?? m.name));
         if (scope === 'device') return backups.filter((b) => match(b.name));
         if (scope === 'trash') return trash.filter((m) => match(m.name));
         if (scope === 'groups') {
@@ -175,11 +178,11 @@ export default function StartScreen({
         }
 
         return personal.filter((m) => match(m.name));
-    }, [scope, query, examples, backups, trash, mine, personal, team]);
+    }, [scope, query, backups, trash, mine, personal, team]);
 
-    // Examples are read-only fixtures, and a device backup is not a stored map.
+    // A device backup is not a stored map, and a trashed one is not open to editing.
     const manageable = (m) => {
-        if (scope === 'examples' || scope === 'device' || scope === 'trash') return false;
+        if (scope === 'device' || scope === 'trash') return false;
         if (scope === 'groups') return roleIn(m.team_id) !== 'viewer';
 
         return true;
@@ -263,14 +266,12 @@ export default function StartScreen({
     const openRow = (m) => {
         if (scope === 'trash') return undelete(m);
         if (scope === 'device') return restore(m.name);
-        if (scope === 'examples') return onOpen(m.name, null);
 
         return onOpen(m.name, m.team_id ?? null);
     };
 
     const nothingHere = {
         personal: 'No maps of your own yet.',
-        examples: 'No examples are installed.',
         device: 'Nothing has been saved from this browser yet.',
         trash: 'The trash is empty.',
         groups: team?.role === 'viewer'
@@ -318,6 +319,22 @@ export default function StartScreen({
                 </div>
             )}
             {error && <div className="start-error">{error}</div>}
+
+            {examplesGone && (
+                <div className="start-notice">
+                    <button
+                        className="start-footer-close"
+                        title="Hide this"
+                        onClick={() => { setExamplesGone(false); markClosed(EXAMPLES_GONE_KEY); }}
+                    >
+                        ×
+                    </button>
+                    <strong>The example maps are gone.</strong> Vortex maps are not allowed to be
+                    used outside the game itself, so the examples that used to ship here have been
+                    removed at the developers&apos; request. Your own maps are untouched: make a new
+                    one, or upload a .json you already have.
+                </div>
+            )}
 
             <div className={mobile ? 'start-body mobile' : 'start-body'}>
                 <nav className="scopes">
@@ -401,7 +418,7 @@ export default function StartScreen({
                                                         ? <img src={m.thumb} alt="" loading="lazy" />
                                                         : <span className="card-blank">{m.name.slice(0, 2)}</span>}
                                                 </span>
-                                                <span className="card-name">{m.title ?? m.name}</span>
+                                                <span className="card-name">{m.name}</span>
                                                 <span className="card-when">
                                                     {scope === 'groups' && !team && (
                                                         <span className="card-group">
@@ -516,14 +533,7 @@ export default function StartScreen({
                     <button
                         className="start-footer-close"
                         title="Hide this"
-                        onClick={() => {
-                            setDisclaimer(false);
-                            try {
-                                localStorage.setItem(DISCLAIMER_KEY, '1');
-                            } catch {
-                                // Closing it for this visit is still worth doing.
-                            }
-                        }}
+                        onClick={() => { setDisclaimer(false); markClosed(DISCLAIMER_KEY); }}
                     >
                         ×
                     </button>

@@ -128,7 +128,7 @@ it('exempts nothing from CSRF', function () {
 
 it('returns stats as JSON', function () {
     $this->getJson('/api/stats')->assertOk()
-        ->assertJsonStructure(['maps', 'sessions', 'parts', 'examples', 'last_save']);
+        ->assertJsonStructure(['maps', 'sessions', 'parts', 'last_save']);
 });
 
 it('rejects a bad map name', function () {

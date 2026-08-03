@@ -34,23 +34,7 @@ class MapController extends Controller
 
     private const MAX_GROUPS = 2_000;
 
-    /** The example files are named by the world id the game uses; these are shown instead. */
-    private const EXAMPLE_TITLES = [
-        '1' => 'Demo',
-        '3' => 'Snowy Peak',
-        '4' => 'The Crossbridges',
-        '5' => 'Oasis',
-        '6' => 'Pirate Ship Island',
-        '7' => 'Vortex HQ',
-        '8' => 'Vortexia',
-        '9' => 'Familiar Pizzeria',
-        '10' => 'Anixus Pond',
-        '11' => 'Banlands',
-        '13' => 'Classic House',
-        '14' => 'Backrooms',
-    ];
-
-    /** Keys the editor writes / the example maps use; anything else is rejected. */
+    /** Keys the editor writes; anything else is rejected. */
     private const PART_KEYS = ['_id', 'T', 'P', 'S', 'R', 'C', 'Tr', 'Shape', 'Sh', 'ItemId'];
 
     /**
@@ -97,19 +81,6 @@ class MapController extends Controller
         }
 
         return "/api/thumbs/{$row->thumb_key}.webp";
-    }
-
-    public function exampleThumb(string $name)
-    {
-        $name = $this->validName($name);
-        $path = "thumbs/examples/$name.webp";
-        $disk = self::thumbDisk();
-        abort_unless($disk->exists($path), 404);
-
-        return response($disk->get($path), 200, [
-            'Content-Type' => 'image/webp',
-            'Cache-Control' => 'public, max-age=86400',
-        ]);
     }
 
     public function thumb(string $key)
@@ -223,37 +194,6 @@ class MapController extends Controller
         return $name;
     }
 
-    private function examplesDir(): string
-    {
-        return resource_path('maps');
-    }
-
-    public const EXAMPLES_KEY = 'studio_examples';
-
-    private static function examples(): array
-    {
-        $disk = self::thumbDisk();
-        $remote = self::thumbsAreRemote();
-
-        return Cached::remember(self::EXAMPLES_KEY.($remote ? ':remote' : ':local'), 600, function () use ($disk, $remote) {
-            return collect(glob(resource_path('maps').DIRECTORY_SEPARATOR.'*.json'))
-                ->map(function ($f) use ($disk, $remote) {
-                    $name = basename($f, '.json');
-                    $path = "thumbs/examples/$name.webp";
-
-                    return [
-                        'name' => $name,
-                        'title' => self::EXAMPLE_TITLES[$name] ?? $name,
-                        'thumb' => $disk->exists($path)
-                            ? ($remote ? $disk->url($path) : "/api/thumbs/examples/$name.webp")
-                            : null,
-                    ];
-                })
-                ->values()
-                ->all();
-        });
-    }
-
     public function stats()
     {
         return response()->json(Cached::remember('studio_stats', 60, function () {
@@ -268,7 +208,6 @@ class MapController extends Controller
                 'sessions' => (int) $agg->sessions,
                 'accounts' => DB::table('users')->count(),
                 'parts' => (int) $agg->parts,
-                'examples' => count(glob($this->examplesDir().DIRECTORY_SEPARATOR.'*.json')),
                 'last_save' => $last ? strtotime($last) : null,
             ];
         }));
@@ -289,7 +228,6 @@ class MapController extends Controller
 
         return response()->json([
             'mine' => $mine,
-            'examples' => self::examples(),
             'teams' => $this->myTeams(),
             'ttl_hours' => self::TTL_HOURS,
             'account' => AccountController::current(),
@@ -316,14 +254,9 @@ class MapController extends Controller
         $name = $this->validName($name);
 
         $row = MapAccess::find($request, $name, $this->teamId($request), true);
-        if ($row) {
-            return $this->document($row->data, $row->groups, (int) $row->version);
-        }
+        abort_unless($row, 404);
 
-        $file = $this->examplesDir().DIRECTORY_SEPARATOR.$name.'.json';
-        abort_unless(is_file($file), 404);
-
-        return $this->document(file_get_contents($file), null, 0);
+        return $this->document($row->data, $row->groups, (int) $row->version);
     }
 
     public function move(Request $request, string $name)
@@ -770,7 +703,7 @@ class MapController extends Controller
             if (! is_array($p) || array_diff_key($p, array_flip(self::PART_KEYS))) {
                 return false;
             }
-            // Optional, so example maps and older clients still validate. When present
+            // Optional, so older clients still validate. When present
             // it must be unique: groups reference parts by it, and a duplicate would
             // point one group entry at two parts.
             if (array_key_exists('_id', $p)) {

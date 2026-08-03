@@ -19,7 +19,6 @@ const STAT_LABELS = [
     ['maps', 'Saved maps'],
     ['sessions', 'Active sessions'],
     ['parts', 'Parts across saved maps'],
-    ['examples', 'Example maps'],
 ];
 
 // One menu title plus its dropdown. `open` is owned by MenuBar so that hovering
