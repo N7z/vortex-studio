@@ -16,9 +16,10 @@ const TUNE = [
     { id: 'size', label: 'Size', min: 0.2, max: 3, step: 0.05 },
     { id: 'up', label: 'Up', min: -3, max: 3, step: 0.05 },
     { id: 'forward', label: 'Forward', min: -2, max: 2, step: 0.05 },
+    { id: 'rotation', label: 'Rotation', min: -180, max: 180, step: 1 },
 ];
 
-const NO_TUNE = { size: 1, up: 0, forward: 0 };
+const NO_TUNE = { size: 1, up: 0, forward: 0, rotation: 0 };
 
 function Slot({ slot, name, onPick, onClear, children }) {
     const inputRef = useRef(null);

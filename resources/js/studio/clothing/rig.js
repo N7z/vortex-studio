@@ -145,7 +145,7 @@ export async function loadRig() {
             dropHat();
             if (!model || !anchor) return;
 
-            const { size: mul = 1, up = 0, forward = 0 } = tune;
+            const { size: mul = 1, up = 0, forward = 0, rotation = 0 } = tune;
 
             model.removeFromParent();
             model.position.set(0, 0, 0);
@@ -160,6 +160,7 @@ export async function loadRig() {
             const holder = new THREE.Group();
             holder.add(model);
             holder.scale.setScalar(scale);
+            holder.rotation.y = (rotation * Math.PI) / 180;
             holder.position.set(anchor.at.x, anchor.at.y + up, anchor.at.z - forward);
             holder.applyMatrix4(anchor.toBone);
             holder.traverse((o) => {
