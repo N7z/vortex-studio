@@ -129,7 +129,11 @@ export async function loadRig() {
 
     const dropHat = () => {
         if (!hat) return;
-        hat.parent?.remove(hat);
+        // The model itself is reused across tweaks, so it leaves with the holder.
+        // Left behind it would still carry the holder's world matrix and every
+        // later measurement would be scaled by the one before it.
+        for (const child of [...hat.children]) child.removeFromParent();
+        hat.removeFromParent();
         hat = null;
     };
 
@@ -143,7 +147,9 @@ export async function loadRig() {
 
             const { size: mul = 1, up = 0, forward = 0 } = tune;
 
+            model.removeFromParent();
             model.position.set(0, 0, 0);
+            model.updateMatrixWorld(true);
             const own = new THREE.Box3().setFromObject(model);
             const size = own.getSize(new THREE.Vector3());
             const scale = (anchor.wide / (Math.max(size.x, size.z) || 1)) * mul;
