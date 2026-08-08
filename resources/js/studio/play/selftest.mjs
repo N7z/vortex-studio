@@ -229,6 +229,59 @@ for (let i = 0; i < 240; i++) {
 }
 check('a bump does not ground the player', groundedAtBump ? 1 : 0, 0, 0);
 
+// --- obby blocks ---
+// Small parts standing beside the player are the case the ceiling resolve used to
+// read as a roof and slam the player down out of. Nothing here may move anyone down
+// faster than gravity does.
+
+const fell = (state, frames, input, w) => {
+    let worst = 0;
+    for (let i = 0; i < frames; i++) {
+        const before = state.y;
+        move.step(state, typeof input === 'function' ? input(i) : input, 1 / 240, w);
+        worst = Math.min(worst, state.y - before);
+    }
+    return worst;
+};
+// One frame of free fall from rest is nowhere near this; anything past it is a teleport.
+const GRAVITY_STEP = -0.5;
+
+// A block to the side, overlapping the body box but not underfoot.
+const beside = buildWorld([{ T: 'Part', P: [2.5, 14, 0], S: [4, 4, 4], R: [0, 0, 0] }]);
+s = move.spawn(0, 10, 0);
+const drop = fell(s, 3, idle, beside);
+check('a block beside the player does not shove them down', drop > GRAVITY_STEP ? 1 : 0, 1, 0);
+
+// Hopping from a low block onto a taller one right against it.
+const stepUp = buildWorld([
+    { T: 'Part', P: [0, 10, 0], S: [4, 2, 4], R: [0, 0, 0] },
+    { T: 'Part', P: [4, 13, 0], S: [4, 4, 4], R: [0, 0, 0] },
+]);
+const strafe = { forward: 0, strafe: 1, jump: false, yaw: 0 };
+s = move.spawn(0, 11, 0);
+for (let i = 0; i < 120; i++) move.step(s, idle, 1 / 240, stepUp);
+let worstHop = 0;
+worstHop = Math.min(worstHop, fell(s, 90, (i) => ({ ...strafe, jump: i === 0 }), stepUp));
+worstHop = Math.min(worstHop, fell(s, 300, idle, stepUp));
+check('a hop onto a taller neighbour lands on it', move.feetY(s), 15, 0.02);
+check('nothing in that hop teleports downward', worstHop > GRAVITY_STEP ? 1 : 0, 1, 0);
+
+// Standing on a small block with a taller one alongside must stay put.
+s = move.spawn(0, 11, 0);
+const rest = fell(s, 480, idle, stepUp);
+check('resting beside a taller block holds', move.feetY(s), 11, 0.02);
+check('resting beside one never lurches', rest > GRAVITY_STEP ? 1 : 0, 1, 0);
+
+// The ceiling must still be a ceiling when it really is overhead.
+s = move.spawn(0, 0, 0);
+run(s, 240, idle);
+let hitHead = false;
+for (let i = 0; i < 240; i++) {
+    move.step(s, { ...idle, jump: i === 0 }, 1 / 240, lowRoof);
+    hitHead = hitHead || s.bumped;
+}
+check('a part actually overhead still stops the head', hitHead ? 1 : 0, 1, 0);
+
 // --- the residual channel ---
 // Grounded, the client clears the residual every frame, so these run in the air.
 

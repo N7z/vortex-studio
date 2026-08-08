@@ -196,39 +196,42 @@ export function buildWorld(parts) {
         return fromY + Math.max(tEnter, 0);
     }
 
-    // The lowest underside strictly above the feet and no higher than the head, or
-    // null. This is the head half of the client's resolve; the caller decides
-    // whether the ceiling or the floor is the shallower way out.
-    function ceilingAt(x, z, feet, head, half) {
-        const x0 = x - half; const x1 = x + half;
-        const z0 = z - half; const z1 = z + half;
+    // The lowest underside the head is under, or null.
+    //
+    // A point query over (x, z), deliberately the same shape as groundAt: you stand
+    // on a part whose top is under your centre, so you should only bump your head on
+    // one whose underside is over it. Testing a box the width of the body instead
+    // catches parts standing *beside* you — which is what small obby blocks are — and
+    // slams you down out of them.
+    //
+    // Which way a part pushes is decided per part, the way the client decides it: out
+    // through whichever face is nearer. A block whose top you are about to land on has
+    // its top nearer, so it is ground, not a ceiling.
+    function ceilingAt(x, z, feet, head) {
         let best = null;
 
         const scan = (list) => {
             for (let j = 0; j < list.length; j++) {
                 const i = list[j];
                 if (minY[i] >= head || maxY[i] <= feet) continue;
-                if (maxX[i] <= x0 || minX[i] >= x1) continue;
-                if (maxZ[i] <= z0 || minZ[i] >= z1) continue;
+                if (x < minX[i] || x > maxX[i] || z < minZ[i] || z > maxZ[i]) continue;
                 let under = minY[i];
+                let over = maxY[i];
                 if (rotated[i]) {
                     const t = rayBottom(i, x, z, feet);
                     if (t === null) continue;
                     under = t;
+                    if (!rayTop(i, x, z, head)) continue;
+                    over = hit.y;
                 }
                 if (under <= feet || under > head) continue;
+                if (head - under >= over - feet) continue;
                 if (best === null || under < best) best = under;
             }
         };
 
-        const gx0 = Math.floor(x0 / CELL); const gx1 = Math.floor(x1 / CELL);
-        const gz0 = Math.floor(z0 / CELL); const gz1 = Math.floor(z1 / CELL);
-        for (let gx = gx0; gx <= gx1; gx++) {
-            for (let gz = gz0; gz <= gz1; gz++) {
-                const bucket = cells.get(key(gx, gz));
-                if (bucket) scan(bucket);
-            }
-        }
+        const bucket = cells.get(key(Math.floor(x / CELL), Math.floor(z / CELL)));
+        if (bucket) scan(bucket);
         if (always.length) scan(always);
         return best;
     }

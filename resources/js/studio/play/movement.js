@@ -184,15 +184,11 @@ function resolveBody(s, target, steep, world) {
         return;
     }
 
+    // ceilingAt has already dropped anything the head is not the shallower way out
+    // of, so whatever comes back is a ceiling and nothing else.
     if (!world?.ceilingAt) return;
-    const hit = world.ceilingAt(s.x, s.z, feetY(s), headY(s), HALF_WIDTH);
+    const hit = world.ceilingAt(s.x, s.z, feetY(s), headY(s));
     if (hit === null) return;
-
-    // Push down only when the head is the shallower way out; otherwise the ground
-    // pass above owns it and this would fight it.
-    const up = target !== null ? target - s.y : Infinity;
-    const down = headY(s) - hit;
-    if (down >= up) return;
 
     s.y = hit - HEAD_OFFSET;
     if (s.vy > 0) {
