@@ -216,12 +216,12 @@ export function createSession({ scene, camera, canvas, parts, onExit, onDeath, o
                 // camera keeps looking at it while the screen fades.
                 if (deadFor >= DEATH_HOLD) respawn();
             } else {
-                move.step(state, {
+                move.step(state, view, {
                     forward: clamp1(axis(FORWARD_KEYS, BACK_KEYS) + touch.forward),
                     strafe: clamp1(axis(RIGHT_KEYS, LEFT_KEYS) + touch.strafe),
                     jump: keys.has('Space') || touch.jump,
                     yaw: view.yaw,
-                    // arrow: axis(["ArrowLeft"], ["ArrowRight"]),
+                    arrow: axis(["ArrowLeft"], ["ArrowRight"]),
                     shift_lock
                 }, dt, world);
 
