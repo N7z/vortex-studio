@@ -85,13 +85,11 @@ export function step(s, input, rawDt, world) {
     const inputSq = dx * dx + dz * dz;
     if (inputSq >= INPUT_EPSILON) {
         const target = Math.atan2(dx, dz);
-        s.heading = s.moving
-            ? approachAngle(s.heading, target, 1 - Math.exp(-dt / TURN_EASE))
-            : target;
-        wishX = Math.sin(s.heading) * WALK_SPEED;
-        wishZ = Math.cos(s.heading) * WALK_SPEED;
+        s.heading = approachAngle(s.heading, target, 1 - Math.exp(-dt / TURN_EASE));
+        wishX = dx * WALK_SPEED;
+        wishZ = dz * WALK_SPEED;
         s.moving = true;
-        s.yaw = Math.atan2(-wishX, -wishZ);
+        s.yaw = Math.atan2(-Math.sin(s.heading), -Math.cos(s.heading));
     } else {
         s.moving = false;
     }
