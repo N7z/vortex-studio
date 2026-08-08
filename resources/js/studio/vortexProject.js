@@ -72,12 +72,19 @@ function partToProject(part, group) {
     };
 }
 
-export function toProject(parts, groups = []) {
+export function newProjectId() {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+
+    return [...bytes].map((n) => n.toString(16).padStart(2, '0')).join('');
+}
+
+export function toProject(parts, groups = [], projectId = newProjectId()) {
     const owner = new Map();
     for (const g of groups) for (const id of g.ids) owner.set(id, g.id);
 
     return {
-        project_id: null,
+        project_id: projectId,
         parts: parts.map((p) => partToProject(p, owner.get(p._id) ?? null)),
         lights: [],
         groups: groups.map((g) => ({ id: g.id, name: g.name })),
