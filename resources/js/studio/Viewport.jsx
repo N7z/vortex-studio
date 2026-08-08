@@ -369,6 +369,8 @@ export default function Viewport({
 
         const batches = new Map();
         const bumped = new Set();
+        // Meshes the play test's rigid bodies have moved off their authored transform.
+        const playMoved = new Set();
 
         const dropBatch = (inst) => {
             scene.remove(inst);
@@ -1533,6 +1535,21 @@ export default function Viewport({
             },
             snapMove: 0,
             session: null,
+            // Where the rigid bodies push their transforms. Nothing is written back to
+            // the document: the play test is a test, so leavePlay puts every part back
+            // where the author left it.
+            movePlayParts: (moved) => {
+                const c = ctx.current;
+                if (!c) return;
+                for (const { id, p, q } of moved) {
+                    const mesh = c.meshes.get(id);
+                    if (!mesh) continue;
+                    mesh.position.set(p.x, p.y, p.z);
+                    mesh.quaternion.set(q.x, q.y, q.z, q.w);
+                    playMoved.add(mesh);
+                    bumpBatch(mesh);
+                }
+            },
             enterPlay: () => {
                 gizmo.detach();
                 for (const rig of lightRigs.values()) rig.handle.visible = false;
@@ -1546,6 +1563,15 @@ export default function Viewport({
                 reshadow();
             },
             leavePlay: () => {
+                // Put anything the physics moved back on its authored transform.
+                for (const mesh of playMoved) {
+                    const part = mesh.userData.part;
+                    if (!part) continue;
+                    mesh.position.set(part.P[0], part.P[1], part.P[2]);
+                    mesh.rotation.set(part.R[0] * DEG, part.R[1] * DEG, part.R[2] * DEG);
+                    bumpBatch(mesh);
+                }
+                playMoved.clear();
                 for (const rig of lightRigs.values()) rig.handle.visible = !!ctx.current?.showLights;
                 grid.visible = true;
                 keys.clear();
@@ -1716,6 +1742,7 @@ export default function Viewport({
                 parts: partsRef.current,
                 onExit: onExitPlay,
                 onDeath: onPlayDeath,
+                onMoveParts: (moved) => ctx.current?.movePlayParts(moved),
             });
             ctx.current.session = session;
             if (touchRef) touchRef.current = session.touch;

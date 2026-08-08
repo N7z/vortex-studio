@@ -14,12 +14,18 @@ function eulerMatrix(rx, ry, rz) {
     ];
 }
 
-export function buildWorld(parts) {
+/**
+ * `skipLoose` leaves unanchored parts out, because those are handed to the rigid body
+ * world instead and come back through combineWorlds at wherever they have moved to.
+ * Off by default so a caller with no physics still collides with the whole map.
+ */
+export function buildWorld(parts, skipLoose = false) {
     const solid = [];
     for (const p of parts) {
         if (!Array.isArray(p.P) || !Array.isArray(p.S)) continue;
         // Absent means true, the way every other optional part key works.
         if (p.Cc === false) continue;
+        if (skipLoose && p.An === false) continue;
         const [px, py, pz] = p.P;
         const [sx, sy, sz] = p.S;
         if (!(sx > 0 && sy > 0 && sz > 0)) continue;
@@ -329,6 +335,48 @@ export function buildWorld(parts) {
     }
 
     return { groundAt, ceilingAt, rayHit, blocked, count: n, cells: cells.size };
+}
+
+/**
+ * The anchored map plus whatever the rigid bodies are doing this frame, as one world
+ * the character controller cannot tell apart. The loose set is small and rebuilt only
+ * while something is awake, so the second query is cheap and usually skipped.
+ */
+export function combineWorlds(fixed, loose) {
+    if (!loose) return fixed;
+    const spare = { y: 0, nx: 0, ny: 1, nz: 0 };
+
+    return {
+        groundAt(x, z, headY, feet, out) {
+            const a = fixed.groundAt(x, z, headY, feet, out);
+            if (!loose.groundAt(x, z, headY, feet, spare)) return a;
+            // The higher of the two is the one being stood on.
+            if (a && out.y >= spare.y) return true;
+            out.y = spare.y;
+            out.nx = spare.nx;
+            out.ny = spare.ny;
+            out.nz = spare.nz;
+            return true;
+        },
+        ceilingAt(x, z, feet, head) {
+            const a = fixed.ceilingAt(x, z, feet, head);
+            const b = loose.ceilingAt(x, z, feet, head);
+            if (a === null) return b;
+            if (b === null) return a;
+            return Math.min(a, b);
+        },
+        blocked: (x, z, low, high, half) => fixed.blocked(x, z, low, high, half)
+            || loose.blocked(x, z, low, high, half),
+        rayHit(from, dir, limit) {
+            const a = fixed.rayHit(from, dir, limit);
+            const b = loose.rayHit(from, dir, limit);
+            if (a === null) return b;
+            if (b === null) return a;
+            return Math.min(a, b);
+        },
+        count: fixed.count + loose.count,
+        cells: fixed.cells,
+    };
 }
 
 const SEARCH = 1e6;

@@ -1,8 +1,9 @@
-import { buildWorld, spawnPoint } from './collision';
+import { buildWorld, combineWorlds, spawnPoint } from './collision';
 import { createCharacter, placeCharacter } from './character';
 import { createCamera } from './camera';
 import { createAudio, createBodyAudio } from './audio';
 import { createPeers } from './peers';
+import { createRigid, isLoose } from './rigid';
 import * as move from './movement';
 
 const FORWARD_KEYS = ['KeyW', 'ArrowUp'];
@@ -13,9 +14,12 @@ const LEFT_KEYS = ['KeyA'];
 // How long the player lies dead before being put back at a spawn.
 const DEATH_HOLD = 1.1;
 
-export function createSession({ scene, camera, canvas, parts, onExit, onDeath }) {
-    let world = buildWorld(parts);
+export function createSession({ scene, camera, canvas, parts, onExit, onDeath, onMoveParts }) {
+    let fixed = buildWorld(parts, true);
+    let world = fixed;
     let partsNow = parts;
+    let rigid = null;
+    const movedParts = [];
     const audio = createAudio(camera, scene);
     const peers = createPeers(scene, audio);
     const body = createBodyAudio(audio, scene);
@@ -133,6 +137,18 @@ export function createSession({ scene, camera, canvas, parts, onExit, onDeath })
         scene.add(c.object);
     });
 
+    // Rapier is WebAssembly, so it lands a moment after the map does. Until then the
+    // loose parts are simply missing from the world rather than the map being unplayable.
+    if (parts.some(isLoose)) {
+        createRigid(parts).then((r) => {
+            if (disposed) {
+                r.dispose();
+                return;
+            }
+            rigid = r;
+        }).catch(() => { /* the map is still playable without loose parts */ });
+    }
+
     const axis = (plus, minus) => {
         let v = 0;
         for (const k of plus) if (keys.has(k)) v += 1;
@@ -155,10 +171,40 @@ export function createSession({ scene, camera, canvas, parts, onExit, onDeath })
         setPeers: (states, who) => peers.set(states, who),
         setParts(next) {
             partsNow = next;
-            world = buildWorld(next);
+            fixed = buildWorld(next, true);
+            world = fixed;
+            // An edit lands while the play test is running, so the bodies are rebuilt
+            // from the edited document and whatever they had fallen into is lost. That
+            // is the same thing the desktop Studio does with a live edit.
+            const had = rigid;
+            rigid = null;
+            had?.dispose();
+            if (!next.some(isLoose)) return;
+            createRigid(next).then((r) => {
+                if (disposed) {
+                    r.dispose();
+                    return;
+                }
+                rigid = r;
+            }).catch(() => { /* the map is still playable without loose parts */ });
         },
         update(dt) {
             elapsed += dt;
+
+            // The bodies move first, so the controller reads the surface a part is at
+            // this frame rather than where it was last one, and the overlay is only
+            // rebuilt while something is actually awake.
+            if (rigid) {
+                rigid.setPlayer(state);
+                // Once everything has settled Rapier sleeps it, and the overlay stops
+                // being rebuilt: a map whose loose parts have come to rest costs the
+                // same as one with none. `world === fixed` covers the first step, when
+                // the loose set has not been folded in yet.
+                if (rigid.step(dt) && (rigid.awake || world === fixed)) {
+                    world = combineWorlds(fixed, buildWorld(rigid.parts));
+                    onMoveParts?.(rigid.moved(movedParts));
+                }
+            }
 
             if (state.dead) {
                 deadFor += dt;
@@ -193,6 +239,8 @@ export function createSession({ scene, camera, canvas, parts, onExit, onDeath })
         },
         dispose() {
             disposed = true;
+            rigid?.dispose();
+            rigid = null;
             peers.dispose();
             body.dispose();
             audio.dispose();
