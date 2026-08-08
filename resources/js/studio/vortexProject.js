@@ -81,13 +81,13 @@ export function newProjectId() {
 
 export function toProject(parts, groups = [], projectId = newProjectId()) {
     const owner = new Map();
-    for (const g of groups) for (const id of g.ids) owner.set(id, g.id);
+    groups.forEach((g, at) => g.ids.forEach((id) => owner.set(id, at)));
 
     return {
         project_id: projectId,
         parts: parts.map((p) => partToProject(p, owner.get(p._id) ?? null)),
         lights: [],
-        groups: groups.map((g) => ({ id: g.id, name: g.name })),
+        groups: groups.map((g) => ({ name: g.name, parent_group: null })),
     };
 }
 
@@ -138,22 +138,18 @@ export function fromProject(doc, limit = Infinity) {
             capped = true;
             break;
         }
-        const id = raw.group ?? raw.parent_group ?? null;
-        if (typeof id === 'string' && id) {
-            if (!slotsByGroup.has(id)) slotsByGroup.set(id, []);
-            slotsByGroup.get(id).push(parts.length);
+        const at = raw.group;
+        if (Number.isInteger(at) && at >= 0) {
+            if (!slotsByGroup.has(at)) slotsByGroup.set(at, []);
+            slotsByGroup.get(at).push(parts.length);
         }
         parts.push(partFromProject(raw));
     }
 
-    const named = new Map();
-    if (Array.isArray(doc.groups)) {
-        for (const g of doc.groups) {
-            if (g && typeof g.id === 'string' && typeof g.name === 'string') named.set(g.id, g.name);
-        }
-    }
+    const listed = Array.isArray(doc.groups) ? doc.groups : [];
     const groups = [...slotsByGroup.entries()]
-        .map(([id, slots]) => ({ name: named.get(id) ?? 'Group', slots }))
+        .sort((a, b) => a[0] - b[0])
+        .map(([at, slots]) => ({ name: listed[at]?.name ?? `Group ${at + 1}`, slots }))
         .filter((g) => g.slots.length);
 
     return {
