@@ -35,6 +35,7 @@ export function createSession({ scene, camera, canvas, parts, onExit, onDeath, o
     let disposed = false;
     let elapsed = 0;
     let deadFor = 0;
+    let shift_lock = false;
 
     const savedCamera = {
         position: camera.position.clone(),
@@ -56,6 +57,9 @@ export function createSession({ scene, camera, canvas, parts, onExit, onDeath, o
             return;
         }
         if (e.code === 'Space') e.preventDefault();
+        if (e.code.includes('Shift')) {
+            shift_lock = !shift_lock;
+        }
         wake();
         keys.add(e.code);
     };
@@ -217,6 +221,8 @@ export function createSession({ scene, camera, canvas, parts, onExit, onDeath, o
                     strafe: clamp1(axis(RIGHT_KEYS, LEFT_KEYS) + touch.strafe),
                     jump: keys.has('Space') || touch.jump,
                     yaw: view.yaw,
+                    // arrow: axis(["ArrowLeft"], ["ArrowRight"]),
+                    shift_lock
                 }, dt, world);
 
                 if (state.fell) {

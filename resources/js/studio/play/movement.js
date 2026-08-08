@@ -93,6 +93,15 @@ export function step(s, input, rawDt, world) {
     } else {
         s.moving = false;
     }
+    console.log(input)
+    if (input.shift_lock) {
+        s.yaw = input.yaw;
+    }
+/*    if (input.arrow == -1) {
+        s.yaw -= 1.5 * dt;
+    } else if (input.arrow == 1) {
+        s.yaw += 1.5 * dt;
+    }*/
 
     let velX = s.residualX + wishX;
     let velZ = s.residualZ + wishZ;
