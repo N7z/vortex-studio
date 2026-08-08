@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { loadStats } from './api';
 import useFullscreen, { canFullscreen } from './useFullscreen';
 import { MODES, PRESETS, SCALES, SHADOW_RES, presetName } from './graphics';
+import { THEMES, setTheme, useTheme } from './theme';
 
 const SEP = { sep: true };
 
@@ -78,6 +79,7 @@ export default function MenuBar({
     onHide, onShowAll, onLock, onUnlockAll, hiddenCount = 0, lockedCount = 0,
 }) {
     const [openMenu, setOpenMenu] = useState(null);
+    const theme = useTheme();
     const robloxRef = useRef(null);
     const [pop, setPop] = useState(null); // null | 'gfx' | 'stats' | 'help'
     const [stats, setStats] = useState(null);
@@ -142,6 +144,12 @@ export default function MenuBar({
             { label: 'Team panel', checked: !!teamOpen, onClick: onToggleTeam, disabled: !hasMap },
             { label: 'Chat', checked: !!chatOpen, onClick: onToggleChat, disabled: !canChat },
             { label: 'Statistics', checked: !!statsOpen, onClick: onToggleStats },
+            SEP,
+            ...THEMES.map(([id, label]) => ({
+                label: `${label} theme`,
+                checked: theme === id,
+                onClick: () => setTheme(id),
+            })),
         ]],
         ['Render', MODES.map(([value, label]) => ({
             label,

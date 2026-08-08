@@ -1,0 +1,547 @@
+/* ---------- Classic ----------
+   Windows XP, Luna blue. Two halves: the tokens below repaint every rule the
+   editor already had, and the rules after them put back what a flat dark
+   interface has no use for — bevels, gradients, title bars and square corners.
+   Everything hangs off html[data-theme="classic"]: the html carries no weight
+   of its own but adds enough specificity that a theme rule beats the base rule
+   it answers, so nothing in here needs !important. */
+
+html[data-theme='classic'] {
+    /* The Luna control face, and the client-area white it sits against. */
+    --bg: #ece9d8;
+    --chrome: #ece9d8;
+    --panel: #ece9d8;
+    --float: #ece9d8;
+    --raised: #fff;
+    --sunken: #aca899;
+    --deep: #fff;
+    --deep-2: #fff;
+    --stage: #fff;
+    --slot: #f5f4ec;
+    --pop: #fff;
+    --pop-hover: #316ac5;
+
+    --hover: #dceafb;
+    --hover-soft: #e8f0fb;
+    --sel-soft: #d3e5fa;
+
+    --field: #fff;
+    --field-alt: #fff;
+
+    --chip: #e3e1d3;
+    --chip-2: #dcd9c8;
+    --chip-3: #d7d3c3;
+
+    --line: #aca899;
+    --line-hard: #808080;
+    --line-soft: #d6d2c2;
+    --line-deep: #c8c4b4;
+    --line-mid: #7f9db9;
+    --line-strong: #808080;
+    --line-faint: #c0bcac;
+
+    /* Black on tan. XP had no text tiers to speak of, so the ladder is short
+       and everything that used to be readable stays readable. */
+    --ink-white: #fff;
+    --ink-max: #000;
+    --ink-hi: #000;
+    --ink-bright: #000;
+    --ink-mid: #000;
+    --ink: #000;
+    --ink-2: #1a1a1a;
+    --ink-body: #000;
+    --ink-quiet: #303030;
+    --ink-label: #333;
+    --muted: #4a4a48;
+    --muted-2: #333;
+    --dim: #5a5a56;
+    --faint: #6e6e68;
+    --faint-2: #7b7b74;
+    --disabled: #aca899;
+    --disabled-2: #b8b4a6;
+
+    --accent: #316ac5;
+    --accent-hover: #4a84dc;
+    --accent-press: #24559e;
+    --accent-ink: #fff;
+    --sel-bg: #316ac5;
+    --sel-bg-2: #316ac5;
+    --tag-bg: #d3e5fa;
+
+    --link: #0b4fbf;
+    --link-hi: #1f66d8;
+    --go: #316ac5;
+    --go-hover: #4a84dc;
+    --go-dim: #6d87ac;
+
+    --danger: #b40000;
+    --danger-2: #c02020;
+    --danger-soft: #8b0000;
+    --danger-mute: #a03030;
+    --danger-hot: #d40000;
+    --danger-btn: #c04040;
+    --danger-btn-hover: #d05050;
+    --danger-line: #b09090;
+    --danger-bg: #f5dcdc;
+    --danger-bg-2: #fdeeee;
+    --ok: #147014;
+    --ok-2: #1a7a1a;
+    --ok-bg: #dff0df;
+    --warn: #9a6500;
+    --warn-2: #a06000;
+    --warn-3: #8a5a00;
+    --warn-line: #d8c8a0;
+
+    --code: #7a3e00;
+    --viewer: #6a4a78;
+    --viewer-bg: #ece6f0;
+
+    --font: Tahoma, 'MS Sans Serif', Verdana, sans-serif;
+    --font-size: 12px;
+    --font-mono: 'Lucida Console', Consolas, monospace;
+    --radius: 0;
+    --radius-sm: 0;
+
+    /* Chrome the tokens above cannot express on their own. */
+    --xp-title: linear-gradient(180deg, #0f6ce8 0%, #0a5ad8 8%, #3a92f5 42%, #1c6ee0 58%, #0b4fc8 92%, #2a7ae8 100%);
+    --xp-face: linear-gradient(180deg, #fff 0%, #f4f2e6 45%, #ece9d8 60%, #ded9c4 100%);
+    --xp-band: linear-gradient(180deg, #f6f4ea 0%, #ece9d8 50%, #ded9c6 100%);
+    --xp-frame: #0831d9;
+    --xp-btn-line: #003c74;
+    --xp-hot: #f6b000;
+}
+
+/* Square everything first; the few things that have to stay round say so
+   below. XP drew rectangles almost everywhere, and the base sheet spends
+   border-radius on nearly every box. */
+html[data-theme='classic'] * { border-radius: 0; }
+html[data-theme='classic'] .team-member .dot,
+html[data-theme='classic'] .chat-badge,
+html[data-theme='classic'] .touch-play .stick,
+html[data-theme='classic'] .touch-play .knob,
+html[data-theme='classic'] .touch-play .jump { border-radius: 50%; }
+
+/* A pressed key should show where it is, the way it did in 2001. */
+html[data-theme='classic'] button:focus-visible,
+html[data-theme='classic'] .scope:focus-visible,
+html[data-theme='classic'] .tool-btn:focus-visible {
+    outline: 1px dotted #000;
+    outline-offset: -3px;
+}
+
+/* ---------- the raised/sunken vocabulary ---------- */
+
+/* One bevel, used everywhere something is meant to look clickable. */
+html[data-theme='classic'] .btn,
+html[data-theme='classic'] .team-primary,
+html[data-theme='classic'] .team-foot-btn,
+html[data-theme='classic'] .account-go,
+html[data-theme='classic'] .arch-stamp,
+html[data-theme='classic'] .update-primary,
+html[data-theme='classic'] .update-later,
+html[data-theme='classic'] .chat-send button,
+html[data-theme='classic'] .arch-image > button,
+html[data-theme='classic'] .panel.arrange button,
+html[data-theme='classic'] .scope-pick,
+html[data-theme='classic'] .card-dots,
+html[data-theme='classic'] .map-move,
+html[data-theme='classic'] .card-move,
+html[data-theme='classic'] .card-x {
+    border: 1px solid var(--xp-btn-line);
+    border-radius: 3px;
+    background: var(--xp-face);
+    color: #000;
+    text-shadow: none;
+}
+html[data-theme='classic'] .btn:hover:not(:disabled),
+html[data-theme='classic'] .team-primary:hover:not(:disabled),
+html[data-theme='classic'] .team-foot-btn:hover,
+html[data-theme='classic'] .account-go:hover:not(:disabled),
+html[data-theme='classic'] .arch-stamp:hover:not(:disabled),
+html[data-theme='classic'] .update-primary:hover:not(:disabled),
+html[data-theme='classic'] .update-later:hover:not(:disabled),
+html[data-theme='classic'] .chat-send button:hover:not(:disabled),
+html[data-theme='classic'] .arch-image > button:hover,
+html[data-theme='classic'] .panel.arrange button:hover:not(:disabled),
+html[data-theme='classic'] .card-dots:hover,
+html[data-theme='classic'] .map-move:hover,
+html[data-theme='classic'] .card-move:hover,
+html[data-theme='classic'] .card-x:hover {
+    border-color: var(--xp-hot);
+    background: linear-gradient(180deg, #fff 0%, #fdf3d8 45%, #fbe9b4 60%, #f6d98a 100%);
+    color: #000;
+}
+html[data-theme='classic'] .btn:active:not(:disabled),
+html[data-theme='classic'] .team-primary:active,
+html[data-theme='classic'] .account-go:active,
+html[data-theme='classic'] .arch-stamp:active,
+html[data-theme='classic'] .update-primary:active,
+html[data-theme='classic'] .panel.arrange button:active:not(:disabled) {
+    background: linear-gradient(180deg, #ddd8c4 0%, #e8e4d4 60%, #f2efe4 100%);
+    box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.25);
+}
+html[data-theme='classic'] .btn:disabled,
+html[data-theme='classic'] .team-primary:disabled,
+html[data-theme='classic'] .account-go:disabled,
+html[data-theme='classic'] .arch-stamp:disabled,
+html[data-theme='classic'] .panel.arrange button:disabled {
+    background: #ece9d8;
+    border-color: #aca899;
+    color: #aca899;
+    text-shadow: 1px 1px 0 #fff;
+    opacity: 1;
+}
+/* The default button of a dialog wore a blue halo, and nothing else in XP was
+   ever painted red — a destructive one says so in its label and its text. */
+html[data-theme='classic'] .btn-go {
+    box-shadow: inset 0 0 0 1px #7fb0f0, 0 0 3px rgba(49, 106, 197, 0.7);
+    color: #000;
+    font-weight: 700;
+}
+html[data-theme='classic'] .btn-danger { color: #8b0000; }
+
+/* Fields are sunken and white, always. */
+html[data-theme='classic'] input[type='text'],
+html[data-theme='classic'] input[type='number'],
+html[data-theme='classic'] input[type='password'],
+html[data-theme='classic'] input[type='email'],
+html[data-theme='classic'] input:not([type]),
+html[data-theme='classic'] textarea,
+html[data-theme='classic'] select,
+html[data-theme='classic'] .num {
+    border: 1px solid #7f9db9;
+    background: #fff;
+    color: #000;
+}
+html[data-theme='classic'] input:focus,
+html[data-theme='classic'] textarea:focus,
+html[data-theme='classic'] select:focus { border-color: #316ac5; }
+html[data-theme='classic'] ::placeholder { color: #8a8a84; }
+
+/* XP checkboxes stayed white when ticked; only the tick appeared. */
+html[data-theme='classic'] .snap-row input[type='checkbox'],
+html[data-theme='classic'] .arch-check input[type='checkbox'] {
+    background: #fff;
+    border: 1px solid #7f9db9;
+}
+html[data-theme='classic'] .snap-row input[type='checkbox']:checked,
+html[data-theme='classic'] .arch-check input[type='checkbox']:checked {
+    background: #fff;
+    border-color: #7f9db9;
+}
+html[data-theme='classic'] .snap-row input[type='checkbox']:checked::after,
+html[data-theme='classic'] .arch-check input[type='checkbox']:checked::after { border-color: #21a121; }
+html[data-theme='classic'] .prop-check input[type='checkbox'] { accent-color: #316ac5; }
+
+/* ---------- toolbar, menubar, tabs ---------- */
+
+html[data-theme='classic'] .toolbar {
+    background: var(--xp-band);
+    border-bottom: 1px solid #aca899;
+    box-shadow: inset 0 -1px 0 #fff;
+}
+html[data-theme='classic'] .toolbar .group { border-right: 1px solid #d0ccbc; box-shadow: 1px 0 0 #fff; }
+html[data-theme='classic'] .group-label { color: #5a5a56; text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.7); }
+
+html[data-theme='classic'] .tool-btn { color: #000; border: 1px solid transparent; border-radius: 3px; }
+html[data-theme='classic'] .tool-btn:hover:not(:disabled) {
+    background: linear-gradient(180deg, #fef8e6, #fbe6ad);
+    border-color: #f6b000;
+}
+html[data-theme='classic'] .tool-btn.active {
+    background: linear-gradient(180deg, #f3d99a, #f8e9c4);
+    border-color: #c69200;
+    color: #000;
+}
+html[data-theme='classic'] .tool-btn:disabled { color: #aca899; text-shadow: 1px 1px 0 #fff; }
+
+html[data-theme='classic'] .menubar {
+    background: var(--xp-band);
+    border-bottom: 1px solid #aca899;
+}
+html[data-theme='classic'] .menu-title { color: #000; border-radius: 0; }
+html[data-theme='classic'] .menu-title:hover { background: #316ac5; color: #fff; }
+html[data-theme='classic'] .menu-title.open { background: #316ac5; color: #fff; }
+
+html[data-theme='classic'] .menu-drop {
+    padding: 2px;
+    background: #fff;
+    border: 1px solid #aca899;
+    box-shadow: 2px 2px 3px rgba(0, 0, 0, 0.3);
+}
+/* The pale column down the left of every XP menu, wide enough to hold the
+   tick. A highlighted row paints over it, exactly as it used to. */
+html[data-theme='classic'] .menu-drop::before {
+    content: '';
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    bottom: 2px;
+    width: 22px;
+    background: linear-gradient(90deg, #ece9d8, #f6f4ea);
+    pointer-events: none;
+}
+html[data-theme='classic'] .menu-item { color: #000; position: relative; padding-left: 5px; }
+html[data-theme='classic'] .menu-item:hover:not(:disabled) { background: #316ac5; color: #fff; }
+html[data-theme='classic'] .menu-item:disabled { color: #aca899; text-shadow: 1px 1px 0 #fff; }
+html[data-theme='classic'] .menu-tick { color: #0b4fbf; font-weight: 700; }
+html[data-theme='classic'] .menu-item:hover .menu-tick { color: #fff; }
+html[data-theme='classic'] .menu-sep { background: #aca899; box-shadow: 0 1px 0 #fff; }
+html[data-theme='classic'] .menu-pop {
+    background: #fff;
+    border: 1px solid #aca899;
+    box-shadow: 2px 2px 3px rgba(0, 0, 0, 0.3);
+}
+html[data-theme='classic'] .menu-pop button:hover { background: #316ac5; color: #fff; }
+html[data-theme='classic'] .menu-pop button.danger:hover { background: #b40000; color: #fff; }
+
+html[data-theme='classic'] .tabbar {
+    background: var(--xp-band);
+    border-bottom: 1px solid #aca899;
+    padding-top: 3px;
+}
+html[data-theme='classic'] .tab {
+    background: linear-gradient(180deg, #fbfaf4, #e4e0cf);
+    border: 1px solid #aca899;
+    border-bottom: none;
+    border-radius: 3px 3px 0 0;
+    color: #000;
+    margin-right: 1px;
+}
+html[data-theme='classic'] .tab:hover { background: linear-gradient(180deg, #fff, #f1eee0); color: #000; }
+html[data-theme='classic'] .tab.active {
+    background: #fff;
+    color: #000;
+    box-shadow: none;
+    border-color: #aca899;
+    font-weight: 700;
+}
+
+/* ---------- panels ---------- */
+
+html[data-theme='classic'] .sidebar { border-left: 1px solid #aca899; background: #ece9d8; }
+html[data-theme='classic'] .panel.explorer, html[data-theme='classic'] .panel.arrange { border-bottom: 2px solid #aca899; }
+
+/* Explorer's task-pane header: pale blue gradient, dark blue title. */
+html[data-theme='classic'] .panel-title {
+    background: linear-gradient(180deg, #f4f7fd 0%, #dbe5f8 50%, #c9d8f3 100%);
+    border-bottom: 1px solid #aeb9d4;
+    color: #0c327d;
+    font-weight: 700;
+    font-size: 13px;
+    text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+html[data-theme='classic'] .panel-body, html[data-theme='classic'] .explorer-search { background: #fff; }
+html[data-theme='classic'] .tree-item { color: #000; }
+html[data-theme='classic'] .tree-item:hover { background: #d3e5fa; }
+html[data-theme='classic'] .tree-item.selected { background: #316ac5; color: #fff; }
+html[data-theme='classic'] .tree-item.selected .count,
+html[data-theme='classic'] .tree-item.selected .flag,
+html[data-theme='classic'] .tree-item.selected .clear { color: #fff; }
+html[data-theme='classic'] .tree-item.is-hidden { color: #8a8a84; }
+html[data-theme='classic'] .props, html[data-theme='classic'] .prop-head { color: #000; }
+html[data-theme='classic'] .prop-head { border-bottom: 1px solid #aca899; box-shadow: 0 1px 0 #fff; }
+
+/* ---------- floating windows ---------- */
+
+/* Every panel that floats over the viewport becomes a little XP window: blue
+   frame, gradient caption, and the caption is still the drag handle. */
+html[data-theme='classic'] .arch-pop,
+html[data-theme='classic'] .team-panel,
+html[data-theme='classic'] .chat-panel,
+html[data-theme='classic'] .stats-panel,
+html[data-theme='classic'] .update-notice,
+html[data-theme='classic'] .help-pop,
+html[data-theme='classic'] .modal {
+    background: #ece9d8;
+    border: 3px solid var(--xp-frame);
+    border-top-width: 0;
+    box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.35);
+    color: #000;
+}
+
+html[data-theme='classic'] .team-head,
+html[data-theme='classic'] .chat-head,
+html[data-theme='classic'] .arch-head,
+html[data-theme='classic'] .modal-head {
+    background: var(--xp-title);
+    border-bottom: none;
+    margin: 0 -1px;
+    padding: 4px 4px 4px 8px;
+    color: #fff;
+}
+html[data-theme='classic'] .arch-head { margin-bottom: 10px; padding: 4px 4px 4px 8px; }
+html[data-theme='classic'] .team-title,
+html[data-theme='classic'] .chat-title,
+html[data-theme='classic'] .arch-head h3,
+html[data-theme='classic'] .modal-head h3 {
+    color: #fff;
+    font-weight: 700;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.55);
+}
+/* Anything else sitting in a caption is on blue too, and has to lighten. */
+html[data-theme='classic'] .arch-ver,
+html[data-theme='classic'] .team-title-name,
+html[data-theme='classic'] .modal-head p { color: #cfe0ff; }
+html[data-theme='classic'] .team-title-name { border-left-color: #7fb0f0; }
+html[data-theme='classic'] .team-chat { color: #fff; }
+html[data-theme='classic'] .team-chat:hover, html[data-theme='classic'] .team-chat.on { color: #fff; background: rgba(255, 255, 255, 0.25); }
+
+/* The close box: red, square, white cross, and it lifts on hover. */
+html[data-theme='classic'] .team-x,
+html[data-theme='classic'] .chat-x,
+html[data-theme='classic'] .arch-close,
+html[data-theme='classic'] .modal-x,
+html[data-theme='classic'] .help-close {
+    width: 19px;
+    height: 18px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #d9e6ff;
+    background: linear-gradient(180deg, #e0674f 0%, #c8402c 45%, #a72c1b 100%);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+}
+html[data-theme='classic'] .team-x:hover,
+html[data-theme='classic'] .chat-x:hover,
+html[data-theme='classic'] .arch-close:hover,
+html[data-theme='classic'] .modal-x:hover,
+html[data-theme='classic'] .help-close:hover {
+    background: linear-gradient(180deg, #f08a72 0%, #e05a42 45%, #c03a26 100%);
+    color: #fff;
+}
+html[data-theme='classic'] .arch-edit { color: #fff; }
+html[data-theme='classic'] .arch-edit:hover { color: #cfe0ff; }
+
+/* The shortcut sheet has no caption of its own, so it gets one drawn for it. */
+html[data-theme='classic'] .help-pop { padding-top: 0; }
+html[data-theme='classic'] .help-close-bar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    height: 24px;
+    margin: 0 -16px 10px;
+    padding: 0 3px;
+    background: var(--xp-title);
+}
+html[data-theme='classic'] .help-close { position: static; right: auto; top: auto; }
+html[data-theme='classic'] .help-pop h3 {
+    background: #ece9d8;
+    color: #0c327d;
+    font-weight: 700;
+    top: 0;
+    margin-top: 0;
+    padding: 0 0 6px;
+}
+html[data-theme='classic'] .help-pop h4 { color: #0c327d; }
+html[data-theme='classic'] .help-pop b, html[data-theme='classic'] .script-help b { color: #000; }
+
+html[data-theme='classic'] .modal-backdrop { background: rgba(0, 0, 0, 0.35); backdrop-filter: none; }
+html[data-theme='classic'] .modal-head { padding: 4px 4px 4px 8px; align-items: center; }
+html[data-theme='classic'] .modal-head h3 { font-size: 13px; }
+html[data-theme='classic'] .modal-foot, html[data-theme='classic'] .modal-body { background: #ece9d8; }
+html[data-theme='classic'] .modal-foot { border-top: 1px solid #aca899; box-shadow: inset 0 1px 0 #fff; }
+html[data-theme='classic'] .busy { background: #ece9d8; border: 3px solid var(--xp-frame); color: #000; }
+
+/* ---------- start screen ---------- */
+
+/* The blue band along the top of every XP wizard and welcome page. */
+html[data-theme='classic'] .start { background: #fff; }
+html[data-theme='classic'] .start-top {
+    background: linear-gradient(180deg, #4a90e2 0%, #2a63c8 55%, #1c4ba8 100%);
+    border-bottom: 2px solid #f8b700;
+    align-items: center;
+}
+html[data-theme='classic'] .start-top h1 {
+    color: #fff;
+    font-weight: 700;
+    text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.45);
+}
+html[data-theme='classic'] .start h2 { color: #0c327d; font-weight: 700; }
+html[data-theme='classic'] .start a { color: #0b4fbf; }
+html[data-theme='classic'] .scope { color: #000; }
+html[data-theme='classic'] .scope:hover { background: #d3e5fa; color: #000; }
+html[data-theme='classic'] .scope.on { background: #316ac5; color: #fff; border-left-color: #0c327d; }
+html[data-theme='classic'] .scope.on .scope-count { color: #dbe7ff; }
+html[data-theme='classic'] .scope-title { color: #0c327d; font-weight: 700; }
+html[data-theme='classic'] .card {
+    background: #fff;
+    border: 1px solid #aca899;
+    box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.06);
+}
+html[data-theme='classic'] .card:hover { background: #eef4fd; border-color: #316ac5; }
+html[data-theme='classic'] .card-name { color: #0c327d; font-weight: 700; }
+html[data-theme='classic'] .card-tag { background: #316ac5; color: #fff; }
+html[data-theme='classic'] .account, html[data-theme='classic'] .start-footer {
+    background: #f4f3ea;
+    border: 1px solid #aca899;
+    color: #000;
+}
+html[data-theme='classic'] .user-face, html[data-theme='classic'] .avatar { background: #316ac5; border: 1px solid #0c327d; }
+html[data-theme='classic'] .start-credit { background: #ece9d8; border-top: 1px solid #aca899; color: #4a4a48; }
+
+/* ---------- status bar, script editor, odds and ends ---------- */
+
+html[data-theme='classic'] .statusbar {
+    background: #ece9d8;
+    border: 1px solid #aca899;
+    box-shadow: inset 1px 1px 0 #fff;
+    color: #000;
+}
+html[data-theme='classic'] .credit { color: rgba(255, 255, 255, 0.85); }
+
+html[data-theme='classic'] .script-tab, html[data-theme='classic'] .script-help { background: #fff; }
+html[data-theme='classic'] .script-bar { background: var(--xp-band); border-bottom: 1px solid #aca899; }
+html[data-theme='classic'] .script-help { border-left: 1px solid #aca899; color: #000; }
+html[data-theme='classic'] .script-help h4 { color: #0c327d; }
+html[data-theme='classic'] .script-help pre { background: #f4f3ea; border: 1px solid #aca899; color: #000; }
+html[data-theme='classic'] .script-help code { background: #f4f3ea; color: #7a3e00; }
+
+html[data-theme='classic'] .drawer-handle, html[data-theme='classic'] .touch-actions {
+    background: #ece9d8;
+    border: 1px solid #aca899;
+    color: #000;
+}
+html[data-theme='classic'] .mobilebar { background: var(--xp-band); border-bottom: 1px solid #aca899; }
+html[data-theme='classic'] .mb-btn { color: #000; }
+html[data-theme='classic'] .mb-btn.active { background: #316ac5; color: #fff; }
+
+html[data-theme='classic'] .role-pill, html[data-theme='classic'] .tag, html[data-theme='classic'] .card-group {
+    border: 1px solid #aca899;
+    color: #000;
+}
+
+/* ---------- scrollbars ---------- */
+
+/* Fat, beveled and tan, with the arrow buttons the base sheet's 5px bars had
+   no room for. */
+html[data-theme='classic'] * {
+    scrollbar-width: auto;
+    scrollbar-color: #ccc8b8 #f1efe2;
+}
+html[data-theme='classic'] ::-webkit-scrollbar { width: 16px; height: 16px; }
+html[data-theme='classic'] ::-webkit-scrollbar-track,
+html[data-theme='classic'] .help-pop::-webkit-scrollbar-track,
+html[data-theme='classic'] .menu-drop::-webkit-scrollbar-track {
+    background: #f1efe2;
+    border-left: 1px solid #dcd9c8;
+}
+html[data-theme='classic'] ::-webkit-scrollbar-thumb,
+html[data-theme='classic'] .help-pop::-webkit-scrollbar-thumb,
+html[data-theme='classic'] .menu-drop::-webkit-scrollbar-thumb {
+    background: linear-gradient(90deg, #fff 0%, #ece9d8 40%, #d8d4c2 100%);
+    border: 1px solid #aca899;
+    border-radius: 0;
+}
+html[data-theme='classic'] ::-webkit-scrollbar-thumb:hover { background: linear-gradient(90deg, #fff 0%, #f4f2e6 40%, #e0dbc9 100%); }
+html[data-theme='classic'] ::-webkit-scrollbar-button {
+    display: block;
+    height: 16px;
+    background: linear-gradient(180deg, #fff 0%, #ece9d8 45%, #d8d4c2 100%);
+    border: 1px solid #aca899;
+}

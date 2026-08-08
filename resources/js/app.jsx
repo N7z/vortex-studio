@@ -1,6 +1,9 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './studio/App';
+import { applyTheme } from './studio/theme';
+
+applyTheme();
 
 const editable = (el) =>
     !!el?.closest?.('input, textarea, [contenteditable=""], [contenteditable="true"]');

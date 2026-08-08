@@ -1,0 +1,114 @@
+/* ---------- theme tokens ----------
+   Every colour the editor draws with lives here. The values below are the dark
+   editor exactly as it always looked, so a rule that says var(--line) renders
+   the same pixel it did when it said #26262e; a theme is then nothing but a
+   second set of values for these names, set on <html data-theme="...">.
+   Names are semantic (what the colour is for), never literal (what it is), so
+   a theme that inverts the interface does not end up with a --dark-grey that
+   is white. */
+
+:root {
+    /* surfaces, from the deepest hole to the highest floating panel */
+    --bg: #0d0d10;
+    --chrome: #0a0a0d;
+    --panel: #0e0e12;
+    --float: #14141a;
+    --raised: #16161c;
+    --sunken: #08080a;
+    --deep: #0b0b0e;
+    --deep-2: #0d0d11;
+    --stage: #101014;
+    --slot: #121218;
+    --pop: #1b1b21;
+    --pop-hover: #25252d;
+
+    /* the states a surface passes through under the pointer */
+    --hover: #1d1d24;
+    --hover-soft: #1a1a21;
+    --sel-soft: #17171e;
+
+    /* text fields: --field is what you type into, --field-alt the numeric ones */
+    --field: #000;
+    --field-alt: #101015;
+
+    /* small tinted blocks: pills, tags, badges */
+    --chip: #1f1f27;
+    --chip-2: #23232c;
+    --chip-3: #2a2a33;
+
+    /* rules and outlines */
+    --line: #26262e;
+    --line-hard: #000;
+    --line-soft: #1c1c22;
+    --line-deep: #22222a;
+    --line-mid: #2c2c35;
+    --line-strong: #3a3a44;
+    --line-faint: #2f2f3a;
+
+    /* text, brightest first */
+    --ink-white: #fff;
+    --ink-max: #f0f0f4;
+    --ink-hi: #e5e5ea;
+    --ink-bright: #eee;
+    --ink-mid: #dcdce2;
+    --ink: #ddd;
+    --ink-2: #c8c8ce;
+    --ink-body: #b9b9c0;
+    --ink-quiet: #aaa;
+    --ink-label: #999;
+    --muted: #8f8f98;
+    --muted-2: #a8a8b2;
+    --dim: #6e6e78;
+    --faint: #5c5c66;
+    --faint-2: #55555e;
+    --disabled: #4a4a52;
+    --disabled-2: #3d3d45;
+
+    /* accent: the blue that means "this one is on" */
+    --accent: #2563eb;
+    --accent-hover: #3373f5;
+    --accent-press: #1d4fd8;
+    --accent-ink: #cfe0ff;
+    --sel-bg: #1e3a5f;
+    --sel-bg-2: #1d2b44;
+    --tag-bg: #1d2740;
+
+    /* links and the calmer blue the start screen uses */
+    --link: #5b8dd6;
+    --link-hi: #7ba7e0;
+    --go: #3a6cb0;
+    --go-hover: #4478c0;
+    --go-dim: #2f5c99;
+
+    /* the three things that need a colour of their own: no, yes, careful */
+    --danger: #e05252;
+    --danger-2: #e06b6b;
+    --danger-soft: #e08a8a;
+    --danger-mute: #c2606a;
+    --danger-hot: #c33;
+    --danger-btn: #a83c3c;
+    --danger-btn-hover: #bd4444;
+    --danger-line: #503030;
+    --danger-bg: #3a2323;
+    --danger-bg-2: #1d1418;
+    --ok: #6fcf72;
+    --ok-2: #6ea86e;
+    --ok-bg: #1d3a24;
+    --warn: #d8a24a;
+    --warn-2: #e0a552;
+    --warn-3: #c9973c;
+    --warn-line: #4a3c1c;
+
+    /* odds and ends that carry meaning on their own */
+    --code: #c9a06a;
+    --viewer: #a88fb0;
+    --viewer-bg: #262029;
+
+    /* type and shape. A theme that wants square corners or a bitmap font
+       changes these instead of every rule that draws a box. */
+    --font: 'Segoe UI', system-ui, sans-serif;
+    --font-size: 13px;
+    --font-mono: Consolas, 'Cascadia Mono', monospace;
+    --radius: 6px;
+    --radius-sm: 3px;
+}

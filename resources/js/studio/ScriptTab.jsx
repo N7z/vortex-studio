@@ -8,6 +8,7 @@ import { keymap } from '@codemirror/view';
 import { Prec } from '@codemirror/state';
 import { TrashIcon, RotateIcon, HelpIcon } from './icons';
 import { ICON_NAMES } from './pluginIcons';
+import { useTheme } from './theme';
 
 export const TEMPLATE = `plugin = {
     name = "My Plugin",
@@ -142,16 +143,20 @@ export default function ScriptTab({ tab, visible, onChange, onSave, onDelete, on
         if (handlers.current.error !== null) setError(null);
     }, []);
 
+    // A dark editor pane inside a Windows XP window would be the one thing that
+    // gives the theme away, so Classic gets CodeMirror's light theme.
+    const cmTheme = useTheme() === 'classic' ? 'light' : oneDark;
+
     const editor = useMemo(() => (
         <CodeMirror
             value={tab.src}
             onChange={change}
             extensions={extensions}
-            theme={oneDark}
+            theme={cmTheme}
             height="100%"
             basicSetup={BASIC_SETUP}
         />
-    ), [tab.src, change, extensions]);
+    ), [tab.src, change, extensions, cmTheme]);
 
     const reset = async () => {
         setBusy(true);
