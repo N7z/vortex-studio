@@ -546,8 +546,72 @@ export default function Viewport({
             pivot.scale.set(1, 1, 1);
         };
 
+        // The scale gizmo grows a part around its own centre, so both faces move at
+        // once. Resizing in a studio pins the face opposite the handle you grabbed and
+        // only your side travels, so we remember that anchor at drag start and slide the
+        // part back by however much the scale pushed it. Left ctrl skips the
+        // compensation, which is the plain grow-both-ways behaviour.
+        const scaleBox = new THREE.Box3();
+        const scaleHalf = new THREE.Vector3();
+        const scaleMid = new THREE.Vector3();
+        const scaleGrab = new THREE.Vector3();
+        const scaleShift = new THREE.Vector3();
+        const scaleQuat = new THREE.Quaternion();
+        let anchored = null;
+
+        const beginScale = (held, group) => {
+            anchored = null;
+            const axis = gizmo.axis;
+            // The uniform handle sits at the centre, so there is no side to pin.
+            if (gizmo.mode !== 'scale' || !axis || axis.includes('XYZ')) return;
+            if (held.scale.x === 0 || held.scale.y === 0 || held.scale.z === 0) return;
+            if (group) {
+                scaleBox.makeEmpty();
+                for (const m of ctx.current.selectedMeshes) scaleBox.expandByObject(m);
+                if (scaleBox.isEmpty()) return;
+                scaleBox.getSize(scaleHalf).multiplyScalar(0.5);
+                scaleBox.getCenter(scaleMid).sub(held.position);
+            } else {
+                const g = held.geometry;
+                if (!g) return;
+                if (!g.boundingBox) g.computeBoundingBox();
+                g.boundingBox.getSize(scaleHalf).multiplyScalar(0.5).multiply(held.scale);
+                g.boundingBox.getCenter(scaleMid).multiply(held.scale);
+            }
+            // Which side of the part the grabbed handle sits on, read in the part's own
+            // axes: pointStart is the grab offset from the part's centre, in world space.
+            held.getWorldQuaternion(scaleQuat);
+            scaleGrab.copy(gizmo.pointStart).applyQuaternion(scaleQuat.invert());
+            const face = (k, comp) => (axis.includes(k)
+                ? scaleMid[comp] - Math.sign(scaleGrab[comp] || 1) * scaleHalf[comp]
+                : 0);
+            anchored = {
+                object: held,
+                scale: held.scale.clone(),
+                position: held.position.clone(),
+                quat: held.quaternion.clone(),
+                anchor: new THREE.Vector3(face('X', 'x'), face('Y', 'y'), face('Z', 'z')),
+            };
+        };
+
+        const holdAnchor = () => {
+            if (!anchored) return;
+            const { object: held, scale, position, anchor, quat } = anchored;
+            if (keys.has('ControlLeft')) {
+                held.position.copy(position);
+                return;
+            }
+            scaleShift.set(
+                (held.scale.x / scale.x - 1) * anchor.x,
+                (held.scale.y / scale.y - 1) * anchor.y,
+                (held.scale.z / scale.z - 1) * anchor.z,
+            ).applyQuaternion(quat);
+            held.position.copy(position).sub(scaleShift);
+        };
+
         orbit.addEventListener('change', invalidate);
         gizmo.addEventListener('change', invalidate);
+        gizmo.addEventListener('objectChange', holdAnchor);
         gizmo.addEventListener('dragging-changed', (e) => {
             orbit.enabled = !e.value;
             const c = ctx.current;
@@ -569,8 +633,10 @@ export default function Viewport({
             const group = held === pivot;
             if (e.value) {
                 if (group) for (const m of c.selectedMeshes) pivot.attach(m);
+                beginScale(held, group);
                 return;
             }
+            anchored = null;
             settleBumped();
             if (group) {
                 const updates = c.selectedMeshes.map((m) => {
