@@ -7,6 +7,7 @@ import MoveMap from './MoveMap';
 import UserMenu from './UserMenu';
 import Clothing from './clothing/Clothing';
 import { fromProject, isProject } from './vortexProject';
+import { setTheme, useTheme } from './theme';
 
 const DISCLAIMER_KEY = 'studio_disclaimer_closed';
 const OFFICIAL_LAUNCH_KEY = 'studio_official_launch_closed';
@@ -57,6 +58,7 @@ export default function StartScreen({
     const [moving, setMoving] = useState(null);
     const [menu, setMenu] = useState(null);
     const fileRef = useRef(null);
+    const theme = useTheme();
     const { dialogs, notice, confirm, ask } = useDialogs();
 
     const refreshTrash = () => listTrash()
@@ -364,6 +366,15 @@ export default function StartScreen({
                 <main className="scope-main">
                     {scope === 'ugc' ? <Clothing /> : (
                     <>
+                            {theme !== 'classic' && (
+                                <button
+                                    type="button"
+                                    className="theme-try"
+                                    onClick={() => setTheme('classic')}
+                                >
+                                    Try our new CLASSIC theme !
+                                </button>
+                            )}
                             <div className="scope-bar">
                                 {canCreate && (
                                     <button type="button" className="btn btn-go" onClick={create}>New map</button>

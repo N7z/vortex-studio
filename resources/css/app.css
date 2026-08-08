@@ -1834,6 +1834,20 @@ a.tool-btn { text-decoration: none; }
 .scope.on .scope-count { color: var(--muted); }
 
 .scope-main { flex: 1; min-width: 0; overflow-y: auto; }
+.theme-try {
+    display: block;
+    margin: 0 0 12px;
+    padding: 0;
+    background: none;
+    border: 0;
+    color: var(--link);
+    font: inherit;
+    font-size: 13px;
+    text-decoration: underline;
+    cursor: pointer;
+}
+.theme-try:hover { color: var(--ink-bright); }
+
 .scope-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; }
 .scope-search {
     margin-left: auto;
