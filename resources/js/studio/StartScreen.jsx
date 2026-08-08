@@ -6,6 +6,7 @@ import History from './History';
 import MoveMap from './MoveMap';
 import UserMenu from './UserMenu';
 import Clothing from './clothing/Clothing';
+import { fromProject, isProject } from './vortexProject';
 
 const DISCLAIMER_KEY = 'studio_disclaimer_closed';
 const EXAMPLES_GONE_KEY = 'studio_examples_removed_closed';
@@ -147,15 +148,19 @@ export default function StartScreen({
         e.target.value = '';
         if (!file) return;
         try {
-            const parts = JSON.parse(await file.text());
-            if (!Array.isArray(parts) || parts.some((p) => typeof p !== 'object' || p === null)) {
-                throw new Error('not a map: expected a JSON array of parts');
+            const doc = JSON.parse(await file.text());
+            let parts = doc;
+            let groups = null;
+            if (isProject(doc)) {
+                ({ parts, groups } = fromProject(doc));
+            } else if (!Array.isArray(parts) || parts.some((p) => typeof p !== 'object' || p === null)) {
+                throw new Error('not a map: expected a Vortex project or a JSON array of parts');
             }
             const name = file.name
                 .replace(/\.json$/i, '')
                 .replace(/[^A-Za-z0-9_-]/g, '-')
                 .slice(0, 64) || 'uploaded';
-            onUpload(name, parts);
+            onUpload(name, parts, groups);
         } catch (err) {
             notice({ title: 'That file could not be read', body: String(err.message ?? err) });
         }

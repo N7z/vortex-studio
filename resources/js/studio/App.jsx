@@ -41,10 +41,11 @@ import { decodeImage, imageMeta } from './image';
 import { MAX_DIM, MAX_RES, buildVoxels, loadModel, voxelCost } from './model';
 import { predict, record } from './estimate';
 import { convertRoblox, importSummary } from './roblox';
+import { fromProject, isProject, toProject } from './vortexProject';
 import useDialogs from '../ui/useDialogs';
 import Busy from '../ui/Busy';
 import {
-    applyGroupOp, groupIndex, newGroupId, pruneGroups, takeLegacyGroups, ungroupIds,
+    applyGroupOp, groupIndex, newGroup, newGroupId, pruneGroups, takeLegacyGroups, ungroupIds,
 } from './groups';
 import * as flagStore from './flags';
 import { buildGrid, nearGrid } from './partgrid';
@@ -878,8 +879,16 @@ export default function App() {
         flash(`Restored ${name}.json from this device`);
     };
 
-    const openUploaded = (name, data) => {
-        resetDocument(name, data, true);
+    const openUploaded = (name, data, incoming = null) => {
+        if (incoming?.length) {
+            const seeded = data.map(withNewId);
+            const groups = incoming
+                .map((g) => newGroup(g.name, g.slots.map((i) => seeded[i]?._id).filter(Boolean)))
+                .filter((g) => g.ids.length);
+            resetDocument(name, seeded, true, groups);
+        } else {
+            resetDocument(name, data, true);
+        }
         flash(`Loaded upload as ${name}.json, Save to keep it`);
     };
 
@@ -891,7 +900,9 @@ export default function App() {
     const importRobloxText = (text, fileName) => {
         let result;
         try {
-            result = convertRoblox(JSON.parse(text), mapCap - (mapName ? partsRef.current.length : 0));
+            const doc = JSON.parse(text);
+            const room = mapCap - (mapName ? partsRef.current.length : 0);
+            result = isProject(doc) ? fromProject(doc, room) : convertRoblox(doc, room);
         } catch (e) {
             flash(`Could not import: ${e.message ?? e}`);
             return;
@@ -908,14 +919,25 @@ export default function App() {
                 return;
             }
             const added = addMany(result.parts);
-            runGroupOp({
-                t: 'group',
-                id: newGroupId(),
-                name: `Roblox import${fileName ? `: ${fileName}` : ''}`,
-                ids: added.map((p) => p._id),
-            });
+            if (result.groups?.length) {
+                for (const g of result.groups) {
+                    const ids = g.slots.map((i) => added[i]?._id).filter(Boolean);
+                    if (ids.length) runGroupOp({ t: 'group', id: newGroupId(), name: g.name, ids });
+                }
+            } else {
+                runGroupOp({
+                    t: 'group',
+                    id: newGroupId(),
+                    name: `Roblox import${fileName ? `: ${fileName}` : ''}`,
+                    ids: added.map((p) => p._id),
+                });
+            }
         } else {
-            resetDocument(mapNameFrom(fileName), result.parts, true);
+            const seeded = result.parts.map(withNewId);
+            const groups = (result.groups ?? [])
+                .map((g) => newGroup(g.name, g.slots.map((i) => seeded[i]?._id).filter(Boolean)))
+                .filter((g) => g.ids.length);
+            resetDocument(mapNameFrom(fileName), seeded, true, groups);
         }
         flash(importSummary(result));
     };
@@ -941,9 +963,8 @@ export default function App() {
 
     const download = () => {
         if (!mapName) return;
-        // `_id` is the editor's own handle, worth about a sixth of the file and not
-        // something the game reads. The engine refuses a map over 10 MB outright.
-        const text = JSON.stringify(stripIds(parts));
+        // The engine refuses a map over 10 MB outright.
+        const text = JSON.stringify(toProject(parts, groups));
         if (text.length > ENGINE_MAX_BYTES) {
             flash(`This map is ${(text.length / 1048576).toFixed(1)} MB, over the 10 MB the game `
                 + 'accepts. Rebuild it with a lower Detail or a higher Merge angle.');
