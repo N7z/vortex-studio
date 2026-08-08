@@ -148,6 +148,7 @@ export default function App() {
     const [drawerTab, setDrawerTab] = useState('explorer');
     const touchRef = useRef(null);
     const [playing, setPlaying] = useState(false);
+    const [died, setDied] = useState(0);
     const [teamOpen, setTeamOpen] = useState(false);
     const [chatOpen, setChatOpen] = useState(false);
     const [statsOpen, setStatsOpen] = useState(false);
@@ -1602,6 +1603,7 @@ export default function App() {
                         playing={playing}
                         onExitPlay={() => setPlaying(false)}
                         onPlayError={(m) => flash(`Could not start the play test: ${m}`)}
+                        onPlayDeath={() => setDied((n) => n + 1)}
                         touchRef={touchRef}
                         flags={flags}
                         groups={groups}
@@ -1611,6 +1613,8 @@ export default function App() {
                     {mobile && playing && (
                         <TouchControls inputRef={touchRef} onExit={() => setPlaying(false)} />
                     )}
+                    {/* Keyed on the count so a second death restarts the animation. */}
+                    {playing && died > 0 && <div className="play-died" key={died} />}
                     {canPlugins && activePlugin && mapName && !mobile && (
                         <PluginPanel
                             plugin={activePlugin}

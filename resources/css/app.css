@@ -1125,6 +1125,27 @@ a.tool-btn { text-decoration: none; }
 .touch-actions button:active { background: var(--sel-bg-2); }
 .touch-actions button svg { width: 19px; height: 19px; }
 
+/* Falling out of the world. The hold matches DEATH_HOLD in play/session.js, so the
+   screen is clearing just as the player is put back at a spawn. */
+.play-died {
+    position: absolute;
+    inset: 0;
+    z-index: 31;
+    pointer-events: none;
+    background: radial-gradient(ellipse at center,
+        rgba(120, 0, 0, 0) 25%, rgba(90, 0, 0, 0.85) 100%);
+    animation: play-died 1.1s ease-out forwards;
+}
+@keyframes play-died {
+    0% { opacity: 0; }
+    18% { opacity: 1; }
+    72% { opacity: 1; }
+    100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .play-died { animation-duration: 1.1s; animation-timing-function: step-end; }
+}
+
 .touch-play { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
 .touch-play .stick {
     position: absolute;

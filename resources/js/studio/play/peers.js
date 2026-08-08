@@ -1,4 +1,5 @@
 import { createCharacter, placeCharacter } from './character';
+import { createBodyAudio } from './audio';
 import { peerLabel } from './label';
 
 const SMOOTH = 18;
@@ -8,12 +9,14 @@ const LABEL_HEIGHT = 3.4;
 
 const shortestAngle = (from, to) => from + Math.atan2(Math.sin(to - from), Math.cos(to - from));
 
-export function createPeers(scene) {
+export function createPeers(scene, audio = null) {
     const peers = new Map();
     let disposed = false;
     let elapsed = 0;
 
     const drop = (peer) => {
+        peer.sound?.dispose();
+        peer.sound = null;
         if (peer.label) {
             scene.remove(peer.label);
             peer.label.material.map?.dispose();
@@ -51,6 +54,7 @@ export function createPeers(scene) {
                     character: null,
                     name: named?.name ?? null,
                     label: null,
+                    sound: audio ? createBodyAudio(audio, scene) : null,
                 };
                 if (named) {
                     added.label = peerLabel(named.name, named.color);
@@ -79,6 +83,9 @@ export function createPeers(scene) {
             for (const peer of peers.values()) {
                 const { shown, target } = peer;
                 const before = shown.y;
+                const beforeX = shown.x;
+                const beforeZ = shown.z;
+                const wasGrounded = shown.grounded;
                 shown.x += (target.x - shown.x) * k;
                 shown.y += (target.y - shown.y) * k;
                 shown.z += (target.z - shown.z) * k;
@@ -87,10 +94,16 @@ export function createPeers(scene) {
                 shown.moving = target.moving;
                 shown.grounded = target.grounded;
                 shown.dead = target.dead;
+                // The wire carries a pose, not events, so the ones the sound wants are
+                // read back off the pose the same way the eye would read them.
+                shown.speed = dt > 0 ? Math.hypot(shown.x - beforeX, shown.z - beforeZ) / dt : 0;
+                shown.jumped = wasGrounded && !shown.grounded && shown.vy > 0;
+                shown.landed = !wasGrounded && shown.grounded;
                 if (peer.label) {
                     peer.label.position.set(shown.x, shown.y + LABEL_HEIGHT, shown.z);
                     peer.label.visible = !shown.dead;
                 }
+                if (!shown.dead) peer.sound?.step(dt, shown);
                 if (!peer.character) continue;
                 placeCharacter(peer.character, shown);
                 peer.character.update(dt, shown, elapsed);

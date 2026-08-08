@@ -18,6 +18,8 @@ export function buildWorld(parts) {
     const solid = [];
     for (const p of parts) {
         if (!Array.isArray(p.P) || !Array.isArray(p.S)) continue;
+        // Absent means true, the way every other optional part key works.
+        if (p.Cc === false) continue;
         const [px, py, pz] = p.P;
         const [sx, sy, sz] = p.S;
         if (!(sx > 0 && sy > 0 && sz > 0)) continue;
@@ -159,6 +161,123 @@ export function buildWorld(parts) {
         return found;
     }
 
+    // Where the local -Y face of a rotated box sits over (x, z): the same slab walk
+    // as rayTop, cast upward instead, taking the face the ray enters through.
+    function rayBottom(i, x, z, fromY) {
+        const o = i * 9;
+        const dx = x - cx[i];
+        const dz = z - cz[i];
+        const dy = fromY - cy[i];
+        const lx = rot[o] * dx + rot[o + 3] * dy + rot[o + 6] * dz;
+        const ly = rot[o + 1] * dx + rot[o + 4] * dy + rot[o + 7] * dz;
+        const lz = rot[o + 2] * dx + rot[o + 5] * dy + rot[o + 8] * dz;
+        const ddx = rot[o + 3];
+        const ddy = rot[o + 4];
+        const ddz = rot[o + 5];
+
+        let tEnter = -Infinity;
+        let tExit = Infinity;
+        let axis = -1;
+
+        const slab = (p, d, h, a) => {
+            if (Math.abs(d) < 1e-9) return p >= -h && p <= h;
+            let t1 = (-h - p) / d;
+            let t2 = (h - p) / d;
+            if (t1 > t2) { const t = t1; t1 = t2; t2 = t; }
+            if (t1 > tEnter) { tEnter = t1; axis = a; }
+            if (t2 < tExit) tExit = t2;
+            return tEnter <= tExit;
+        };
+        if (!slab(lx, ddx, hx[i], 0)) return null;
+        if (!slab(ly, ddy, hy[i], 1)) return null;
+        if (!slab(lz, ddz, hz[i], 2)) return null;
+        if (tExit < 0 || axis < 0) return null;
+
+        return fromY + Math.max(tEnter, 0);
+    }
+
+    // The lowest underside strictly above the feet and no higher than the head, or
+    // null. This is the head half of the client's resolve; the caller decides
+    // whether the ceiling or the floor is the shallower way out.
+    function ceilingAt(x, z, feet, head, half) {
+        const x0 = x - half; const x1 = x + half;
+        const z0 = z - half; const z1 = z + half;
+        let best = null;
+
+        const scan = (list) => {
+            for (let j = 0; j < list.length; j++) {
+                const i = list[j];
+                if (minY[i] >= head || maxY[i] <= feet) continue;
+                if (maxX[i] <= x0 || minX[i] >= x1) continue;
+                if (maxZ[i] <= z0 || minZ[i] >= z1) continue;
+                let under = minY[i];
+                if (rotated[i]) {
+                    const t = rayBottom(i, x, z, feet);
+                    if (t === null) continue;
+                    under = t;
+                }
+                if (under <= feet || under > head) continue;
+                if (best === null || under < best) best = under;
+            }
+        };
+
+        const gx0 = Math.floor(x0 / CELL); const gx1 = Math.floor(x1 / CELL);
+        const gz0 = Math.floor(z0 / CELL); const gz1 = Math.floor(z1 / CELL);
+        for (let gx = gx0; gx <= gx1; gx++) {
+            for (let gz = gz0; gz <= gz1; gz++) {
+                const bucket = cells.get(key(gx, gz));
+                if (bucket) scan(bucket);
+            }
+        }
+        if (always.length) scan(always);
+        return best;
+    }
+
+    // Distance along `dir` from `from` to the nearest part within `limit`, or null.
+    // Only the camera uses this, so it walks the grid coarsely: the cells the segment's
+    // own bounding box covers, which over 24 studs is a handful of buckets.
+    function rayHit(from, dir, limit) {
+        const x0 = Math.min(from.x, from.x + dir.x * limit);
+        const x1 = Math.max(from.x, from.x + dir.x * limit);
+        const z0 = Math.min(from.z, from.z + dir.z * limit);
+        const z1 = Math.max(from.z, from.z + dir.z * limit);
+        let best = null;
+
+        const slab = (p, d, lo, hi, tEnter, tExit) => {
+            if (Math.abs(d) < 1e-9) return p >= lo && p <= hi ? [tEnter, tExit] : null;
+            let t1 = (lo - p) / d;
+            let t2 = (hi - p) / d;
+            if (t1 > t2) { const t = t1; t1 = t2; t2 = t; }
+            const a = Math.max(tEnter, t1);
+            const b = Math.min(tExit, t2);
+            return a <= b ? [a, b] : null;
+        };
+
+        const scan = (list) => {
+            for (let j = 0; j < list.length; j++) {
+                const i = list[j];
+                let span = slab(from.x, dir.x, minX[i], maxX[i], 0, limit);
+                if (!span) continue;
+                span = slab(from.y, dir.y, minY[i], maxY[i], span[0], span[1]);
+                if (!span) continue;
+                span = slab(from.z, dir.z, minZ[i], maxZ[i], span[0], span[1]);
+                if (!span) continue;
+                if (best === null || span[0] < best) best = span[0];
+            }
+        };
+
+        const gx0 = Math.floor(x0 / CELL); const gx1 = Math.floor(x1 / CELL);
+        const gz0 = Math.floor(z0 / CELL); const gz1 = Math.floor(z1 / CELL);
+        for (let gx = gx0; gx <= gx1; gx++) {
+            for (let gz = gz0; gz <= gz1; gz++) {
+                const bucket = cells.get(key(gx, gz));
+                if (bucket) scan(bucket);
+            }
+        }
+        if (always.length) scan(always);
+        return best;
+    }
+
     function insideBox(i, x, y, z, pad) {
         if (!rotated[i]) {
             return x > minX[i] - pad && x < maxX[i] + pad
@@ -206,14 +325,16 @@ export function buildWorld(parts) {
         return always.length ? scan(always) : false;
     }
 
-    return { groundAt, blocked, count: n, cells: cells.size };
+    return { groundAt, ceilingAt, rayHit, blocked, count: n, cells: cells.size };
 }
 
 const SEARCH = 1e6;
 
-export function spawnPoint(parts, world) {
-    const spawn = parts.find((p) => p.T === 'SpawnLocation' && Array.isArray(p.P));
-    if (spawn) {
+// `pick` is injectable so the self test can spawn deterministically.
+export function spawnPoint(parts, world, pick = (n) => Math.floor(Math.random() * n)) {
+    const spawns = parts.filter((p) => p.T === 'SpawnLocation' && Array.isArray(p.P));
+    if (spawns.length) {
+        const spawn = spawns[Math.min(Math.max(pick(spawns.length), 0), spawns.length - 1)];
         return [spawn.P[0], spawn.P[1] + (spawn.S?.[1] ?? 1) / 2, spawn.P[2]];
     }
     if (!world) return [0, 0, 0];

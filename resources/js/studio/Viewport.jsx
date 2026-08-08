@@ -102,7 +102,8 @@ export default function Viewport({
     parts, selectedIds, setSelectedId, selectMany, tool, snap, onTransform, onTransformMany,
     mapName, graphics, preview, spawnRef, busyRef, canEdit = true, peers, onView,
     faces, showFaces = false, statsRef, onBuild, brush = null, onBrush = null, tintRef,
-    playing = false, onExitPlay, onPlayError, touchRef, playRef, onPlayState, members = [], thumbRef,
+    playing = false, onExitPlay, onPlayError, onPlayDeath, touchRef, playRef, onPlayState,
+    members = [], thumbRef,
     flags = EMPTY, groups = NO_GROUPS, lights = NO_LIGHTS, onLightTransform,
 }) {
     const mountRef = useRef(null);
@@ -1714,6 +1715,7 @@ export default function Viewport({
                 canvas: c.renderer.domElement,
                 parts: partsRef.current,
                 onExit: onExitPlay,
+                onDeath: onPlayDeath,
             });
             ctx.current.session = session;
             if (touchRef) touchRef.current = session.touch;

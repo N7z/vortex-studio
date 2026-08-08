@@ -7,7 +7,7 @@ const CLIPS = ['idle', 'walk', 'jump', 'fall'];
 
 // Stepping off a lip leaves the ground for a frame or two. With GRAVITY at -196.2 this
 // is about a one stud drop, below which the walk keeps playing instead of the fall.
-const FALL_SPEED = 20;
+export const FALL_SPEED = 20;
 
 const falling = (state) => !state.grounded && state.vy < -FALL_SPEED;
 const airborne = (state) => !state.grounded && (state.vy > 0 || falling(state));

@@ -1,37 +1,36 @@
-import * as THREE from 'three';
 import { buildWorld, spawnPoint } from './collision';
 import { createCharacter, placeCharacter } from './character';
+import { createCamera } from './camera';
+import { createAudio, createBodyAudio } from './audio';
 import { createPeers } from './peers';
 import * as move from './movement';
-
-const CAM_DISTANCE = 24;
-const CAM_HEIGHT = 4;
-const LOOK_SPEED = 0.0025;
-const PITCH_MIN = -1.2;
-const PITCH_MAX = 1.0;
-const ZOOM_MIN = 6;
-const ZOOM_MAX = 80;
 
 const FORWARD_KEYS = ['KeyW', 'ArrowUp'];
 const BACK_KEYS = ['KeyS', 'ArrowDown'];
 const RIGHT_KEYS = ['KeyD'];
 const LEFT_KEYS = ['KeyA'];
 
-export function createSession({ scene, camera, canvas, parts, onExit }) {
+// How long the player lies dead before being put back at a spawn.
+const DEATH_HOLD = 1.1;
+
+export function createSession({ scene, camera, canvas, parts, onExit, onDeath }) {
     let world = buildWorld(parts);
-    const peers = createPeers(scene);
+    let partsNow = parts;
+    const audio = createAudio(camera, scene);
+    const peers = createPeers(scene, audio);
+    const body = createBodyAudio(audio, scene);
+
+    const view = createCamera(camera);
     const [sx, sy, sz] = spawnPoint(parts, world);
     const state = move.spawn(sx, sy, sz);
-    const start = { x: sx, y: sy, z: sz };
+    state.dead = false;
 
     const keys = new Set();
     const touch = { forward: 0, strafe: 0, jump: false };
-    let yaw = 0;
-    let pitch = 0.22;
-    let distance = CAM_DISTANCE;
     let character = null;
     let disposed = false;
     let elapsed = 0;
+    let deadFor = 0;
 
     const savedCamera = {
         position: camera.position.clone(),
@@ -39,62 +38,89 @@ export function createSession({ scene, camera, canvas, parts, onExit }) {
         fov: camera.fov,
     };
 
+    // Audio cannot start until the page has seen a gesture, so every entry point that
+    // counts as one nudges it.
+    const wake = () => audio.resume();
+
     const onKeyDown = (e) => {
         if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable) return;
         if (e.code === 'Escape') {
+            // Escape is the browser's own way out of pointer lock; leaving the play
+            // test as well would make one key do two things at once.
+            if (document.pointerLockElement === canvas) return;
             onExit?.();
             return;
         }
         if (e.code === 'Space') e.preventDefault();
+        wake();
         keys.add(e.code);
     };
     const onKeyUp = (e) => keys.delete(e.code);
     const onBlur = () => keys.clear();
 
-    let looking = null;
+    // Free look while the pointer is locked, and a hold-to-look fallback for when it
+    // is refused or the user has left it.
+    let dragging = null;
     let lastX = 0;
     let lastY = 0;
+    const locked = () => document.pointerLockElement === canvas;
 
     const onPointerDown = (e) => {
-        if (looking !== null) return;
+        wake();
+        if (locked()) return;
+        if (e.pointerType === 'mouse' && e.button === 0) {
+            // Rejected when the browser is still cooling down from the last exit;
+            // the hold-to-look fallback covers that until the next click.
+            try { canvas.requestPointerLock?.()?.catch?.(() => {}); } catch { /* unsupported */ }
+            return;
+        }
+        if (dragging !== null) return;
         if (e.pointerType === 'mouse' && e.button !== 2) return;
         e.preventDefault();
-        looking = e.pointerId;
+        dragging = e.pointerId;
         lastX = e.clientX;
         lastY = e.clientY;
         try { canvas.setPointerCapture(e.pointerId); } catch { /* capture is best effort */ }
         canvas.style.cursor = 'grabbing';
     };
     const onPointerMove = (e) => {
-        if (looking === null || e.pointerId !== looking) return;
-        if (e.pointerType === 'mouse' && (e.buttons & 2) === 0) {
-            stopLooking(e);
+        if (locked()) {
+            view.look(e.movementX ?? 0, e.movementY ?? 0);
             return;
         }
-        yaw -= (e.clientX - lastX) * LOOK_SPEED;
-        pitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, pitch + (e.clientY - lastY) * LOOK_SPEED));
+        if (dragging === null || e.pointerId !== dragging) return;
+        if (e.pointerType === 'mouse' && (e.buttons & 2) === 0) {
+            stopDragging(e);
+            return;
+        }
+        view.look(e.clientX - lastX, e.clientY - lastY);
         lastX = e.clientX;
         lastY = e.clientY;
     };
-    function stopLooking(e) {
-        if (looking === null || e.pointerId !== looking) return;
-        looking = null;
+    function stopDragging(e) {
+        if (dragging === null || e.pointerId !== dragging) return;
+        dragging = null;
         try { canvas.releasePointerCapture(e.pointerId); } catch { /* already released */ }
         canvas.style.cursor = '';
     }
     const onContextMenu = (e) => e.preventDefault();
     const onWheel = (e) => {
         e.preventDefault();
-        distance = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, distance + Math.sign(e.deltaY) * 3));
+        view.zoom(Math.sign(e.deltaY));
+    };
+    const onLockChange = () => {
+        canvas.style.cursor = locked() ? 'none' : '';
+        if (!locked()) keys.clear();
     };
 
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener('blur', onBlur);
+    document.addEventListener('pointerlockchange', onLockChange);
     canvas.addEventListener('pointerdown', onPointerDown);
     canvas.addEventListener('pointermove', onPointerMove);
-    canvas.addEventListener('pointerup', stopLooking);
-    canvas.addEventListener('pointercancel', stopLooking);
+    canvas.addEventListener('pointerup', stopDragging);
+    canvas.addEventListener('pointercancel', stopDragging);
     canvas.addEventListener('contextmenu', onContextMenu);
     canvas.addEventListener('wheel', onWheel, { passive: false });
 
@@ -113,58 +139,72 @@ export function createSession({ scene, camera, canvas, parts, onExit }) {
         for (const k of minus) if (keys.has(k)) v -= 1;
         return Math.max(-1, Math.min(1, v));
     };
-
-    const eye = new THREE.Vector3();
-    const focus = new THREE.Vector3();
-
     const clamp1 = (v) => Math.max(-1, Math.min(1, v));
+
+    const respawn = () => {
+        const [rx, ry, rz] = spawnPoint(partsNow, world);
+        Object.assign(state, move.spawn(rx, ry, rz, state.yaw));
+        state.dead = false;
+        deadFor = 0;
+        view.reset(state.yaw);
+    };
 
     return {
         state,
         touch,
         setPeers: (states, who) => peers.set(states, who),
         setParts(next) {
+            partsNow = next;
             world = buildWorld(next);
         },
         update(dt) {
             elapsed += dt;
-            move.step(state, {
-                forward: clamp1(axis(FORWARD_KEYS, BACK_KEYS) + touch.forward),
-                strafe: clamp1(axis(RIGHT_KEYS, LEFT_KEYS) + touch.strafe),
-                jump: keys.has('Space') || touch.jump,
-                yaw,
-            }, dt, world);
 
-            if (state.fell) {
-                Object.assign(state, move.spawn(start.x, start.y, start.z, state.yaw));
+            if (state.dead) {
+                deadFor += dt;
+                // The body is held where it fell out rather than stepped further; the
+                // camera keeps looking at it while the screen fades.
+                if (deadFor >= DEATH_HOLD) respawn();
+            } else {
+                move.step(state, {
+                    forward: clamp1(axis(FORWARD_KEYS, BACK_KEYS) + touch.forward),
+                    strafe: clamp1(axis(RIGHT_KEYS, LEFT_KEYS) + touch.strafe),
+                    jump: keys.has('Space') || touch.jump,
+                    yaw: view.yaw,
+                }, dt, world);
+
+                if (state.fell) {
+                    state.dead = true;
+                    deadFor = 0;
+                    onDeath?.();
+                }
             }
 
-            focus.set(state.x, state.y + CAM_HEIGHT - move.FEET_OFFSET, state.z);
-            const cp = Math.cos(pitch);
-            eye.set(
-                focus.x + Math.sin(yaw) * cp * distance,
-                focus.y + Math.sin(pitch) * distance,
-                focus.z + Math.cos(yaw) * cp * distance,
-            );
-            camera.position.copy(eye);
-            camera.lookAt(focus);
+            body.step(dt, state);
+            view.update(dt, state, world);
 
             if (character) {
                 placeCharacter(character, state);
                 character.update(dt, state, elapsed);
+                // In first person the head would fill the screen.
+                character.object.visible = !view.firstPerson && !state.dead;
             }
             peers.step(dt);
         },
         dispose() {
             disposed = true;
             peers.dispose();
+            body.dispose();
+            audio.dispose();
+            if (locked()) document.exitPointerLock?.();
             window.removeEventListener('keydown', onKeyDown);
             window.removeEventListener('keyup', onKeyUp);
             window.removeEventListener('blur', onBlur);
+            document.removeEventListener('pointerlockchange', onLockChange);
             canvas.removeEventListener('pointerdown', onPointerDown);
             canvas.removeEventListener('pointermove', onPointerMove);
-            canvas.removeEventListener('pointerup', stopLooking);
-            canvas.removeEventListener('pointercancel', stopLooking);
+            canvas.removeEventListener('pointerup', stopDragging);
+            canvas.removeEventListener('pointercancel', stopDragging);
             canvas.removeEventListener('contextmenu', onContextMenu);
             canvas.removeEventListener('wheel', onWheel);
             canvas.style.cursor = '';

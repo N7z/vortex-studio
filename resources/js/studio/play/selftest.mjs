@@ -153,6 +153,146 @@ const sp = spawnPoint(spawnParts, buildWorld(spawnParts));
 check('spawn x', sp[0], 7, 0);
 check('spawn top', sp[1], 30.5, 0);
 
+const manySpawns = [
+    ...floor,
+    { T: 'SpawnLocation', P: [0, 1, 0], S: [6, 1, 6], R: [0, 0, 0] },
+    { T: 'SpawnLocation', P: [40, 1, 0], S: [6, 1, 6], R: [0, 0, 0] },
+    { T: 'SpawnLocation', P: [80, 1, 0], S: [6, 1, 6], R: [0, 0, 0] },
+];
+const spawnWorld = buildWorld(manySpawns);
+check('spawn picks the one it is told to', spawnPoint(manySpawns, spawnWorld, () => 2)[0], 80, 0);
+const landedOn = new Set();
+for (let i = 0; i < 200; i++) landedOn.add(spawnPoint(manySpawns, spawnWorld)[0]);
+check('random spawn reaches every point', landedOn.size, 3, 0);
+
+// --- CanCollide ---
+
+const ghostParts = [...floor, { T: 'Part', P: [0, 10, -10], S: [40, 20, 4], R: [0, 0, 0], Cc: false }];
+const ghostWorld = buildWorld(ghostParts);
+s = move.spawn(0, 0, 0);
+run(s, 240, idle);
+run(s, 480, fwd);
+check('a CanCollide=false wall does not block', s.z < -20 ? 1 : 0, 1, 0);
+check('a CanCollide=false part is not ground', ghostWorld.groundAt(0, -10, 40, 10, probe) ? 1 : 0, 0, 0);
+
+// --- ceilings ---
+
+// A standing player occupies feet..feet+5, so a ceiling has to clear that to be a
+// ceiling at all; an unobstructed jump takes the head to 11.37.
+const roofAt = (y, thickness = 1) => buildWorld([
+    ...floor,
+    { T: 'Part', P: [0, y, 0], S: [20, thickness, 20], R: [0, 0, 0] },
+]);
+
+const lowRoof = roofAt(8);
+s = move.spawn(0, 0, 0);
+run(s, 240, idle);
+let bumped = false;
+let peakHead = -Infinity;
+for (let i = 0; i < 240; i++) {
+    move.step(s, { ...idle, jump: i === 0 }, 1 / 240, lowRoof);
+    bumped = bumped || s.bumped;
+    peakHead = Math.max(peakHead, move.headY(s));
+}
+check('the head stops at the ceiling', peakHead, 7.5, 0.05);
+check('the bump is reported', bumped ? 1 : 0, 1, 0);
+check('the player falls back to the floor', move.feetY(s), 0, 0.02);
+
+// Without the ceiling the same jump goes well past it.
+s = move.spawn(0, 0, 0);
+run(s, 240, idle);
+let freeHead = -Infinity;
+for (let i = 0; i < 240; i++) {
+    move.step(s, { ...idle, jump: i === 0 }, 1 / 240, world);
+    freeHead = Math.max(freeHead, move.headY(s));
+}
+check('the same jump is unobstructed without one', freeHead > 11 ? 1 : 0, 1, 0);
+
+// The jump must not end with the player standing on the roof.
+s = move.spawn(0, 0, 0);
+run(s, 240, idle);
+for (let i = 0; i < 480; i++) move.step(s, { ...idle, jump: i === 0 }, 1 / 240, lowRoof);
+check('a jump does not pop through a platform', move.feetY(s), 0, 0.05);
+
+// Standing on top of one is still standing on top of one.
+s = move.spawn(0, 8.5, 0);
+for (let i = 0; i < 480; i++) move.step(s, idle, 1 / 240, lowRoof);
+check('the top of a platform still holds', move.feetY(s), 8.5, 0.02);
+
+// A ceiling never grounds the player.
+s = move.spawn(0, 0, 0);
+run(s, 240, idle);
+let groundedAtBump = false;
+for (let i = 0; i < 240; i++) {
+    move.step(s, { ...idle, jump: i === 0 }, 1 / 240, lowRoof);
+    if (s.bumped) groundedAtBump = groundedAtBump || s.grounded;
+}
+check('a bump does not ground the player', groundedAtBump ? 1 : 0, 0, 0);
+
+// --- the residual channel ---
+// Grounded, the client clears the residual every frame, so these run in the air.
+
+const airborne = (set) => {
+    const p = move.spawn(0, 400, 0);
+    move.step(p, idle, 1 / 240, world);
+    set(p);
+    move.step(p, idle, 1 / 60, world);
+    return p;
+};
+
+check('residual decays by 1 - 2.5dt', airborne((p) => { p.residualX = 40; }).residualX,
+    40 * (1 - 2.5 / 60), 0.01);
+check('residual under 0.3 snaps to zero', airborne((p) => { p.residualX = 0.2; }).residualX, 0, 0);
+check('with a speed override it steps by 142',
+    airborne((p) => { p.residualX = 300; p.speedOverride = 1; }).residualX, 300 - 142 / 60, 0.01);
+
+// residual + wish is capped once, so a tailwind cannot be walked into overspeed
+s = move.spawn(0, 400, 0);
+s.residualX = 12;
+move.step(s, { forward: 1, strafe: 0, jump: false, yaw: 0 }, 1 / 240, world);
+check('walking with a residual stays under the cap', s.speed, 16, 0.001);
+
+// but a big residual with an override raises the cap to its own magnitude
+s = move.spawn(0, 400, 0);
+s.residualX = 60;
+s.speedOverride = 1;
+move.step(s, idle, 1 / 240, world);
+check('an override lets the residual keep its speed', s.speed, 60, 0.01);
+
+// --- landing ---
+
+s = move.spawn(0, 20, 0);
+let landed = false;
+for (let i = 0; i < 480; i++) {
+    move.step(s, idle, 1 / 240, world);
+    landed = landed || s.landed;
+}
+check('landing is reported once the fall ends', landed ? 1 : 0, 1, 0);
+
+s = move.spawn(0, 20, 0);
+s.residualX = 30;
+for (let i = 0; i < 480; i++) move.step(s, idle, 1 / 240, world);
+check('landing clears the residual', s.residualX, 0, 0);
+
+// --- what the camera raycast sees ---
+
+const wallWorld2 = buildWorld([
+    ...floor,
+    { T: 'Part', P: [0, 10, -20], S: [60, 20, 4], R: [0, 0, 0] },
+]);
+const from = { x: 0, y: 5, z: 0 };
+check('the ray finds the wall behind the player',
+    wallWorld2.rayHit(from, { x: 0, y: 0, z: -1 }, 40), 18, 0.01);
+check('the ray stops at its limit',
+    wallWorld2.rayHit(from, { x: 0, y: 0, z: -1 }, 10) === null ? 1 : 0, 1, 0);
+check('nothing behind means nothing to pull in to',
+    wallWorld2.rayHit(from, { x: 0, y: 0, z: 1 }, 40) === null ? 1 : 0, 1, 0);
+check('the floor is in the way when looking down',
+    wallWorld2.rayHit(from, { x: 0, y: -1, z: 0 }, 40), 5, 0.01);
+check('a CanCollide=false part is invisible to the camera too',
+    buildWorld([{ T: 'Part', P: [0, 10, -20], S: [60, 20, 4], R: [0, 0, 0], Cc: false }])
+        .rayHit(from, { x: 0, y: 0, z: -1 }, 40) === null ? 1 : 0, 1, 0);
+
 const big = [];
 for (let i = 0; i < 20000; i++) {
     big.push({ T: 'Part', P: [(i % 141) * 8 - 560, (i % 7) * 4, Math.floor(i / 141) * 8 - 560], S: [8, 2, 8], R: [0, 0, 0] });
