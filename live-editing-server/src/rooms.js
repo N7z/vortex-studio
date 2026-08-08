@@ -3,6 +3,7 @@ import { uniqueName } from './identity.js';
 import { MEMBER_COLORS, randomCode, randomId, randomName } from './names.js';
 import { applyGroupOp, validateGroupOp } from './groupops.js';
 import { applyOp, validateOp } from './ops.js';
+import { cleanLights } from './lights.js';
 
 const rooms = new Map();
 
@@ -85,13 +86,14 @@ export function cleanGroups(input, known = null) {
 }
 
 class Room {
-    constructor(code, mapName, parts, groups = [], ownerUserId = null, teamId = null) {
+    constructor(code, mapName, parts, groups = [], ownerUserId = null, teamId = null, lights = []) {
         this.code = code;
         this.mapName = mapName;
         this.ownerUserId = ownerUserId;
         this.teamId = teamId;
         this.parts = parts;
         this.groups = groups;
+        this.lights = lights;
         this.chat = [];
         this.pruneGroups();
         this.seq = 0;
@@ -398,6 +400,18 @@ class Room {
         return null;
     }
 
+    /** Lights are a short list, so they are replaced whole rather than patched. */
+    setLightsFrom(member, lights) {
+        if (!this.canEdit(member)) return 'you are a spectator in this room';
+        const clean = cleanLights(lights);
+        if (!clean) return 'bad light data';
+
+        this.lights = clean;
+        this.broadcast({ t: 'lights', lights: this.lights, from: member.id }, member.id);
+
+        return null;
+    }
+
     setGroupsFrom(member, groups) {
         if (!this.canEdit(member)) return 'you are a spectator in this room';
         const clean = cleanGroups(groups, new Set(this.parts.map((p) => p._id)));
@@ -430,14 +444,14 @@ class Room {
     }
 }
 
-export function createRoom(mapName, parts, groups = [], ownerUserId = null, teamId = null) {
+export function createRoom(mapName, parts, groups = [], ownerUserId = null, teamId = null, lights = []) {
     if (rooms.size >= config.maxRooms) return null;
     let code;
     do {
         code = randomCode();
     } while (rooms.has(code));
 
-    const room = new Room(code, mapName, parts, groups, ownerUserId, teamId);
+    const room = new Room(code, mapName, parts, groups, ownerUserId, teamId, lights);
     rooms.set(code, room);
 
     return room;

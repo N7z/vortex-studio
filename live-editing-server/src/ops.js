@@ -1,6 +1,29 @@
-export const PART_KEYS = ['_id', 'T', 'P', 'S', 'R', 'C', 'Tr', 'Shape', 'Sh', 'ItemId'];
+export const PART_KEYS = [
+    '_id', 'T', 'P', 'S', 'R', 'C', 'Tr', 'Shape', 'Sh', 'ItemId',
+    // The official document's own per-part properties: material, the three
+    // behaviour toggles, the baseplate flag and the per-face textures. All
+    // optional, so a part written before them is still a valid part.
+    'M', 'Cs', 'An', 'Cc', 'Bp', 'Tx',
+];
 
 const VEC_KEYS = ['P', 'S', 'R'];
+
+export const MATERIALS = ['Plastic', 'Wood', 'Metal', 'Grass', 'Ice', 'Paint'];
+
+export const FACES = ['Front', 'Back', 'Top', 'Bottom', 'Left', 'Right'];
+
+export const TEXTURES = ['Studs', 'Inlets'];
+
+const BOOL_KEYS = ['Cs', 'An', 'Cc', 'Bp'];
+
+export function validFaceTextures(v) {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+    for (const [face, kind] of Object.entries(v)) {
+        if (!FACES.includes(face) || !TEXTURES.includes(kind)) return false;
+    }
+
+    return true;
+}
 
 export function applyOp(parts, op) {
     switch (op?.t) {
@@ -112,6 +135,11 @@ export function validPart(p) {
         if (k in p && (typeof p[k] !== 'string' || p[k].length > 32)) return false;
     }
     if ('ItemId' in p && p.ItemId !== null && !Number.isInteger(p.ItemId)) return false;
+    if ('M' in p && !MATERIALS.includes(p.M)) return false;
+    for (const k of BOOL_KEYS) {
+        if (k in p && typeof p[k] !== 'boolean') return false;
+    }
+    if ('Tx' in p && !validFaceTextures(p.Tx)) return false;
 
     return true;
 }

@@ -117,7 +117,7 @@ class MapAccess
 
     public const COLUMNS = [
         'id', 'name', 'token', 'user_id', 'team_id', 'saved_by', 'version',
-        'parts', 'bytes', 'thumb_key', 'deleted_at', 'created_at', 'updated_at',
+        'parts', 'bytes', 'thumb_key', 'project_id', 'deleted_at', 'created_at', 'updated_at',
     ];
 
     public static function find(Request $request, string $name, ?int $teamId, bool $withBody = false)
@@ -126,7 +126,7 @@ class MapAccess
             ? self::personal($request)
             : DB::table('maps')->whereNull('deleted_at')->where('team_id', $teamId);
 
-        $columns = $withBody ? [...self::COLUMNS, 'data', 'groups'] : self::COLUMNS;
+        $columns = $withBody ? [...self::COLUMNS, 'data', 'groups', 'lights'] : self::COLUMNS;
 
         return $q->where('name', $name)->first($columns);
     }

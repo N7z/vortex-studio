@@ -87,7 +87,7 @@ class AdminController extends Controller
     /** Read-only view of somebody else's map, for the studio's `?view=` mode. */
     public function map(int $id)
     {
-        $row = DB::table('maps')->where('id', $id)->first(['name', 'data']);
+        $row = DB::table('maps')->where('id', $id)->first(['name', 'data', 'groups', 'lights']);
         abort_unless($row, 404);
 
         $parts = trim((string) $row->data);
@@ -95,8 +95,12 @@ class AdminController extends Controller
             $parts = '[]';
         }
 
-        return response('{"name":'.json_encode($row->name).',"parts":'.$parts.'}')
-            ->header('Content-Type', 'application/json');
+        return response(
+            '{"name":'.json_encode($row->name)
+            .',"parts":'.$parts
+            .',"groups":'.($row->groups ?: '[]')
+            .',"lights":'.($row->lights ?: '[]').'}',
+        )->header('Content-Type', 'application/json');
     }
 
     public function deleteMap(Request $request, int $id)

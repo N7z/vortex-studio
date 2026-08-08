@@ -1,4 +1,5 @@
-import { PART_KEYS } from '../../../live-editing-server/src/ops.js';
+import { MATERIALS, PART_KEYS, validFaceTextures } from '../../../live-editing-server/src/ops.js';
+import { cleanTextures } from './materials.js';
 
 export {
     PART_KEYS, applyOp, invertOp, opIds, validPart,
@@ -62,6 +63,22 @@ export function repairParts(parts) {
         }
         if ('ItemId' in clean && clean.ItemId !== null && !Number.isInteger(clean.ItemId)) {
             delete clean.ItemId;
+            bad = true;
+        }
+        if ('M' in clean && !MATERIALS.includes(clean.M)) {
+            delete clean.M;
+            bad = true;
+        }
+        for (const k of ['Cs', 'An', 'Cc', 'Bp']) {
+            if (k in clean && typeof clean[k] !== 'boolean') {
+                delete clean[k];
+                bad = true;
+            }
+        }
+        if ('Tx' in clean && !validFaceTextures(clean.Tx)) {
+            const kept = cleanTextures(clean.Tx);
+            if (kept && Object.keys(kept).length) clean.Tx = kept;
+            else delete clean.Tx;
             bad = true;
         }
 

@@ -1,9 +1,14 @@
 import * as THREE from 'three';
 import { PART_TYPES } from './parts3d';
 import { DEFAULT_COLOR } from './roblox';
+import {
+    DEFAULT_MATERIAL, FACES, MATERIALS, TEXTURES,
+    canCollide, castsShadow, isAnchored, isBaseplate, materialOf, texturesOf,
+} from './materials';
+import { DEFAULT_ILLUMINANCE, MAX_ILLUMINANCE, MAX_LIGHTS } from './lighting';
+import { newPartId } from './ops';
 
 const DEG = Math.PI / 180;
-const MATERIAL = 'Plastic';
 
 const euler = new THREE.Euler();
 const quat = new THREE.Quaternion();
@@ -34,6 +39,24 @@ function quatOf(v) {
     return new THREE.Quaternion(num(v.x), num(v.y), num(v.z), num(v.w, 1));
 }
 
+/** Degrees, the shape the editor stores, out of the document's quaternion. */
+function eulerOf(rotation) {
+    const q = quatOf(rotation);
+    if (!q) return [0, 0, 0];
+    euler.setFromQuaternion(q.normalize());
+
+    return [euler.x / DEG, euler.y / DEG, euler.z / DEG].map(round);
+}
+
+function quatFrom([rx, ry, rz]) {
+    euler.set(rx * DEG, ry * DEG, rz * DEG);
+    quat.setFromEuler(euler);
+
+    return {
+        x: round(quat.x), y: round(quat.y), z: round(quat.z), w: round(quat.w),
+    };
+}
+
 export const isProject = (doc) => !!doc
     && !Array.isArray(doc)
     && typeof doc === 'object'
@@ -42,33 +65,48 @@ export const isProject = (doc) => !!doc
         && (p.position !== undefined || p.scale !== undefined));
 
 function partToProject(part, group) {
-    const [rx, ry, rz] = part.R ?? [0, 0, 0];
-    euler.set(rx * DEG, ry * DEG, rz * DEG);
-    quat.setFromEuler(euler);
     const [x, y, z] = part.P ?? [0, 0, 0];
     const [sx, sy, sz] = part.S ?? [1, 1, 1];
     const [r, g, b] = rgbOf(part.C);
     const kind = typeof part.T === 'string' && part.T ? part.T : 'Part';
+    const textures = texturesOf(part);
+    // The name mirrors what the part is, the way SpawnLocation and Truss do: a
+    // project Studio wrote itself calls its slab "Baseplate", not "Part".
+    const baseplate = isBaseplate(part);
 
     return {
-        name: kind,
+        name: baseplate && kind === 'Part' ? 'Baseplate' : kind,
         position: { x: num(x), y: num(y), z: num(z) },
-        rotation: {
-            x: round(quat.x), y: round(quat.y), z: round(quat.z), w: round(quat.w),
-        },
+        rotation: quatFrom(part.R ?? [0, 0, 0]),
         scale: { x: num(sx, 1), y: num(sy, 1), z: num(sz, 1) },
         color: {
             r: round(r), g: round(g), b: round(b), a: round(1 - clamp01(num(part.Tr))),
         },
-        material: MATERIAL,
+        material: materialOf(part),
         group,
-        cast_shadow: true,
-        anchored: true,
-        can_collide: true,
+        cast_shadow: castsShadow(part),
+        anchored: isAnchored(part),
+        can_collide: canCollide(part),
         spawn_location: kind === 'SpawnLocation',
-        baseplate: false,
+        baseplate,
         truss: kind === 'Truss',
-        textures: [],
+        // The document's list, in the panel's own face order so two exports of the
+        // same map compare equal.
+        textures: FACES.filter((f) => textures[f]).map((f) => ({ face: f, kind: textures[f] })),
+    };
+}
+
+function lightToProject(light) {
+    const [x, y, z] = light.P;
+    const [r, g, b] = rgbOf(light.C);
+
+    return {
+        name: light.N,
+        position: { x: num(x), y: num(y), z: num(z) },
+        rotation: quatFrom(light.R),
+        color: { r: round(r), g: round(g), b: round(b), a: 1 },
+        illuminance: num(light.I, DEFAULT_ILLUMINANCE),
+        shadows_enabled: light.Sd !== false,
     };
 }
 
@@ -79,25 +117,30 @@ export function newProjectId() {
     return [...bytes].map((n) => n.toString(16).padStart(2, '0')).join('');
 }
 
-export function toProject(parts, groups = [], projectId = newProjectId()) {
+export function toProject(parts, groups = [], projectId = newProjectId(), lights = []) {
     const owner = new Map();
     groups.forEach((g, at) => g.ids.forEach((id) => owner.set(id, at)));
 
     return {
         project_id: projectId,
         parts: parts.map((p) => partToProject(p, owner.get(p._id) ?? null)),
-        lights: [],
+        lights: lights.map(lightToProject),
         groups: groups.map((g) => ({ name: g.name, parent_group: null })),
     };
 }
 
-function partFromProject(part) {
-    const q = quatOf(part.rotation);
-    let R = [0, 0, 0];
-    if (q) {
-        euler.setFromQuaternion(q.normalize());
-        R = [euler.x / DEG, euler.y / DEG, euler.z / DEG].map(round);
+function texturesFrom(list) {
+    if (!Array.isArray(list)) return null;
+    const out = {};
+    for (const t of list) {
+        if (!t || typeof t !== 'object') continue;
+        if (FACES.includes(t.face) && TEXTURES.includes(t.kind)) out[t.face] = t.kind;
     }
+
+    return Object.keys(out).length ? out : null;
+}
+
+function partFromProject(part) {
     const c = part.color && typeof part.color === 'object' ? part.color : {};
     const rgb = [num(c.r), num(c.g), num(c.b)];
     const unit = rgb.every((n) => n >= 0 && n <= 1);
@@ -107,14 +150,47 @@ function partFromProject(part) {
     if (part.truss === true) T = 'Truss';
     else if (part.spawn_location === true) T = 'SpawnLocation';
 
-    return {
+    const out = {
         T,
         P: vec3Of(part.position).map(round),
         S: vec3Of(part.scale, [1, 1, 1]).map(round),
-        R,
+        R: eulerOf(part.rotation),
         C: scaled.map(byte).join(''),
         Tr: round(1 - clamp01(num(c.a, 1))),
         Shape: 'Block',
+    };
+
+    // Only what differs from the default is written back: an absent key already means
+    // the default everywhere else, and keeping the part small is what keeps a large
+    // map under the save limit.
+    if (MATERIALS.includes(part.material) && part.material !== DEFAULT_MATERIAL) {
+        out.M = part.material;
+    }
+    if (part.cast_shadow === false) out.Cs = false;
+    if (part.anchored === false) out.An = false;
+    if (part.can_collide === false) out.Cc = false;
+    if (part.baseplate === true) out.Bp = true;
+    const textures = texturesFrom(part.textures);
+    if (textures) out.Tx = textures;
+
+    return out;
+}
+
+function lightFromProject(light) {
+    const c = light.color && typeof light.color === 'object' ? light.color : {};
+    const rgb = [num(c.r, 1), num(c.g, 1), num(c.b, 1)];
+    const unit = rgb.every((n) => n >= 0 && n <= 1);
+    const scaled = unit ? rgb : rgb.map((n) => n / 255);
+    const name = typeof light.name === 'string' && light.name ? light.name.slice(0, 64) : 'Light';
+
+    return {
+        _id: newPartId(),
+        N: name,
+        P: vec3Of(light.position).map(round),
+        R: eulerOf(light.rotation),
+        C: scaled.map(byte).join(''),
+        I: Math.min(Math.max(num(light.illuminance, DEFAULT_ILLUMINANCE), 0), MAX_ILLUMINANCE),
+        Sd: light.shadows_enabled !== false,
     };
 }
 
@@ -152,7 +228,20 @@ export function fromProject(doc, limit = Infinity) {
         .map(([at, slots]) => ({ name: listed[at]?.name ?? `Group ${at + 1}`, slots }))
         .filter((g) => g.slots.length);
 
+    const lights = (Array.isArray(doc.lights) ? doc.lights : [])
+        .filter((l) => l && typeof l === 'object' && !Array.isArray(l))
+        .slice(0, MAX_LIGHTS)
+        .map(lightFromProject);
+
     return {
-        parts, groups, dropped, reshaped: 0, recolored: 0, capped, seen: list.length,
+        parts,
+        groups,
+        lights,
+        projectId: /^[a-f0-9]{32}$/i.test(doc.project_id ?? '') ? String(doc.project_id).toLowerCase() : null,
+        dropped,
+        reshaped: 0,
+        recolored: 0,
+        capped,
+        seen: list.length,
     };
 }

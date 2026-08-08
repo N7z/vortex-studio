@@ -3,6 +3,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { WorkspaceIcon, LightingIcon, cubeIcon, FolderIcon, ChevronIcon } from './icons';
 import { groupIndex } from './groups';
 import { EMPTY, isHidden, isLocked } from './flags';
+import { lightRef } from './lighting';
 
 const ICON_COLOR = {
     Part: '#b9b9c0',
@@ -15,9 +16,11 @@ const AUTO_OPEN_MAX = 25;
 const ROW_H = 20;
 const OVERSCAN = 8;
 
+const NO_LIGHTS = [];
+
 export default function Explorer({
     parts, selectedIds, setSelectedId, selectMany, groups = [], onUngroup, onRenameGroup, mapName,
-    flags = EMPTY, onFlag, onClearFlags,
+    flags = EMPTY, onFlag, onClearFlags, lights = NO_LIGHTS, onAddLight, onRemoveLight,
 }) {
     const listRef = useRef(null);
     const [query, setQuery] = useState('');
@@ -30,7 +33,7 @@ export default function Explorer({
     const isOpen = (g) => open[g.id] ?? (g.ids.length <= AUTO_OPEN_MAX);
     const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
 
-    const items = useMemo(() => {
+    const { items, matched } = useMemo(() => {
         const match = ({ p, i }) => !q || p.T.toLowerCase().includes(q) || `#${i}`.includes(q) || String(i) === q;
         const rows = parts.map((p, i) => ({ p, i })).filter(match);
 
@@ -54,10 +57,15 @@ export default function Explorer({
             }
         }
         for (const row of loose) out.push({ k: 'part', row });
-        if (!q) out.push({ k: 'light' });
 
-        return out;
-    }, [parts, groups, q, open]);
+        const shown = lights.filter((l) => !q || l.N.toLowerCase().includes(q));
+        if (!q || shown.length) out.push({ k: 'lighting' });
+        if (!q || shown.length) {
+            for (const l of shown) out.push({ k: 'lightrow', light: l });
+        }
+
+        return { items: out, matched: rows.length + shown.length };
+    }, [parts, groups, lights, q, open]);
 
     const first = Math.max(0, Math.floor(view.top / ROW_H) - OVERSCAN);
     const last = Math.min(items.length, Math.ceil((view.top + view.h) / ROW_H) + OVERSCAN);
@@ -109,7 +117,7 @@ export default function Explorer({
         </span>
     );
 
-    const partRow = ({ p, i }, nested) => {
+    const partRow = ({ p }, nested) => {
         const hidden = isHidden(flags, p);
         const locked = isLocked(flags, p);
 
@@ -122,7 +130,6 @@ export default function Explorer({
             >
                 <span className="icon">{cubeIcon(ICON_COLOR[p.T] ?? '#b9b9c0')}</span>
                 {p.T}
-                <span className="tree-index">#{i}</span>
                 {toggles([p._id], hidden, locked)}
             </div>
         );
@@ -184,7 +191,7 @@ export default function Explorer({
                 {query && <button className="clear" onClick={() => setQuery('')} title="Clear">×</button>}
             </div>
             <div className="panel-body" ref={listRef} onScroll={measure}>
-                {q && !rows.length ? (
+                {q && !matched ? (
                     <div className="tree-empty">No parts match "{query}"</div>
                 ) : (
                     <>
@@ -220,10 +227,44 @@ export default function Explorer({
                                     </div>
                                 );
                             }
+                            if (it.k === 'lightrow') {
+                                const ref = lightRef(it.light._id);
+
+                                return (
+                                    <div
+                                        key={ref}
+                                        className={`tree-item child ${selected.has(ref) ? 'selected' : ''}`}
+                                        onClick={(e) => setSelectedId(ref, e.ctrlKey || e.metaKey, null, true)}
+                                    >
+                                        <span className="icon"><LightingIcon /></span>
+                                        {it.light.N}
+                                        {onRemoveLight && (
+                                            <button
+                                                className="clear"
+                                                title="Delete this light"
+                                                onClick={(e) => { e.stopPropagation(); onRemoveLight(it.light._id); }}
+                                            >
+                                                ×
+                                            </button>
+                                        )}
+                                    </div>
+                                );
+                            }
+
                             return (
                                 <div className="tree-item" key="light">
                                     <span className="icon"><LightingIcon /></span>
                                     Lighting
+                                    <span className="count">{lights.length}</span>
+                                    {onAddLight && (
+                                        <button
+                                            className="add"
+                                            title="Add a light"
+                                            onClick={(e) => { e.stopPropagation(); onAddLight(); }}
+                                        >
+                                            +
+                                        </button>
+                                    )}
                                 </div>
                             );
                         })}

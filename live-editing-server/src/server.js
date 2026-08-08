@@ -5,6 +5,7 @@ import { config, originAllowed } from './config.js';
 import { verifyIdentity } from './identity.js';
 import { normaliseCode } from './names.js';
 import { validPart } from './ops.js';
+import { cleanLights } from './lights.js';
 import {
     ROLE_DEVELOPER, ROLE_SPECTATOR, cleanGroups, createRoom, findTeamRoom, getRoom, roomStats,
 } from './rooms.js';
@@ -104,6 +105,7 @@ export function createLiveServer({ log = () => {} } = {}) {
             seq: room.seq,
             parts: room.parts,
             groups: room.groups,
+            lights: room.lights,
             lastSavedAt: room.lastSavedAt,
             chat: room.chat,
             teamMap: room.teamId != null,
@@ -134,8 +136,11 @@ export function createLiveServer({ log = () => {} } = {}) {
         const who = verifyIdentity(msg.identity);
         // The room belongs to the account that opened it, so a stranger joining
         // first cannot take ownership of somebody's map.
+        const lights = cleanLights(msg.lights);
+        if (!lights) return refuse(ws, 'bad light data');
+
         const room = createRoom(mapName, parts, groups, who?.userId ?? null,
-            who?.mapName === mapName ? (who?.teamId ?? null) : null);
+            who?.mapName === mapName ? (who?.teamId ?? null) : null, lights);
         if (!room) return refuse(ws, 'the server is at its room limit, try again later');
 
         const { member } = room.add(ws, null, who);
@@ -187,7 +192,10 @@ export function createLiveServer({ log = () => {} } = {}) {
         const groups = cleanGroups(msg.groups);
         if (!groups) return refuse(ws, 'bad group data');
 
-        const room = createRoom(mapName, parts, groups, who.userId, teamId);
+        const lights = cleanLights(msg.lights);
+        if (!lights) return refuse(ws, 'bad light data');
+
+        const room = createRoom(mapName, parts, groups, who.userId, teamId, lights);
         if (!room) return refuse(ws, 'the server is at its room limit, try again later');
 
         const { member } = room.add(ws, null, who);
@@ -294,7 +302,7 @@ export function createLiveServer({ log = () => {} } = {}) {
                 if (bad) {
                     fail(ws, bad);
                     send(ws, {
-                        t: 'snapshot', parts: room.parts, groups: room.groups, seq: room.seq,
+                        t: 'snapshot', parts: room.parts, groups: room.groups, lights: room.lights, seq: room.seq,
                     });
                 }
 
@@ -302,6 +310,12 @@ export function createLiveServer({ log = () => {} } = {}) {
             }
             case 'groups': {
                 const bad = room.setGroupsFrom(member, msg.groups);
+                if (bad) fail(ws, bad);
+
+                return;
+            }
+            case 'lights': {
+                const bad = room.setLightsFrom(member, msg.lights);
                 if (bad) fail(ws, bad);
 
                 return;
@@ -334,7 +348,7 @@ export function createLiveServer({ log = () => {} } = {}) {
                 if (overResyncRate(ws)) return fail(ws, 'too many resyncs, slow down');
 
                 return send(ws, {
-                    t: 'snapshot', parts: room.parts, groups: room.groups, seq: room.seq,
+                    t: 'snapshot', parts: room.parts, groups: room.groups, lights: room.lights, seq: room.seq,
                 });
             case 'ping':
                 return send(ws, { t: 'pong' });

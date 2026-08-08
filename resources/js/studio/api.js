@@ -53,8 +53,14 @@ export async function loadMap(name, team = null) {
     const d = await r.json();
 
     return Array.isArray(d)
-        ? { parts: d, groups: [], version: 0 }
-        : { parts: d.parts ?? [], groups: d.groups ?? [], version: d.version ?? 0 };
+        ? { parts: d, groups: [], lights: [], projectId: null, version: 0 }
+        : {
+            parts: d.parts ?? [],
+            groups: d.groups ?? [],
+            lights: d.lights ?? [],
+            projectId: d.project_id ?? null,
+            version: d.version ?? 0,
+        };
 }
 
 /** Throws a StaleError when somebody else saved since this copy was loaded. */
@@ -86,10 +92,15 @@ const gzip = async (text) => new Response(
 ).arrayBuffer();
 
 /** The JSON a save would send, so a caller can size it without building it twice. */
-export const saveBody = (parts, groups, version) => JSON.stringify({ parts, groups, version });
+export const saveBody = (parts, groups, version, lights = [], projectId = null) => JSON.stringify({
+    parts, groups, lights, project_id: projectId, version,
+});
 
-export async function saveMap(name, parts, groups, team = null, version = null, body = null, confirmed = false) {
-    const text = body ?? saveBody(parts, groups, version);
+export async function saveMap(
+    name, parts, groups, team = null, version = null, body = null, confirmed = false,
+    lights = [], projectId = null,
+) {
+    const text = body ?? saveBody(parts, groups, version, lights, projectId);
     const headers = { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf };
     if (confirmed) headers['X-Confirm-Destructive'] = '1';
     let payload = text;

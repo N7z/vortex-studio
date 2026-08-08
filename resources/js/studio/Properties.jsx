@@ -1,5 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import NumberInput from './NumberInput';
+import {
+    FACES, MATERIALS, TEXTURES,
+    canCollide, castsShadow, isAnchored, isBaseplate, materialOf, texturesOf,
+} from './materials';
+import { MAX_ILLUMINANCE } from './lighting';
 
 const COLOR_COMMIT = 150;
 
@@ -18,10 +23,27 @@ function Vec3({ value, onChange, readOnly }) {
     );
 }
 
-export default function Properties({ part, count = 0, onChange, readOnly = false }) {
+function Toggle({ label, checked, readOnly, onChange }) {
+    return (
+        <div className="prop-row prop-check">
+            <label>{label}</label>
+            <input
+                type="checkbox"
+                checked={checked}
+                disabled={readOnly}
+                onChange={(e) => onChange(e.target.checked)}
+            />
+        </div>
+    );
+}
+
+/**
+ * A colour field commits on a timer: the picker fires on every pixel of drag, and
+ * one edit per frame would fill the undo stack and the live session with noise.
+ */
+function useColorDraft(id, commit) {
     const [draft, setDraft] = useState(null);
     const timer = useRef(0);
-    const id = part?._id ?? null;
 
     useEffect(() => {
         clearTimeout(timer.current);
@@ -30,14 +52,100 @@ export default function Properties({ part, count = 0, onChange, readOnly = false
 
     useEffect(() => () => clearTimeout(timer.current), []);
 
-    const setColor = (hex) => {
+    return [draft, (hex) => {
         setDraft(hex);
         clearTimeout(timer.current);
         timer.current = setTimeout(() => {
             setDraft(null);
-            onChange({ C: hex });
+            commit(hex);
         }, COLOR_COMMIT);
-    };
+    }];
+}
+
+function ColorRow({ id, value, readOnly, onCommit }) {
+    const [draft, setDraft] = useColorDraft(id, onCommit);
+
+    return (
+        <div className="prop-row">
+            <label>Color</label>
+            <input
+                type="color"
+                disabled={readOnly}
+                value={`#${(draft ?? value ?? 'a3a2a5').padStart(6, '0')}`}
+                onChange={(e) => setDraft(e.target.value.slice(1))}
+            />
+            <input
+                type="text"
+                value={draft ?? value ?? ''}
+                readOnly={readOnly}
+                onChange={(e) => setDraft(e.target.value.replace(/[^0-9a-fA-F]/g, '').slice(0, 6))}
+            />
+        </div>
+    );
+}
+
+function LightProperties({ light, onChange, readOnly }) {
+    return (
+        <div className="panel properties">
+            <div className="panel-title">
+                Properties: {light.N}
+                {readOnly && <span className="props-ro">read only</span>}
+            </div>
+            <div className="panel-body">
+                <div className="props">
+                    <div className="prop-row">
+                        <label>Name</label>
+                        <input
+                            type="text"
+                            value={light.N}
+                            readOnly={readOnly}
+                            onChange={(e) => onChange({ N: e.target.value.slice(0, 64) || 'Light' })}
+                        />
+                    </div>
+                    <div className="prop-row">
+                        <label>Position</label>
+                        <Vec3 value={light.P} readOnly={readOnly} onChange={(P) => onChange({ P })} />
+                    </div>
+                    <div className="prop-row">
+                        <label>Rotation</label>
+                        <Vec3 value={light.R} readOnly={readOnly} onChange={(R) => onChange({ R })} />
+                    </div>
+                    <ColorRow
+                        id={light._id}
+                        value={light.C}
+                        readOnly={readOnly}
+                        onCommit={(C) => onChange({ C })}
+                    />
+                    <div className="prop-row">
+                        <label>Illuminance</label>
+                        <NumberInput
+                            value={light.I}
+                            readOnly={readOnly}
+                            clamp={(v) => Math.min(MAX_ILLUMINANCE, Math.max(0, v))}
+                            onChange={(I) => onChange({ I })}
+                        />
+                    </div>
+                    <Toggle
+                        label="Shadows"
+                        checked={light.Sd !== false}
+                        readOnly={readOnly}
+                        onChange={(Sd) => onChange({ Sd })}
+                    />
+                </div>
+            </div>
+        </div>
+    );
+}
+
+export default function Properties({
+    part, count = 0, onChange, readOnly = false, light = null, onLightChange = null,
+}) {
+    const id = part?._id ?? null;
+    const [draft, setColorDraft] = useColorDraft(id, (hex) => onChange({ C: hex }));
+
+    if (light) {
+        return <LightProperties light={light} onChange={onLightChange} readOnly={readOnly} />;
+    }
 
     if (!part) {
         return (
@@ -47,6 +155,16 @@ export default function Properties({ part, count = 0, onChange, readOnly = false
             </div>
         );
     }
+
+    const textures = texturesOf(part);
+    // The panel edits the whole map at once, so a face is cleared by leaving it out
+    // rather than by writing an empty kind.
+    const setFace = (face, kind) => {
+        const next = { ...textures };
+        if (kind) next[face] = kind;
+        else delete next[face];
+        onChange({ Tx: next });
+    };
 
     return (
         <div className="panel properties">
@@ -77,19 +195,21 @@ export default function Properties({ part, count = 0, onChange, readOnly = false
                         <label>Rotation</label>
                         <Vec3 value={part.R} readOnly={readOnly} onChange={(R) => onChange({ R })} />
                     </div>
+
+                    <div className="prop-head">Appearance</div>
                     <div className="prop-row">
                         <label>Color</label>
                         <input
                             type="color"
                             disabled={readOnly}
                             value={`#${(draft ?? part.C ?? 'a3a2a5').padStart(6, '0')}`}
-                            onChange={(e) => setColor(e.target.value.slice(1))}
+                            onChange={(e) => setColorDraft(e.target.value.slice(1))}
                         />
                         <input
                             type="text"
                             value={draft ?? part.C ?? ''}
                             readOnly={readOnly}
-                            onChange={(e) => setColor(e.target.value.replace(/[^0-9a-fA-F]/g, '').slice(0, 6))}
+                            onChange={(e) => setColorDraft(e.target.value.replace(/[^0-9a-fA-F]/g, '').slice(0, 6))}
                         />
                     </div>
                     <div className="prop-row">
@@ -101,6 +221,64 @@ export default function Properties({ part, count = 0, onChange, readOnly = false
                             onChange={(Tr) => onChange({ Tr })}
                         />
                     </div>
+                    <div className="prop-row">
+                        <label>Material</label>
+                        <select
+                            value={materialOf(part)}
+                            disabled={readOnly}
+                            onChange={(e) => onChange({ M: e.target.value })}
+                        >
+                            {MATERIALS.map((m) => <option key={m}>{m}</option>)}
+                        </select>
+                    </div>
+                    <Toggle
+                        label="Cast Shadow"
+                        checked={castsShadow(part)}
+                        readOnly={readOnly}
+                        onChange={(Cs) => onChange({ Cs })}
+                    />
+
+                    <div className="prop-head">Behavior</div>
+                    <Toggle
+                        label="Anchored"
+                        checked={isAnchored(part)}
+                        readOnly={readOnly}
+                        onChange={(An) => onChange({ An })}
+                    />
+                    <Toggle
+                        label="CanCollide"
+                        checked={canCollide(part)}
+                        readOnly={readOnly}
+                        onChange={(Cc) => onChange({ Cc })}
+                    />
+                    <Toggle
+                        label="Truss"
+                        checked={part.T === 'Truss'}
+                        readOnly={readOnly}
+                        onChange={(on) => onChange({ T: on ? 'Truss' : 'Part' })}
+                    />
+                    <Toggle
+                        label="Baseplate"
+                        checked={isBaseplate(part)}
+                        readOnly={readOnly}
+                        onChange={(Bp) => onChange({ Bp })}
+                    />
+
+                    <div className="prop-head">Textures</div>
+                    {FACES.map((face) => (
+                        <div className="prop-row" key={face}>
+                            <label>{face}</label>
+                            <select
+                                value={textures[face] ?? ''}
+                                disabled={readOnly}
+                                onChange={(e) => setFace(face, e.target.value)}
+                            >
+                                <option value="">None</option>
+                                {TEXTURES.map((k) => <option key={k} value={k}>{k}</option>)}
+                            </select>
+                        </div>
+                    ))}
+
                     {'ItemId' in part && (
                         <div className="prop-row">
                             <label>ItemId</label>

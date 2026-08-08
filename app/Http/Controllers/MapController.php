@@ -34,8 +34,23 @@ class MapController extends Controller
 
     private const MAX_GROUPS = 2_000;
 
+    private const MAX_LIGHTS = 32;
+
     /** Keys the editor writes; anything else is rejected. */
-    private const PART_KEYS = ['_id', 'T', 'P', 'S', 'R', 'C', 'Tr', 'Shape', 'Sh', 'ItemId'];
+    private const PART_KEYS = [
+        '_id', 'T', 'P', 'S', 'R', 'C', 'Tr', 'Shape', 'Sh', 'ItemId',
+        'M', 'Cs', 'An', 'Cc', 'Bp', 'Tx',
+    ];
+
+    private const MATERIALS = ['Plastic', 'Wood', 'Metal', 'Grass', 'Ice', 'Paint'];
+
+    private const FACES = ['Front', 'Back', 'Top', 'Bottom', 'Left', 'Right'];
+
+    private const TEXTURES = ['Studs', 'Inlets'];
+
+    private const LIGHT_KEYS = ['_id', 'N', 'P', 'R', 'C', 'I', 'Sd'];
+
+    private const MAX_ILLUMINANCE = 200_000;
 
     /**
      * An admin is trusted with maps of any size. The request still has to fit PHP's
@@ -256,7 +271,7 @@ class MapController extends Controller
         $row = MapAccess::find($request, $name, $this->teamId($request), true);
         abort_unless($row, 404);
 
-        return $this->document($row->data, $row->groups, (int) $row->version);
+        return $this->document($row->data, $row->groups, $row->lights, $row->project_id, (int) $row->version);
     }
 
     public function move(Request $request, string $name)
@@ -496,11 +511,16 @@ class MapController extends Controller
         return response()->json(['ok' => true, 'id' => $id]);
     }
 
-    /** Parts and groups travel together, so the stored JSON is wrapped rather than re-encoded. */
-    private function document(string $parts, ?string $groups, int $version)
+    /** Everything travels together, so the stored JSON is wrapped rather than re-encoded. */
+    private function document(string $parts, ?string $groups, ?string $lights, ?string $projectId, int $version)
     {
-        return response('{"parts":'.$parts.',"groups":'.($groups ?: '[]').',"version":'.$version.'}')
-            ->header('Content-Type', 'application/json');
+        return response(
+            '{"parts":'.$parts
+            .',"groups":'.($groups ?: '[]')
+            .',"lights":'.($lights ?: '[]')
+            .',"project_id":'.json_encode($projectId)
+            .',"version":'.$version.'}',
+        )->header('Content-Type', 'application/json');
     }
 
     /**
@@ -537,20 +557,33 @@ class MapController extends Controller
         if (array_is_list($body)) {
             $parts = $body;
             $groups = null;
+            $lights = null;
+            $projectId = null;
         } else {
             $parts = $body['parts'] ?? null;
             $groups = $body['groups'] ?? null;
+            $lights = $body['lights'] ?? null;
+            $projectId = $body['project_id'] ?? null;
             abort_unless(is_array($parts) && array_is_list($parts), 400, 'body must be a JSON array of parts');
             abort_unless($groups === null || is_array($groups) && array_is_list($groups), 400, 'bad group data');
+            abort_unless($lights === null || is_array($lights), 400, 'bad light data');
+            abort_unless(
+                $projectId === null || is_string($projectId) && preg_match('/^[a-f0-9]{32}$/', $projectId),
+                400,
+                'bad project id',
+            );
         }
 
         abort_unless($this->validParts($parts), 400, 'bad part data');
         abort_unless($groups === null || $this->validGroups($groups, $parts), 400, 'bad group data');
+        abort_unless($lights === null || $this->validLights($lights), 400, 'bad light data');
 
         $data = json_encode($parts);
         $encodedGroups = $groups === null ? null : json_encode($groups);
+        $encodedLights = $lights === null ? null : json_encode($lights);
         abort_if(
-            ! self::unlimited() && strlen($data) + strlen((string) $encodedGroups) > self::MAX_BYTES,
+            ! self::unlimited()
+                && strlen($data) + strlen((string) $encodedGroups) + strlen((string) $encodedLights) > self::MAX_BYTES,
             413,
             'map too large',
         );
@@ -576,10 +609,15 @@ class MapController extends Controller
             abort_if($count >= $limit, 403, 'map limit reached');
         }
 
+        // A null means "leave what is stored alone", so a tab open across a deploy
+        // cannot wipe lights or the project's identity any more than it can groups.
         $values = [
             'token' => $token, 'data' => $data, 'parts' => count($parts),
             'bytes' => strlen($data), 'saved_by' => $id, 'updated_at' => now(),
-        ] + ($encodedGroups === null ? [] : ['groups' => $encodedGroups]);
+        ]
+            + ($encodedGroups === null ? [] : ['groups' => $encodedGroups])
+            + ($encodedLights === null ? [] : ['lights' => $encodedLights])
+            + ($projectId === null ? [] : ['project_id' => $projectId]);
 
         if (! $row) {
             $new = DB::table('maps')->insertGetId($values + [
@@ -741,6 +779,85 @@ class MapController extends Controller
                 }
             }
             if (array_key_exists('ItemId', $p) && $p['ItemId'] !== null && ! is_int($p['ItemId'])) {
+                return false;
+            }
+            if (isset($p['M']) && ! in_array($p['M'], self::MATERIALS, true)) {
+                return false;
+            }
+            // The behaviour toggles and the baseplate flag. Absent means the default
+            // the official exporter writes, so only a real boolean is accepted.
+            foreach (['Cs', 'An', 'Cc', 'Bp'] as $k) {
+                if (array_key_exists($k, $p) && ! is_bool($p[$k])) {
+                    return false;
+                }
+            }
+            if (array_key_exists('Tx', $p) && ! $this->validTextures($p['Tx'])) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** Per-face textures, keyed by face so the same one cannot be named twice. */
+    private function validTextures(mixed $tx): bool
+    {
+        if (! is_array($tx) || array_is_list($tx) && $tx !== []) {
+            return false;
+        }
+        foreach ($tx as $face => $kind) {
+            if (! in_array($face, self::FACES, true) || ! in_array($kind, self::TEXTURES, true)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Lights are map data like groups: a short list replaced whole. The engine does
+     * not read them, but they travel in the document, so they are vetted the same way.
+     */
+    private function validLights(array $lights): bool
+    {
+        if (! array_is_list($lights) || count($lights) > self::MAX_LIGHTS) {
+            return false;
+        }
+
+        $ids = [];
+        foreach ($lights as $l) {
+            if (! is_array($l) || array_diff_key($l, array_flip(self::LIGHT_KEYS))) {
+                return false;
+            }
+            if (! is_string($l['_id'] ?? null) || ! preg_match('/^[A-Za-z0-9_\-]{1,64}$/', $l['_id'])) {
+                return false;
+            }
+            if (isset($ids[$l['_id']])) {
+                return false;
+            }
+            $ids[$l['_id']] = true;
+            if (! is_string($l['N'] ?? null) || $l['N'] === '' || strlen($l['N']) > 64) {
+                return false;
+            }
+            foreach (['P', 'R'] as $k) {
+                $v = $l[$k] ?? null;
+                if (! is_array($v) || ! array_is_list($v) || count($v) !== 3) {
+                    return false;
+                }
+                foreach ($v as $n) {
+                    if (! is_int($n) && ! is_float($n)) {
+                        return false;
+                    }
+                }
+            }
+            if (! is_string($l['C'] ?? null) || ! preg_match('/^[0-9a-fA-F]{6}$/', $l['C'])) {
+                return false;
+            }
+            $i = $l['I'] ?? null;
+            if (! is_int($i) && ! is_float($i) || $i < 0 || $i > self::MAX_ILLUMINANCE) {
+                return false;
+            }
+            if (! is_bool($l['Sd'] ?? null)) {
                 return false;
             }
         }

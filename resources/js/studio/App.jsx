@@ -41,7 +41,10 @@ import { decodeImage, imageMeta } from './image';
 import { MAX_DIM, MAX_RES, buildVoxels, loadModel, voxelCost } from './model';
 import { predict, record } from './estimate';
 import { convertRoblox, importSummary } from './roblox';
-import { fromProject, isProject, toProject } from './vortexProject';
+import { fromProject, isProject, newProjectId, toProject } from './vortexProject';
+import {
+    DEFAULT_SUN, MAX_LIGHTS, isLightRef, lightIdOf, lightRef, newLight, repairLights,
+} from './lighting';
 import useDialogs from '../ui/useDialogs';
 import Busy from '../ui/Busy';
 import {
@@ -52,14 +55,35 @@ import { buildGrid, nearGrid } from './partgrid';
 
 const HISTORY_LIMIT = 100;
 
+// The undo stack holds two kinds of entry. A part change is an op, inverted against
+// the parts it was applied to. A light change is the whole array as it was: there
+// are at most a handful of lights, so a snapshot is cheaper than an op vocabulary
+// for them, and one undoes an add, a delete and a move alike.
+const remember = (stack, entry) => {
+    stack.current.push(entry);
+    if (stack.current.length > HISTORY_LIMIT) stack.current.shift();
+};
+
 const NEW_PART = {
     Tr: 0, P: [0, 4, 0], S: [4, 2, 4], R: [0, 0, 0],
     T: 'Part', Shape: 'Block', C: 'a3a2a5',
 };
 
+// y sits it on the baseplate rather than above it: the slab is 2 tall around the
+// origin, so its top is 1, and a spawn 1 tall rests with its centre at 1.5. Adding
+// one from the toolbar overrides this with wherever the camera is looking.
 const NEW_SPAWN = {
-    Tr: 0, P: [0, 2.5, 0], S: [6, 1, 6], R: [0, 0, 0],
+    Tr: 0, P: [0, 1.5, 0], S: [6, 1, 6], R: [0, 0, 0],
     T: 'SpawnLocation', Shape: 'Block', C: '4db84b',
+};
+
+// The slab a new map starts with is the baseplate the official document names, and
+// it wears the same two textures a project Studio creates itself does. The sun a new
+// map gets is the one the editor used to hardcode, see DEFAULT_SUN.
+const NEW_BASEPLATE = {
+    Tr: 0, P: [0, 0, 0], S: [200, 2, 200], R: [0, 0, 0],
+    T: 'Part', Shape: 'Block', C: '7d7d85', Bp: true,
+    Tx: { Top: 'Studs', Bottom: 'Inlets' },
 };
 
 
@@ -115,6 +139,7 @@ export default function App() {
     const loadedModels = useRef({});
     const modelSigs = useRef({});
     const [groups, setGroups] = useState([]);
+    const [lights, setLights] = useState([]);
     const [flags, setFlags] = useState(flagStore.EMPTY);
     const [tabs, setTabs] = useState([]);
     const [activeTab, setActiveTab] = useState('home');
@@ -145,6 +170,12 @@ export default function App() {
     const flagsRef = useRef(flags);
     flagsRef.current = flags;
     const loadedGroups = useRef(groups);
+    const lightsRef = useRef(lights);
+    lightsRef.current = lights;
+    const loadedLights = useRef(lights);
+    // The identity the official project keeps across exports. Minted for a new map,
+    // kept from the file for an import, and stored with the map from then on.
+    const projectId = useRef(null);
     const mapNameRef = useRef(null);
     const mapTeamRef = useRef(null);
     mapTeamRef.current = mapTeam;
@@ -207,7 +238,10 @@ export default function App() {
 
     useEffect(() => onPluginPrint(flash), [flash]);
 
-    const resetDocument = (name, raw, isDirty, remoteGroups, teamId = null, version = null) => {
+    const resetDocument = (
+        name, raw, isDirty, remoteGroups, teamId = null, version = null,
+        remoteLights = null, remoteProjectId = null,
+    ) => {
         const { parts: data, fixed } = repairParts(raw);
         if (fixed) flash(`Repaired ${fixed} part${fixed === 1 ? '' : 's'} the server would reject`);
         setParts(data);
@@ -220,6 +254,10 @@ export default function App() {
         setActiveTab(name ? 'game' : 'home');
         setSelectedIds([]);
         setFaces({});
+        const litUp = repairLights(remoteLights ?? []);
+        loadedLights.current = litUp;
+        setLights(litUp);
+        projectId.current = remoteProjectId ?? (name ? newProjectId() : null);
         // Anything an older build left in localStorage is drained once, and only
         // when the map itself carries none, so an import cannot overwrite real data.
         const legacy = remoteGroups?.length ? [] : takeLegacyGroups(name, data);
@@ -231,7 +269,7 @@ export default function App() {
         dirty.current = isDirty || fixed > 0 || legacy.length > 0;
         setFlags(flagStore.prune(flagStore.load(flagStore.mapKey(name, teamId)), data));
 
-        return { parts: data, groups: next };
+        return { parts: data, groups: next, lights: litUp };
     };
 
     const live = useLive({
@@ -241,12 +279,13 @@ export default function App() {
                 const alive = new Set(msg.parts.map((p) => p._id));
                 setParts(msg.parts);
                 setGroups(msg.groups ?? []);
+                setLights(repairLights(msg.lights ?? []));
                 setSelectedIds((cur) => cur.filter((id) => alive.has(id)));
             } else {
                 // A team map is always in session, so the panel is not news.
                 if (mapTeamRef.current == null) setTeamOpen(true);
                 resetDocument(msg.mapName, msg.parts, false, msg.groups ?? [],
-                    mapTeamRef.current, versionRef.current);
+                    mapTeamRef.current, versionRef.current, msg.lights ?? [], projectId.current);
             }
             if (mapTeamRef.current != null) {
                 flash(msg.resumed ? 'Back with the team' : `Editing with the team as ${msg.you.name}`);
@@ -268,11 +307,16 @@ export default function App() {
             if (msg.groups) {
                 setGroups(msg.groups);
             }
+            if (msg.lights) setLights(repairLights(msg.lights));
             history.current = [];
             future.current = [];
         },
         onGroups: (msg) => {
             setGroups(msg.groups);
+        },
+        onLights: (msg) => {
+            setLights(repairLights(msg.lights));
+            if (liveRef.current?.canEdit) dirty.current = true;
         },
         onGroupOp: (msg) => {
             setGroups((gs) => applyGroupOp(gs, msg.op));
@@ -318,6 +362,12 @@ export default function App() {
             ? parts.filter((p) => selectedSet.has(p._id))
             : (selected ? [selected] : [])
     ), [parts, selectedSet, selected]);
+    const selectedLight = useMemo(() => {
+        const last = selectedIds.length ? selectedIds[selectedIds.length - 1] : null;
+        const id = lightIdOf(last);
+
+        return id ? lights.find((l) => l._id === id) ?? null : null;
+    }, [selectedIds, lights]);
     const pluginTarget = selected;
     // Plugins are called one part at a time, so the bounds of a whole folder are
     // something only the app can work out. Handed over before every run.
@@ -350,10 +400,19 @@ export default function App() {
     const activeModels = activePlugin ? pluginModels[activePlugin.id] ?? null : null;
 
     const select = useCallback((id, additive, normal, solo) => {
+        // A light and a part are different kinds of thing with different panels, so
+        // selecting either one clears the other rather than mixing them.
+        if (isLightRef(id)) {
+            setSelectedIds([id]);
+            setFaces({});
+
+            return;
+        }
         if (id != null && !flagStore.selectable(flagsRef.current, [id]).length) return;
         const group = id != null && !solo ? groupIndex(groupsRef.current).get(id) : null;
         const ids = group ? flagStore.selectable(flagsRef.current, group.ids) : null;
-        setSelectedIds((cur) => {
+        setSelectedIds((all) => {
+            const cur = all.filter((x) => !isLightRef(x));
             if (id == null) return additive ? cur : [];
             if (ids?.length) {
                 if (!additive) return [...ids];
@@ -378,11 +437,12 @@ export default function App() {
     const setSelectedId = select;
 
     const selectMany = useCallback((ids, additive) => {
-        const free = flagStore.selectable(flagsRef.current, ids);
+        const free = flagStore.selectable(flagsRef.current, ids.filter((id) => !isLightRef(id)));
         setSelectedIds((cur) => {
             if (!additive) return [...free];
-            const seen = new Set(cur);
-            return [...cur, ...free.filter((id) => !seen.has(id))];
+            const kept = cur.filter((x) => !isLightRef(x));
+            const seen = new Set(kept);
+            return [...kept, ...free.filter((id) => !seen.has(id))];
         });
         if (!additive) setFaces({});
     }, []);
@@ -398,8 +458,7 @@ export default function App() {
 
         const inverse = invertOp(before, op);
         if (inverse) {
-            history.current.push(inverse);
-            if (history.current.length > HISTORY_LIMIT) history.current.shift();
+            remember(history, { t: 'parts', op: inverse });
             future.current = [];
         }
         dirty.current = true;
@@ -408,20 +467,27 @@ export default function App() {
     }, [flash]);
 
     const step = useCallback((from, to) => {
-        const op = from.current.pop();
-        if (!op) return;
+        const entry = from.current.pop();
+        if (!entry) return;
+
+        if (entry.t === 'lights') {
+            remember(to, { t: 'lights', lights: lightsRef.current });
+            dirty.current = true;
+            setLights(entry.lights);
+            liveRef.current.sendLights(entry.lights);
+
+            return;
+        }
+
         const before = partsRef.current;
-        const next = applyOp(before, op);
+        const next = applyOp(before, entry.op);
         if (next === before) return;
 
-        const inverse = invertOp(before, op);
-        if (inverse) {
-            to.current.push(inverse);
-            if (to.current.length > HISTORY_LIMIT) to.current.shift();
-        }
+        const inverse = invertOp(before, entry.op);
+        if (inverse) remember(to, { t: 'parts', op: inverse });
         dirty.current = true;
         setParts(next);
-        liveRef.current.sendOp(op);
+        liveRef.current.sendOp(entry.op);
     }, []);
 
     const undo = useCallback(() => {
@@ -808,6 +874,45 @@ export default function App() {
         liveRef.current.sendGroupOp(op);
     }, []);
 
+    // Lights are a short list, so a change replaces the whole array rather than
+    // riding an op. Moving one is still an edit the user can take back, so the array
+    // as it was goes on the undo stack first.
+    const commitLights = useCallback((next) => {
+        remember(history, { t: 'lights', lights: lightsRef.current });
+        future.current = [];
+        setLights(next);
+        dirty.current = true;
+        liveRef.current.sendLights(next);
+    }, []);
+
+    const addLight = useCallback(() => {
+        if (!canEditRef.current) {
+            flash('You are a spectator in this session');
+
+            return;
+        }
+        const cur = lightsRef.current;
+        if (cur.length >= MAX_LIGHTS) {
+            flash(`A map can carry ${MAX_LIGHTS} lights`);
+
+            return;
+        }
+        const light = newLight({ N: `Light ${cur.length + 1}` });
+        commitLights([...cur, light]);
+        setSelectedIds([lightRef(light._id)]);
+    }, [commitLights, flash]);
+
+    const removeLight = useCallback((id) => {
+        if (!canEditRef.current) return;
+        commitLights(lightsRef.current.filter((l) => l._id !== id));
+        setSelectedIds((cur) => cur.filter((x) => x !== lightRef(id)));
+    }, [commitLights]);
+
+    const patchLight = useCallback((id, patch) => {
+        if (!canEditRef.current) return;
+        commitLights(lightsRef.current.map((l) => (l._id === id ? { ...l, ...patch } : l)));
+    }, [commitLights]);
+
     const groupSelection = useCallback(() => {
         if (selectedIds.length < 2) return;
         runGroupOp({
@@ -843,6 +948,10 @@ export default function App() {
         if (mapName && groups !== loadedGroups.current) dirty.current = true;
     }, [groups]);
 
+    useEffect(() => {
+        if (mapName && lights !== loadedLights.current) dirty.current = true;
+    }, [lights]);
+
     const changeGraphics = (patch) => {
         setGraphics((g) => {
             const next = { ...g, ...patch };
@@ -861,10 +970,14 @@ export default function App() {
         setBusy(`Loading ${name}.json...`);
         try {
             const doc = await loadMap(name, teamId);
-            const ready = resetDocument(name, doc.parts, false, doc.groups, teamId, doc.version);
+            const ready = resetDocument(
+                name, doc.parts, false, doc.groups, teamId, doc.version, doc.lights, doc.projectId,
+            );
             // A team map is collaborative by default: everyone who opens it lands in
             // the same room, so there is no code to pass around.
-            if (teamId != null) liveRef.current.openTeam(name, ready.parts, ready.groups, teamId);
+            if (teamId != null) {
+                liveRef.current.openTeam(name, ready.parts, ready.groups, teamId, ready.lights);
+            }
         } catch (e) {
             flash(String(e.message ?? e));
         } finally {
@@ -874,20 +987,23 @@ export default function App() {
 
     // A local backup goes straight back into the editor, dirty, so the next save
     // (manual or auto) puts it on the server again.
-    const restore = (name, data) => {
-        resetDocument(name, data, true);
+    const restore = (name, doc) => {
+        resetDocument(
+            name, doc.parts, true, doc.groups ?? null, null, null,
+            doc.lights ?? null, doc.projectId ?? null,
+        );
         flash(`Restored ${name}.json from this device`);
     };
 
-    const openUploaded = (name, data, incoming = null) => {
+    const openUploaded = (name, data, incoming = null, doc = null) => {
         if (incoming?.length) {
             const seeded = data.map(withNewId);
             const groups = incoming
                 .map((g) => newGroup(g.name, g.slots.map((i) => seeded[i]?._id).filter(Boolean)))
                 .filter((g) => g.ids.length);
-            resetDocument(name, seeded, true, groups);
+            resetDocument(name, seeded, true, groups, null, null, doc?.lights, doc?.projectId);
         } else {
-            resetDocument(name, data, true);
+            resetDocument(name, data, true, null, null, null, doc?.lights, doc?.projectId);
         }
         flash(`Loaded upload as ${name}.json, Save to keep it`);
     };
@@ -937,7 +1053,10 @@ export default function App() {
             const groups = (result.groups ?? [])
                 .map((g) => newGroup(g.name, g.slots.map((i) => seeded[i]?._id).filter(Boolean)))
                 .filter((g) => g.ids.length);
-            resetDocument(mapNameFrom(fileName), seeded, true, groups);
+            resetDocument(
+                mapNameFrom(fileName), seeded, true, groups, null, null,
+                result.lights ?? [], result.projectId ?? null,
+            );
         }
         flash(importSummary(result));
     };
@@ -964,7 +1083,7 @@ export default function App() {
     const download = () => {
         if (!mapName) return;
         // The engine refuses a map over 10 MB outright.
-        const text = JSON.stringify(toProject(parts, groups));
+        const text = JSON.stringify(toProject(parts, groups, projectId.current ?? newProjectId(), lights));
         if (text.length > ENGINE_MAX_BYTES) {
             flash(`This map is ${(text.length / 1048576).toFixed(1)} MB, over the 10 MB the game `
                 + 'accepts. Rebuild it with a lower Detail or a higher Merge angle.');
@@ -983,10 +1102,12 @@ export default function App() {
         takeLegacyGroups(name, []);
         if (liveRef.current.live) liveRef.current.leave();
         const ready = resetDocument(name, [
-            withNewId({ Tr: 0, P: [0, 0, 0], S: [200, 2, 200], R: [0, 0, 0], T: 'Part', Shape: 'Block', C: '7d7d85' }),
+            withNewId(NEW_BASEPLATE),
             withNewId(NEW_SPAWN),
-        ], true, null, teamId, null);
-        if (teamId != null) liveRef.current.openTeam(name, ready.parts, ready.groups, teamId);
+        ], true, null, teamId, null, [newLight(DEFAULT_SUN)], null);
+        if (teamId != null) {
+            liveRef.current.openTeam(name, ready.parts, ready.groups, teamId, ready.lights);
+        }
     };
 
     const canSaveToServer = !!mapName && (!live.live || live.canEdit) && !viewing;
@@ -1017,13 +1138,16 @@ export default function App() {
         const grouped = groupsRef.current;
         // Serialised once and handed to both: on a large map this is the single most
         // expensive thing a save does, and it used to happen twice over.
-        const body = saveBody(snapshot, grouped, versionRef.current);
+        const lit = lightsRef.current;
+        const project = projectId.current;
+        const body = saveBody(snapshot, grouped, versionRef.current, lit, project);
         // Mirror locally first: the copy that matters most is the one for a save that
         // is about to fail. A save also restarts the server-side 24h TTL for this map.
         const backed = writeBackup(mapName, snapshot, body);
         try {
             const r = await saveMap(
                 mapName, snapshot, grouped, mapTeamRef.current, versionRef.current, body, confirmed,
+                lit, project,
             );
             versionRef.current = r.version ?? null;
             // Edits made while the request was in flight must stay dirty.
@@ -1072,7 +1196,7 @@ export default function App() {
 
     const goLive = () => {
         if (!mapName) return;
-        live.host(mapName, partsRef.current, groups, mapTeamRef.current);
+        live.host(mapName, partsRef.current, groups, mapTeamRef.current, lightsRef.current);
         setTeamOpen(true);
     };
 
@@ -1235,7 +1359,7 @@ export default function App() {
         if (!viewing) return;
         loadMapAsAdmin(viewing)
             .then((m) => {
-                resetDocument(m.name, m.parts, false, m.groups ?? []);
+                resetDocument(m.name, m.parts, false, m.groups ?? [], null, null, m.lights ?? []);
                 flash(`Viewing ${m.name} as admin, read-only`);
             })
             .catch((e) => flash(String(e.message ?? e)));
@@ -1454,6 +1578,8 @@ export default function App() {
                         selectMany={selectMany}
                         faces={faces}
                         showFaces={!!activePlugin?.usesFaces}
+                        lights={lights}
+                        onLightTransform={patchLight}
                         brush={brushRadius > 0 && !playing ? { radius: brushRadius } : null}
                         onBrush={brushStroke}
                         tintRef={tintRef}
@@ -1581,9 +1707,12 @@ export default function App() {
                             flags={flags}
                             onFlag={setFlag}
                             onClearFlags={clearFlag}
+                            lights={lights}
+                            onAddLight={canEdit && mapName ? addLight : null}
+                            onRemoveLight={canEdit ? removeLight : null}
                         />
                     )}
-                    {(!mobile || drawerTab === 'properties') && selectedIds.length > 1 && (
+                    {(!mobile || drawerTab === 'properties') && !selectedLight && selectedIds.length > 1 && (
                         <Arrange
                             selected={selectedParts}
                             parts={visibleParts}
@@ -1597,6 +1726,8 @@ export default function App() {
                             count={selectedIds.length}
                             onChange={updateSelected}
                             readOnly={!canEdit}
+                            light={selectedLight}
+                            onLightChange={(patch) => selectedLight && patchLight(selectedLight._id, patch)}
                         />
                     )}
                 </div>

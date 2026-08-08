@@ -306,6 +306,7 @@ a.tool-btn { text-decoration: none; }
 .tree-empty { color: #666; padding: 6px 12px; font-size: 12px; }
 
 .tree-item {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -316,7 +317,6 @@ a.tool-btn { text-decoration: none; }
     white-space: nowrap;
     color: #c8c8ce;
 }
-.tree-index { color: #666; font-size: 11px; }
 .tree-item:hover { background: #1a1a21; }
 .tree-item.selected { background: #1e3a5f; color: #fff; }
 .tree-item.child { padding-left: 26px; }
@@ -324,17 +324,40 @@ a.tool-btn { text-decoration: none; }
 .tree-item.group { padding-left: 6px; gap: 4px; cursor: default; }
 .tree-item.group .label { flex: 1; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
 .tree-item.group .count { color: #666; font-size: 11px; font-variant-numeric: tabular-nums; }
-.tree-item.group .clear {
+.tree-item .clear {
     background: none; border: none; color: #666; cursor: pointer;
     font-size: 14px; line-height: 1; padding: 0 2px;
+    opacity: 0; transition: opacity 90ms linear;
 }
-.tree-item.group .clear:hover { color: #ddd; }
+.tree-item:hover .clear, .tree-item.selected .clear { opacity: 1; }
+.tree-item .clear:hover { color: #ddd; }
+/* Adding a light is the only way to get one, so unlike the × it never hides. */
+.tree-item .add {
+    background: none; border: 1px solid #2f2f3a; color: #8a8a96; cursor: pointer;
+    font-size: 12px; line-height: 1; padding: 0 4px; border-radius: 3px; height: 14px;
+}
+.tree-item .add:hover { color: #ddd; border-color: #4a4a58; }
 .tree-item.group .group-name {
     flex: 1; min-width: 0; background: #101015; border: 1px solid #2563eb;
     color: #ddd; border-radius: 3px; padding: 0 4px; font-size: 12px; height: 16px;
 }
 .tree-item.group .group-name:focus { outline: none; }
 .tree-item.child.nested { padding-left: 40px; }
+
+/* What a row hangs off, drawn per row so it survives the virtual list: each one
+   contributes its own segment and together they read as one line. 15px is the
+   centre of a top-level icon, 29px the centre of a folder's. */
+.tree-item.child::before, .tree-item.group::before, .tree-item.child.nested::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: #2f2f3a;
+    pointer-events: none;
+}
+.tree-item.child::before, .tree-item.group::before { left: 15px; }
+.tree-item.child.nested::after { left: 29px; }
 .twist {
     background: none; border: none; color: #777; cursor: pointer;
     padding: 0; width: 12px; height: 12px; flex: none; display: flex;
@@ -437,6 +460,16 @@ a.tool-btn { text-decoration: none; }
     width: 40px; height: 24px; padding: 0;
     background: none; border: 1px solid #26262e; border-radius: 3px;
 }
+.prop-head {
+    color: #6f6f7a;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border-bottom: 1px solid #1c1c22;
+    padding-bottom: 3px;
+    margin-top: 4px;
+}
+.prop-check input[type="checkbox"] { accent-color: #2563eb; margin: 0; }
 .vec3 { display: flex; gap: 4px; flex: 1; }
 .vec3 input { width: 100%; min-width: 0; }
 

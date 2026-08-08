@@ -318,3 +318,78 @@ it('gives every thumbnail an unguessable name and drops the old one', function (
     $id = DB::table('maps')->where('name', 'shot')->value('id');
     $this->get("/api/thumbs/$id.webp")->assertNotFound();
 });
+
+const FULL_PART = [
+    '_id' => 'aaa', 'T' => 'Part', 'P' => [0, 0, 0], 'S' => [200, 2, 200], 'R' => [0, 0, 0],
+    'C' => '7d7d85', 'Tr' => 0, 'Shape' => 'Block',
+    'M' => 'Metal', 'Cs' => false, 'An' => false, 'Cc' => false, 'Bp' => true,
+    'Tx' => ['Top' => 'Studs', 'Bottom' => 'Inlets'],
+];
+
+const LIGHT = [
+    '_id' => 'l1', 'N' => 'Sun', 'P' => [80, 160, 60], 'R' => [-69.44, 25.09, 17.53],
+    'C' => 'ffffff', 'I' => 10000, 'Sd' => true,
+];
+
+const PROJECT_ID = 'c32819ed4aa4a42511cefa9d974e3ce3';
+
+it('round-trips every property the studio document carries', function () {
+    asToken()->putJson('/api/maps/parity', [
+        'parts' => [FULL_PART], 'groups' => [], 'lights' => [LIGHT], 'project_id' => PROJECT_ID,
+    ])->assertOk();
+
+    asToken()->getJson('/api/maps/parity')->assertOk()->assertJson([
+        'parts' => [FULL_PART],
+        'lights' => [LIGHT],
+        'project_id' => PROJECT_ID,
+    ]);
+});
+
+it('refuses a part property it does not know', function (array $bad) {
+    asToken()->putJson('/api/maps/bad', ['parts' => [array_merge(FULL_PART, $bad)], 'groups' => []])
+        ->assertStatus(400);
+})->with([
+    'unknown material' => [['M' => 'Gold']],
+    'unknown face' => [['Tx' => ['Sideways' => 'Studs']]],
+    'unknown texture' => [['Tx' => ['Top' => 'Bricks']]],
+    'a toggle that is not a boolean' => [['Cs' => 'yes']],
+    'textures as the document list, not our map' => [['Tx' => [['face' => 'Top', 'kind' => 'Studs']]]],
+]);
+
+it('refuses a light it cannot store', function (array $bad) {
+    asToken()->putJson('/api/maps/bad', ['parts' => [], 'groups' => [], 'lights' => [array_merge(LIGHT, $bad)]])
+        ->assertStatus(400);
+})->with([
+    'no shadow flag' => [['Sd' => null]],
+    'illuminance past the ceiling' => [['I' => 1e9]],
+    'a colour that is not six hex digits' => [['C' => 'white']],
+    'an empty name' => [['N' => '']],
+]);
+
+it('refuses two lights sharing an id', function () {
+    asToken()->putJson('/api/maps/bad', ['parts' => [], 'groups' => [], 'lights' => [LIGHT, LIGHT]])
+        ->assertStatus(400);
+});
+
+it('refuses a project id that is not 32 hex characters', function () {
+    asToken()->putJson('/api/maps/bad', ['parts' => [], 'groups' => [], 'project_id' => 'nope'])
+        ->assertStatus(400);
+});
+
+it('leaves stored lights and project id alone when a save omits them', function () {
+    asToken()->putJson('/api/maps/keep', [
+        'parts' => [FULL_PART], 'groups' => [], 'lights' => [LIGHT], 'project_id' => PROJECT_ID,
+    ])->assertOk();
+
+    // The bare-array shape an older tab still sends must not wipe either of them.
+    asToken()->putJson('/api/maps/keep', [FULL_PART])->assertOk();
+
+    asToken()->getJson('/api/maps/keep')->assertOk()
+        ->assertJson(['lights' => [LIGHT], 'project_id' => PROJECT_ID]);
+});
+
+it('still takes a map with none of the new properties', function () {
+    asToken()->putJson('/api/maps/old', [PART])->assertOk();
+    asToken()->getJson('/api/maps/old')->assertOk()
+        ->assertJson(['parts' => [PART], 'lights' => [], 'project_id' => null]);
+});

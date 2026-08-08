@@ -35,13 +35,27 @@ export function listBackups() {
         .sort((a, b) => b.savedAt - a.savedAt);
 }
 
+/**
+ * The mirrored document: `{ parts, groups, lights, projectId }`. What is stored is
+ * whatever the save sent, which used to be a bare array of parts and is now the
+ * whole body, so both shapes are read.
+ */
 export function readBackup(name) {
+    let doc;
     try {
-        const parts = JSON.parse(localStorage.getItem(PREFIX + name) ?? 'null');
-        return Array.isArray(parts) ? parts : null;
+        doc = JSON.parse(localStorage.getItem(PREFIX + name) ?? 'null');
     } catch {
         return null;
     }
+    if (Array.isArray(doc)) return { parts: doc, groups: [], lights: [], projectId: null };
+    if (!doc || typeof doc !== 'object' || !Array.isArray(doc.parts)) return null;
+
+    return {
+        parts: doc.parts,
+        groups: Array.isArray(doc.groups) ? doc.groups : [],
+        lights: Array.isArray(doc.lights) ? doc.lights : [],
+        projectId: doc.project_id ?? null,
+    };
 }
 
 export function deleteBackup(name) {

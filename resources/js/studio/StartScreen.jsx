@@ -9,7 +9,7 @@ import Clothing from './clothing/Clothing';
 import { fromProject, isProject } from './vortexProject';
 
 const DISCLAIMER_KEY = 'studio_disclaimer_closed';
-const EXAMPLES_GONE_KEY = 'studio_examples_removed_closed';
+const OFFICIAL_LAUNCH_KEY = 'studio_official_launch_closed';
 
 const readClosed = (key) => {
     try {
@@ -81,17 +81,16 @@ export default function StartScreen({
     // Signing in from the toolbar changes which maps and teams there are.
     useEffect(() => { refresh(); }, [accountSeq]);
 
-    // Once per browser: a whole section of the start screen is gone, and nobody can
-    // guess why from the empty space it left. Marked seen as it opens, so dismissing
-    // it any way at all is the last of it.
+    // Once per browser: the official editor is out, and people should hear from us
+    // that this one kept up. Marked seen as it opens, so dismissing it any way at
+    // all is the last of it.
     useEffect(() => {
-        if (readClosed(EXAMPLES_GONE_KEY)) return;
-        markClosed(EXAMPLES_GONE_KEY);
+        if (readClosed(OFFICIAL_LAUNCH_KEY)) return;
+        markClosed(OFFICIAL_LAUNCH_KEY);
         notice({
-            title: 'The example maps are gone',
-            body: 'Vortex maps are not allowed to be used outside the game itself, so the examples'
-                + ' that used to ship with the editor have been removed at the developers\' request.'
-                + ' Your own maps are untouched: make a new one, or upload a .json you already have.',
+            title: 'The official Vortex Studio is out',
+            body: 'Paulin Studio did not stay behind. Lights and materials are already here,'
+                + ' and every map you build in this editor exports over there without any fuss.',
             confirmLabel: 'Got it',
         });
     }, []);
@@ -119,8 +118,8 @@ export default function StartScreen({
     };
 
     const restore = (name) => {
-        const parts = readBackup(name);
-        if (!parts) {
+        const doc = readBackup(name);
+        if (!doc) {
             notice({
                 title: 'That copy could not be read',
                 body: `The copy of ${name}.json stored in this browser is unreadable, so it cannot be restored.`,
@@ -128,7 +127,7 @@ export default function StartScreen({
 
             return;
         }
-        onRestore(name, parts);
+        onRestore(name, doc);
     };
 
     const forget = async (name) => {
@@ -151,8 +150,11 @@ export default function StartScreen({
             const doc = JSON.parse(await file.text());
             let parts = doc;
             let groups = null;
+            let carried = null;
             if (isProject(doc)) {
-                ({ parts, groups } = fromProject(doc));
+                const read = fromProject(doc);
+                ({ parts, groups } = read);
+                carried = { lights: read.lights, projectId: read.projectId };
             } else if (!Array.isArray(parts) || parts.some((p) => typeof p !== 'object' || p === null)) {
                 throw new Error('not a map: expected a Vortex project or a JSON array of parts');
             }
@@ -160,7 +162,7 @@ export default function StartScreen({
                 .replace(/\.json$/i, '')
                 .replace(/[^A-Za-z0-9_-]/g, '-')
                 .slice(0, 64) || 'uploaded';
-            onUpload(name, parts, groups);
+            onUpload(name, parts, groups, carried);
         } catch (err) {
             notice({ title: 'That file could not be read', body: String(err.message ?? err) });
         }
