@@ -438,7 +438,15 @@ a.tool-btn { text-decoration: none; }
 /* ---------- properties ---------- */
 
 .props { padding: 4px 10px; display: flex; flex-direction: column; gap: 8px; }
-.props .empty { color: var(--dim); padding: 8px 2px; }
+.props .empty {
+    color: var(--dim);
+    padding: 8px 2px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+.props .empty img { width: 100%; max-width: 160px; height: auto; opacity: 0.85; }
 
 .prop-row { display: flex; align-items: center; gap: 6px; }
 .prop-row label { width: 78px; flex: none; color: var(--ink-label); font-size: 12px; }

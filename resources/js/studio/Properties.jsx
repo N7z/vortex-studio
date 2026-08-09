@@ -147,7 +147,12 @@ export default function Properties({
         return (
             <div className="panel properties">
                 <div className="panel-title">Properties</div>
-                <div className="props"><div className="empty">Nothing selected</div></div>
+                <div className="props">
+                    <div className="empty">
+                        <img src="/img/fluttershy.webp" alt="" width="512" height="512" />
+                        Nothing selected
+                    </div>
+                </div>
             </div>
         );
     }
