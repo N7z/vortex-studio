@@ -222,4 +222,4 @@ If you discover a security vulnerability within the framework or application, pl
 
 ## License
 
-This project is licensed under the AGPL-3.0-or-later license.
+This project is open-source software licensed under the [GNU Affero General Public License Version 3 (AGPL-3.0-or-later)](LICENSE).
