@@ -37,6 +37,16 @@ jobs:
           cp .env.example .env
           php artisan key:generate
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Build the assets the views ask for
+        run: |
+          npm ci
+          npm run build
+
       - run: ./vendor/bin/pest
 
   js:
