@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { FALL_SPEED } from './character';
+import { WALK_SPEED } from './movement';
 
 const BASE = '/play/sfx';
 
@@ -14,9 +15,29 @@ const CLIPS = {
     fallLoop: 'FallLoop.ogg',
 };
 
-// One stride of the walk clip. Footsteps are driven off distance travelled rather
-// than a timer, so they keep step whatever the frame rate does.
-const STRIDE = 4.6;
+// Walk.ogg is not one footstep: it is a cycle of four, evenly spaced, ending exactly
+// where it began. It is held as a loop for as long as the feet are moving, the way
+// the fall is, and the rate is what carries the pace — retriggering the whole cycle
+// per stride stacks four overlapping copies of it and reads as a stampede.
+const WALK_RATE = { min: 0.55, max: 1.5 };
+
+// Below this the feet are shuffling, not walking, and the loop is not worth starting.
+const WALK_FLOOR = 1;
+
+// Ground is lost for a frame or two over every seam and kerb. Holding the loop across
+// that keeps a walk over uneven ground from restarting the cycle at every bump, and is
+// far too short to be heard under a jump.
+const WALK_HOLD = 0.12;
+
+// A jump of your own lands at exactly JUMP_VELOCITY, so anything past it is a drop
+// deeper than you can put yourself in. The margin over it is about three studs below
+// the lip you left, which keeps the scream off ledges you step down and hops you take.
+const FALL_TRIGGER = 60;
+
+// The impact that is worth a thud. A jump lands well past it; walking off a kerb or
+// down a step does not, and used to fire Land.ogg on every stair.
+const LAND_TRIGGER = FALL_SPEED;
+
 const VOLUME = { jump: 0.5, land: 0.6, walk: 0.35, fallStart: 0.5, fallLoop: 0.4 };
 const REF_DISTANCE = 12;
 const MAX_DISTANCE = 140;
@@ -54,7 +75,7 @@ export function createAudio(camera, scene) {
         if (!disposed) ready = b;
     }).catch(() => { /* the play test is still playable without sound */ });
 
-    const attach = (name, at, loop) => {
+    const attach = (name, at, loop, onEnded = null) => {
         const buffer = ready?.[name];
         if (!buffer || disposed) return null;
         const sound = new THREE.PositionalAudio(listener);
@@ -63,6 +84,14 @@ export function createAudio(camera, scene) {
         sound.setMaxDistance(MAX_DISTANCE);
         sound.setVolume(VOLUME[name] ?? 1);
         sound.setLoop(loop);
+        if (onEnded) {
+            sound.onEnded = () => {
+                // three's own handler is what marks the node stopped; replacing it
+                // outright leaves the sound believing it is still playing.
+                sound.isPlaying = false;
+                onEnded();
+            };
+        }
         at.add(sound);
         live.add(sound);
         sound.play();
@@ -92,16 +121,16 @@ export function createAudio(camera, scene) {
             const holder = new THREE.Object3D();
             holder.position.set(x, y, z);
             anchor.add(holder);
-            const sound = attach(name, holder, false);
-            if (!sound) {
-                holder.removeFromParent();
-                return;
-            }
-            sound.onEnded = () => {
+            const sound = attach(name, holder, false, () => {
                 release(sound);
                 holder.removeFromParent();
-            };
+            });
+            if (!sound) holder.removeFromParent();
         },
+        // A one-shot that rides the body instead of the spot it started at, and that
+        // the caller keeps hold of: a fall has to be cut the moment it ends, not left
+        // screaming over someone who is already standing up.
+        once: (name, holder, onEnded) => attach(name, holder, false, onEnded),
         loop: (name, holder) => attach(name, holder, true),
         release,
         dispose() {
@@ -122,9 +151,26 @@ export function createBodyAudio(audio, scene) {
     const holder = new THREE.Object3D();
     scene.add(holder);
 
-    let walkDistance = STRIDE;
+    let walk = null;
     let wasFalling = false;
+    let fallStart = null;
     let fallLoop = null;
+    // The impact is read off the way down: by the frame `landed` is up the controller
+    // has already zeroed vy, so the speed that did the landing is gone.
+    let drop = 0;
+    let air = 0;
+
+    const hush = () => {
+        audio.release(walk);
+        audio.release(fallStart);
+        audio.release(fallLoop);
+        walk = null;
+        fallStart = null;
+        fallLoop = null;
+        wasFalling = false;
+        drop = 0;
+        air = 0;
+    };
 
     return {
         step(dt, state) {
@@ -132,33 +178,45 @@ export function createBodyAudio(audio, scene) {
             const { x, y, z } = holder.position;
 
             if (state.jumped) audio.oneShot('jump', x, y, z);
-            if (state.landed) audio.oneShot('land', x, y, z);
+            if (state.landed && drop < -LAND_TRIGGER) audio.oneShot('land', x, y, z);
+            drop = state.grounded ? 0 : Math.min(drop, state.vy);
 
-            // Footsteps come off ground distance, so they stop the frame the player
-            // does and never fire in mid-air.
-            if (state.grounded && state.moving) {
-                walkDistance += state.speed * dt;
-                if (walkDistance >= STRIDE) {
-                    walkDistance %= STRIDE;
-                    audio.oneShot('walk', x, y, z);
-                }
-            } else {
-                walkDistance = STRIDE;
+            air = state.grounded ? 0 : air + dt;
+
+            // Feet on the ground and going somewhere, or nothing. The loop stops the
+            // frame the player does, and a jump outruns the hold, so it is never heard
+            // in mid-air.
+            if (air < WALK_HOLD && state.moving && state.speed > WALK_FLOOR) {
+                walk = walk ?? audio.loop('walk', holder);
+                walk?.setPlaybackRate(Math.min(
+                    Math.max(state.speed / WALK_SPEED, WALK_RATE.min),
+                    WALK_RATE.max,
+                ));
+            } else if (walk) {
+                audio.release(walk);
+                walk = null;
             }
 
-            const falling = !state.grounded && state.vy < -FALL_SPEED;
+            const falling = !state.grounded && state.vy < -FALL_TRIGGER;
             if (falling && !wasFalling) {
-                audio.oneShot('fallStart', x, y, z);
-                fallLoop = audio.loop('fallLoop', holder);
+                // The loop is the tail of the start, not a second voice over it.
+                fallStart = audio.once('fallStart', holder, () => {
+                    fallStart = null;
+                    if (wasFalling) fallLoop = audio.loop('fallLoop', holder);
+                });
             } else if (!falling && wasFalling) {
+                audio.release(fallStart);
                 audio.release(fallLoop);
+                fallStart = null;
                 fallLoop = null;
             }
             wasFalling = falling;
         },
+        // Death stops the body being stepped at all, which would otherwise leave
+        // whatever was playing at that moment looping over the corpse.
+        silence: hush,
         dispose() {
-            audio.release(fallLoop);
-            fallLoop = null;
+            hush();
             holder.removeFromParent();
         },
     };

@@ -103,7 +103,8 @@ export function createPeers(scene, audio = null) {
                     peer.label.position.set(shown.x, shown.y + LABEL_HEIGHT, shown.z);
                     peer.label.visible = !shown.dead;
                 }
-                if (!shown.dead) peer.sound?.step(dt, shown);
+                if (shown.dead) peer.sound?.silence();
+                else peer.sound?.step(dt, shown);
                 if (!peer.character) continue;
                 placeCharacter(peer.character, shown);
                 peer.character.update(dt, shown, elapsed);

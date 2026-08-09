@@ -226,7 +226,11 @@ export function createSession({ scene, camera, canvas, parts, onExit, onDeath, o
                 }
             }
 
-            body.step(dt, state);
+            // A dead body is held still rather than stepped, so its last frame is
+            // whatever killed it: left to play, a fall out of the world screams on
+            // through the respawn.
+            if (state.dead) body.silence();
+            else body.step(dt, state);
             view.update(dt, state, world);
 
             if (character) {
