@@ -47,15 +47,18 @@ It enables users to construct 3D environments, script game behavior in Lua, test
 * Wasmoon Runtime: Embedded Lua 5.4 engine running in WebAssembly.
 * Built-in Procedural Plugins:
   * Archimedes: Generates smooth curved part structures.
+  * Array: Duplicates selections into configurable grids.
   * Circle: Arranges parts in radial circular layouts.
   * Gapfill: Automatically bridges gaps between part faces.
   * Mirror: Duplicates and mirrors object selections across axes.
-  * Terrain and Voxel: Generates heightmaps and voxel terrain blocks.
+  * Terrain: Generates heightmaps.
+  * Voxel: Generates voxel terrain blocks.
   * Stairs: Constructs custom step staircases.
   * Scatter: Randomly distributes parts across surfaces.
   * Paintbrush: Applies materials and colors across multiple parts.
   * Imagemaker: Maps 2D images onto 3D part voxel grids.
-
+  * Model: Places parts from imported model data.
+  * Text: Generates text as parts.
 ### Real-Time Collaborative Editing
 * WebSocket Server: Standalone Node.js live editing server handling multi-user room sessions.
 * Conflict-Free State Sync: Shared operational transform engine (ops.js) ensuring idempotent edit ordering.
@@ -120,7 +123,7 @@ php artisan boost:install
 Clone the repository and install dependencies:
 
 ```bash
-git clone https://github.com/ShahbazCoder1/vortex-studio.git
+git clone https://github.com/N7z/vortex-studio.git
 cd vortex-studio
 composer install
 npm install
