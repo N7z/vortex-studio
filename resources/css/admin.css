@@ -168,7 +168,6 @@ body {
     font-size: 10px;
 }
 .tag-admin { background: #10305c; color: #9ec5f4; }
-.tag-plugins { background: #133a2c; color: #86e0b6; }
 .tag-banned { background: #3a1c1c; color: #e66767; }
 
 .pager { display: flex; align-items: center; justify-content: space-between; padding: 10px 2px; font-size: 11px; color: var(--muted); }
