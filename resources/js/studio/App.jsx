@@ -201,7 +201,6 @@ export default function App() {
     // A coordinate is three hex digits on the wire, so MAX_DIM is the format's own
     // ceiling rather than a policy: past it every field after it shifts.
     const resCap = unlimited ? MAX_DIM : MAX_RES;
-    const canPlugins = !!(account?.plugins ?? account?.admin);
 
     // Only the id travels with a map, so the names are looked up once and again
     // whenever one turns up that this list does not know.
@@ -502,15 +501,8 @@ export default function App() {
     }, [step]);
 
     useEffect(() => {
-        if (!canPlugins) {
-            setPlugins((ps) => { ps.forEach((p) => p.close?.()); return []; });
-            setActivePluginId(null);
-            setTabs((ts) => (ts.length ? [] : ts));
-            setActiveTab((cur) => (cur.startsWith('tab-') ? (mapNameRef.current ? 'game' : 'home') : cur));
-            return;
-        }
         loadPlugins().then(setPlugins);
-    }, [canPlugins]);
+    }, []);
 
     useEffect(() => {
         if (joining) live.join(joining);
@@ -535,7 +527,6 @@ export default function App() {
     }, [selectedIds, live.live, live.canEdit, live.sendSelection]);
 
     const togglePlugin = (id) => {
-        if (!canPlugins) return;
         setActivePluginId((cur) => (cur === id ? null : id));
     };
 
@@ -548,7 +539,6 @@ export default function App() {
     };
 
     const savePlugin = async (id, src) => {
-        if (!canPlugins) return { error: 'You do not have plugin access' };
         const pid = id ?? `user-${Date.now()}`;
         const builtin = isBuiltin(pid);
         try {
@@ -577,14 +567,12 @@ export default function App() {
     };
 
     const openNewPluginTab = () => {
-        if (!canPlugins) return;
         const id = `tab-${++tabSeq.current}`;
         setTabs((ts) => [...ts, { id, pluginId: null, title: 'New plugin', icon: 'script', src: TEMPLATE }]);
         setActiveTab(id);
     };
 
     const openEditTab = (pluginId) => {
-        if (!canPlugins) return;
         const existing = tabs.find((t) => t.pluginId === pluginId);
         if (existing) {
             setActiveTab(existing.id);
@@ -1485,7 +1473,6 @@ export default function App() {
                 statsOpen={statsOpen} onToggleStats={() => setStatsOpen((o) => !o)}
                 plugins={plugins} activePluginId={activePluginId}
                 onTogglePlugin={togglePlugin} onNewPlugin={openNewPluginTab}
-                canPlugins={canPlugins}
                 account={account} onTeams={() => setTeamsOpen(true)}
                 onHide={() => setFlag('hide', selectedIds, true)}
                 onLock={() => setFlag('lock', selectedIds, true)}
@@ -1615,7 +1602,7 @@ export default function App() {
                     )}
                     {/* Keyed on the count so a second death restarts the animation. */}
                     {playing && died > 0 && <div className="play-died" key={died} />}
-                    {canPlugins && activePlugin && mapName && !mobile && (
+                    {activePlugin && mapName && !mobile && (
                         <PluginPanel
                             plugin={activePlugin}
                             values={activeValues}
