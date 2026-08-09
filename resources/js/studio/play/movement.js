@@ -45,6 +45,7 @@ export function spawn(x, y, z, yaw = 0) {
         landed: false,
         bumped: false,
         fell: false,
+        freecam: false
     };
 }
 
@@ -57,6 +58,7 @@ export function headY(s) {
 }
 
 export function step(s, input, rawDt, world) {
+    if (s.freecam) return;
     const dt = Math.min(rawDt, MAX_DT);
     s.jumped = false;
     s.landed = false;

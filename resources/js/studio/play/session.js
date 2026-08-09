@@ -8,6 +8,8 @@ import * as move from './movement';
 
 const FORWARD_KEYS = ['KeyW', 'ArrowUp'];
 const BACK_KEYS = ['KeyS', 'ArrowDown'];
+const DOWN_KEYS = ['KeyQ'];
+const UP_KEYS = ['KeyE'];
 const RIGHT_KEYS = ['KeyD'];
 const LEFT_KEYS = ['KeyA'];
 
@@ -62,6 +64,10 @@ export function createSession({ scene, camera, canvas, parts, onExit, onDeath, o
         }
         wake();
         keys.add(e.code);
+        if ((keys.has("ShiftLeft") || keys.has("ShiftRight")) && keys.has("KeyP")) {
+            view.set_freecam();
+            shift_lock = false;
+        }
     };
     const onKeyUp = (e) => keys.delete(e.code);
     const onBlur = () => keys.clear();
@@ -185,6 +191,17 @@ export function createSession({ scene, camera, canvas, parts, onExit, onDeath, o
         },
         update(dt) {
             elapsed += dt;
+            state.freecam = view.freecam;
+
+            const input = {
+                forward: clamp1(axis(FORWARD_KEYS, BACK_KEYS) + touch.forward),
+                strafe: clamp1(axis(RIGHT_KEYS, LEFT_KEYS) + touch.strafe),
+                up: axis(DOWN_KEYS, UP_KEYS),
+                jump: keys.has('Space') || touch.jump,
+                yaw: view.yaw,
+                shift: keys.has('ShiftLeft') || keys.has('ShiftRight'),
+                shift_lock
+            };
 
             if (rigid) {
                 rigid.setPlayer(state);
@@ -199,14 +216,7 @@ export function createSession({ scene, camera, canvas, parts, onExit, onDeath, o
                 if (deadFor >= DEATH_HOLD) respawn();
             } else {
                 view.turn(axis(['ArrowLeft'], ['ArrowRight']), 0, dt);
-                move.step(state, {
-                    forward: clamp1(axis(FORWARD_KEYS, BACK_KEYS) + touch.forward),
-                    strafe: clamp1(axis(RIGHT_KEYS, LEFT_KEYS) + touch.strafe),
-                    jump: keys.has('Space') || touch.jump,
-                    yaw: view.yaw,
-                    shift_lock
-                }, dt, world);
-
+                move.step(state, input, dt, world);
                 if (state.fell) {
                     state.dead = true;
                     deadFor = 0;
@@ -216,7 +226,7 @@ export function createSession({ scene, camera, canvas, parts, onExit, onDeath, o
 
             if (state.dead) body.silence();
             else body.step(dt, state);
-            view.update(dt, state, shift_lock, world);
+            view.update(dt, state, input, world);
 
             if (character) {
                 placeCharacter(character, state);
