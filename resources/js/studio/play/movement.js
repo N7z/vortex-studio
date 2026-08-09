@@ -56,7 +56,7 @@ export function headY(s) {
     return s.y + HEAD_OFFSET;
 }
 
-export function step(s, view, input, rawDt, world) {
+export function step(s, input, rawDt, world) {
     const dt = Math.min(rawDt, MAX_DT);
     s.jumped = false;
     s.landed = false;
@@ -84,12 +84,6 @@ export function step(s, view, input, rawDt, world) {
     if (input.shift_lock) {
         s.yaw = input.yaw;
     }
-    if (input.arrow == -1) {
-        view.look(15, 0)
-    } else if (input.arrow == 1) {
-        view.look(-15, 0)
-    }
-
     let velX = s.residualX + wishX;
     let velZ = s.residualZ + wishZ;
     const cap = s.speedOverride > 0
