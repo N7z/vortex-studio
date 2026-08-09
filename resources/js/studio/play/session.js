@@ -55,6 +55,11 @@ export function createSession({ scene, camera, canvas, parts, onExit, onDeath, o
         if (e.code.includes('Shift')) {
             shift_lock = !shift_lock;
         }
+        if (e.code == 'Comma') {
+            view.turn(0, -1, 0);
+        } else if (e.code == 'Period') {
+            view.turn(0, 1, 0);
+        }
         wake();
         keys.add(e.code);
     };
@@ -193,7 +198,7 @@ export function createSession({ scene, camera, canvas, parts, onExit, onDeath, o
                 deadFor += dt;
                 if (deadFor >= DEATH_HOLD) respawn();
             } else {
-                view.turn(axis(['ArrowLeft'], ['ArrowRight']), dt);
+                view.turn(axis(['ArrowLeft'], ['ArrowRight']), 0, dt);
                 move.step(state, {
                     forward: clamp1(axis(FORWARD_KEYS, BACK_KEYS) + touch.forward),
                     strafe: clamp1(axis(RIGHT_KEYS, LEFT_KEYS) + touch.strafe),
@@ -211,7 +216,7 @@ export function createSession({ scene, camera, canvas, parts, onExit, onDeath, o
 
             if (state.dead) body.silence();
             else body.step(dt, state);
-            view.update(dt, state, world);
+            view.update(dt, state, shift_lock, world);
 
             if (character) {
                 placeCharacter(character, state);

@@ -37,8 +37,10 @@ export function createCamera(camera) {
             yaw -= dx * LOOK_SPEED;
             pitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, pitch + dy * LOOK_SPEED));
         },
-        turn(direction, dt) {
+        turn(direction, alignment_direction, dt) {
             yaw += direction * KEYBOARD_TURN_SPEED * dt;
+            yaw += alignment_direction * -Math.PI/4;
+            if (alignment_direction) yaw = Math.round(yaw / (Math.PI / 4)) * (Math.PI / 4);
         },
         zoom(delta) {
             distance = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, distance + delta * ZOOM_STEP));
@@ -50,8 +52,15 @@ export function createCamera(camera) {
             shown = CAM_DISTANCE;
         },
 
-        update(dt, state, world) {
+        update(dt, state, shift_lock, world) {
             focus.set(state.x, state.y + EYE, state.z);
+
+            if (shift_lock) {
+                const sin = Math.sin(yaw);
+                const cos = Math.cos(yaw);
+                focus.x += cos * Math.min(1, distance/3);
+                focus.z += -sin * Math.min(1, distance/3);
+            }
 
             const cp = Math.cos(pitch);
             dir.set(Math.sin(yaw) * cp, Math.sin(pitch), Math.cos(yaw) * cp);
