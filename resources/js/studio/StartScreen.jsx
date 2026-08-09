@@ -8,6 +8,7 @@ import UserMenu from './UserMenu';
 import Clothing from './clothing/Clothing';
 import { fromProject, isProject } from './vortexProject';
 import { setTheme, useTheme } from './theme';
+import { APP_VERSION } from './version';
 
 const DISCLAIMER_KEY = 'studio_disclaimer_closed';
 const OFFICIAL_LAUNCH_KEY = 'studio_official_launch_closed';
@@ -536,6 +537,7 @@ export default function StartScreen({
             <div className="start-credit">
                 {`© ${new Date().getFullYear()} zPaulinBRz - Not affiliated with `}
                 <a href="https://playvortex.io" target="_blank" rel="noreferrer">https://playvortex.io</a>
+                <span className="start-version">v{APP_VERSION}</span>
             </div>
 
             {disclaimer && (

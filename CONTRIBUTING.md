@@ -116,5 +116,12 @@ The middle number goes up for new features, the last number for fixes. The first
 number goes up only when the saved map format changes in a way that older files or
 older builds cannot handle.
 
-You do not need to touch the version yourself. Tagging happens on `master` after
-`develop` is merged in.
+The number in `package.json` is what the app shows under Help then About, and at the
+bottom of the start screen. It has to match the tag, so a release goes out like this:
+
+1. merge `develop` into `master`
+2. set the new number in `package.json`
+3. tag `master` and push the tag
+
+Steps 2 and 3 are the maintainer's job. You do not need to touch the version in a
+pull request.
