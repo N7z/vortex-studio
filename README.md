@@ -1,58 +1,168 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Vortex Studio
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+A web-based 3D map editor built with Laravel, React, Three.js and Rapier3D. It runs entirely in the browser, supports real-time collaborative editing, and lets you test your maps with a playable character without leaving the editor.
 
-## About Laravel
+A live instance is available at [studio.zpaulin.com](https://studio.zpaulin.com).
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+> This map editor is not affiliated with or endorsed by [Vortex](https://playvortex.io). The map format is compatible though, so anything built here can be exported and used in Vortex's official studio.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+<img width="1695" height="897" alt="Vortex Studio screenshot" src="public/img/screenshot.png" />
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Features
 
-## Learning Laravel
+### 3D Viewport and Geometry Editor
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+The editor runs on Three.js with a WebGL viewport that has shadows, a directional sun, and orbit and fly camera modes. You can insert parts (Block and SpawnLocation), then move, rotate and scale them using on-screen gizmos or by typing values straight into the Properties panel. Materials are Plastic, Wood, Metal, Grass, Ice and Paint, all with PBR texture maps. Each face can have Studs or Inlets applied on its own. The Explorer panel on the right shows the full scene tree and supports folder grouping and renaming.
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+Map Transfer lets you move a map between your personal storage and a team workspace without losing any of its history.
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+### Playtesting
 
-## Agentic Development
+Hit Play and a character spawns in the map. You can walk, jump and look around. Unanchored parts fall and behave physically using Rapier3D in WebAssembly, so you can stack blocks, shove things around, and stand on top of moving objects. Footsteps, jumps and falls all have matching sound effects.
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+On mobile, on-screen touch controls replace the keyboard and mouse so you can play and build on a phone or tablet with no extra setup. Mobile is a first-class feature, not an afterthought - the controls were designed for it from the start.
+
+### Plugins
+
+Plugins are Lua scripts that run inside a Wasmoon (Lua 5.4 in WebAssembly) sandbox and generate parts procedurally. You can write or edit them in a built-in CodeMirror 6 editor with syntax highlighting and autocompletion. There are quite a few built-in ones that cover the most common use cases:
+
+* Archimedes: builds curved part arcs.
+* Array: duplicates a selection into a configurable grid.
+* Circle: places parts in circular layouts.
+* Gapfill: fills gaps between part faces.
+* Mirror: mirrors a selection across an axis.
+* Terrain: generates a heightmap landscape.
+* Voxel: reconstructs a 3D model using only part positions, giving the result a distinct voxel look without rotations.
+* Stairs: builds staircase structures.
+* Scatter: distributes parts randomly across a surface.
+* Paintbrush: paints materials and colors across multiple parts.
+* Imagemaker: turns a 2D image into a flat voxel grid.
+* Model: places parts from imported model data.
+* Text: generates text as parts.
+
+### Live Collaboration
+
+Multiple people can edit the same map at the same time. A standalone Node.js WebSocket server keeps everyone in sync using a shared operational transform engine, so edits always land in the same order regardless of who sends them. You can see where teammates are looking, what they have selected, and watch them run around during a playtest. Roles (Owner, Developer, Spectator) are enforced server-side - the server refuses ops from spectators rather than trusting the client to grey out its own buttons. Signed-in users get a short-lived HMAC token from Laravel so the live server knows who they are without hitting the database.
+
+### Character and Clothing Customizer
+
+The clothing section lets you upload a 512x512 PNG for a shirt and pants, attach a 3D hat in GLB, GLTF, FBX, or OBJ format, pick a skin tone, and preview the result on a rotating character. You can download the preview as an animated GIF.
+
+### Project Management
+
+Maps are saved server-side and shown on the start screen with WebP thumbnails. Guest maps stick around for 24 hours, and signing in keeps them for good. You can pin version snapshots and roll back if something breaks. Deleted maps sit in a trash bin for 30 days before they get wiped. Teams work how you would expect - create one, invite people, set their role, and the shared maps show up for everyone.
+
+### Administration
+
+Admins have a dashboard that shows usage metrics, lets them manage user accounts, review maps, and inspect an audit log that includes image snapshots of map saves.
+
+## Framework Foundation and Learning
+
+Vortex Studio is built on top of Laravel, a PHP framework with a fast routing engine, dependency injection, Eloquent ORM, database migrations, background queues and real-time event broadcasting.
+
+To learn more about Laravel:
+* [Laravel Documentation](https://laravel.com/docs)
+* [Laracasts Video Tutorials](https://laracasts.com)
+* [Laravel Learn](https://laravel.com/learn)
+
+### Agentic Development
+
+Laravel's predictable conventions work well with AI coding agents. Install [Laravel Boost](https://laravel.com/docs/ai) to get 15+ tools and skills built for building Laravel apps:
 
 ```bash
 composer require laravel/boost --dev
-
 php artisan boost:install
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+## Prerequisites
 
-## Contributing
+* PHP 8.3 or newer
+* Composer
+* Node.js 20 or newer
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## Quickstart
 
-## Code of Conduct
+### 1. Installation
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```bash
+git clone https://github.com/N7z/vortex-studio.git
+cd vortex-studio
+composer install
+npm install
+cp .env.example .env
+php artisan key:generate
+```
 
-## Security Vulnerabilities
+### 2. Database Migration
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+```bash
+php artisan migrate
+```
+
+### 3. Run the Development Server
+
+```bash
+php artisan dev
+```
+
+This starts the backend, frontend asset compiler, scheduler, and queue worker together. Open your browser at `http://localhost:8000`.
+
+### 4. Optional: Live Editing Server
+
+To enable real-time multiplayer editing, run the WebSocket server separately:
+
+```bash
+cd live-editing-server
+npm install
+cp .env.example .env
+npm start
+```
+
+Then add these to your studio `.env`:
+
+```env
+VITE_LIVE_URL=ws://localhost:8787
+LIVE_SECRET=your_shared_secret_key
+```
+
+`LIVE_SECRET` must match in both `.env` files. Without it the server still works, but identity is not verified and members keep randomly generated names.
+
+## Development and Testing
+
+Before opening a pull request, run everything CI runs:
+
+```bash
+npm test
+npm run build
+node luacheck.mjs
+./vendor/bin/pest
+cd live-editing-server && npm test
+```
+
+All of it has to pass. See [CONTRIBUTING.md](CONTRIBUTING.md) for branch naming, commit style, and pull request guidelines.
+
+## System Architecture
+
+The Laravel backend handles persistence, authentication, team permissions, version snapshots, and HMAC token signing. The React frontend renders the 3D scene with Three.js, runs physics with Rapier3D, and executes Lua plugins through Wasmoon. The live editing server is a standalone Node.js process that keeps room state in memory and syncs edits between clients over WebSocket.
+
+## Contributing and Community
+
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+
+### Code of Conduct
+
+Please review the [Laravel Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct) to keep the community welcoming.
+
+### Security Vulnerabilities
+
+If you find a security vulnerability in the application, open a private issue or contact the maintainer directly. If the vulnerability is in the Laravel framework itself, report it to Taylor Otwell at taylor@laravel.com.
+
+## Contributors
+
+* [@N7z](https://github.com/N7z)
+* [@kindtracker](https://github.com/kindtracker)
+* [@Arbuzyonak](https://github.com/Arbuzyonak)
 
 ## License
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+This project is open-source software licensed under the [GNU Affero General Public License Version 3 (AGPL-3.0-or-later)](LICENSE).
