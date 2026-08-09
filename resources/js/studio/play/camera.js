@@ -3,6 +3,7 @@ import { BODY_HEIGHT, FEET_OFFSET } from './movement';
 
 export const CAM_DISTANCE = 24;
 export const LOOK_SPEED = 0.0025;
+export const KEYBOARD_TURN_SPEED = 2.25;
 export const PITCH_MIN = -1.2;
 export const PITCH_MAX = 1.0;
 export const ZOOM_MIN = 0;
@@ -35,6 +36,9 @@ export function createCamera(camera) {
         look(dx, dy) {
             yaw -= dx * LOOK_SPEED;
             pitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, pitch + dy * LOOK_SPEED));
+        },
+        turn(direction, dt) {
+            yaw += direction * KEYBOARD_TURN_SPEED * dt;
         },
         zoom(delta) {
             distance = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, distance + delta * ZOOM_STEP));
