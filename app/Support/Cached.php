@@ -5,7 +5,6 @@ namespace App\Support;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
-/** The cache is scale-to-zero, so a cold instance is an ordinary event, not a 500. */
 class Cached
 {
     public static function remember(string $key, int $ttl, callable $make): mixed

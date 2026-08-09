@@ -1,9 +1,3 @@
-// Which skin the editor wears. The choice is one attribute on <html>: every
-// colour the interface draws with is a custom property, and a theme is a block
-// that redefines them, so nothing here has to know what any panel looks like.
-// It is a browser preference, not part of the document, so it never travels
-// with a saved map and never reaches anyone you are building with.
-
 import { useSyncExternalStore } from 'react';
 
 const KEY = 'studio_theme';
@@ -29,8 +23,6 @@ function read() {
 let current = read();
 const listeners = new Set();
 
-// Called before React mounts as well as on every change, so the first paint is
-// already wearing the right theme instead of flashing the default one.
 export function applyTheme() {
     document.documentElement.dataset.theme = current;
 }

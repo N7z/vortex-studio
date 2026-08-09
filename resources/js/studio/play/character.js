@@ -5,8 +5,6 @@ import { BODY_HEIGHT, FEET_OFFSET } from './movement';
 const BASE = '/play';
 const CLIPS = ['idle', 'walk', 'jump', 'fall'];
 
-// Stepping off a lip leaves the ground for a frame or two. With GRAVITY at -196.2 this
-// is about a one stud drop, below which the walk keeps playing instead of the fall.
 export const FALL_SPEED = 20;
 
 const falling = (state) => !state.grounded && state.vy < -FALL_SPEED;
@@ -16,7 +14,6 @@ const BLEND = 0.15;
 let faceImage = null;
 let facePromise = null;
 
-// The drawn face is the fallback for a face.png that will not load.
 export function loadFace() {
     if (!facePromise) {
         facePromise = new Promise((resolve) => {

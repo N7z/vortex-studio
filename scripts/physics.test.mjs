@@ -5,8 +5,6 @@ import { buildWorld, combineWorlds } from '../resources/js/studio/play/collision
 import { createRigid, isLoose } from '../resources/js/studio/play/rigid.js';
 import * as move from '../resources/js/studio/play/movement.js';
 
-// An anchored slab with loose boxes over it, which is the shape of the question:
-// does a part without `anchored` fall, land, stack and hold the player up.
 const floor = { _id: 'floor', T: 'Part', P: [0, -1, 0], S: [200, 2, 200], R: [0, 0, 0] };
 const box = (id, x, y, z, s = 4, extra = {}) => ({
     _id: id, T: 'Part', P: [x, y, z], S: [s, s, s], R: [0, 0, 0], An: false, ...extra,
@@ -35,7 +33,6 @@ test('an unanchored part falls and lands on the anchored floor', async () => {
     assert.equal(rigid.count, 1);
     assert.equal(at(rigid, 'a').P[1], 30);
     settle(rigid);
-    // A 4-stud cube resting on a slab whose top is 0 sits with its centre at 2.
     assert.ok(Math.abs(at(rigid, 'a').P[1] - 2) < 0.05, `landed at ${at(rigid, 'a').P[1]}`);
     rigid.dispose();
 });
@@ -76,7 +73,6 @@ test('everything goes to sleep once it has settled', async () => {
 test('the player stands on a loose part where it came to rest', async () => {
     const rigid = await createRigid([floor, box('a', 0, 20, 0, 8)]);
     settle(rigid, 6);
-    // An 8-stud cube on a slab whose top is 0 rests with its centre at 4, top at 8.
     const top = at(rigid, 'a').P[1] + 4;
     assert.ok(Math.abs(top - 8) < 0.1, `box top at ${top}`);
 
@@ -93,7 +89,6 @@ test('without the loose part the player falls straight past', async () => {
     const rigid = await createRigid([floor, box('a', 0, 20, 0, 8)]);
     settle(rigid, 6);
     const top = at(rigid, 'a').P[1] + 4;
-    // The same spawn against the anchored world alone drops to the floor instead.
     const world = buildWorld([floor], true);
     const s = move.spawn(0, top, 0);
     const idle = { forward: 0, strafe: 0, jump: false, yaw: 0 };
@@ -107,7 +102,6 @@ test('the player body shoves a loose part out of the way', async () => {
     settle(rigid, 3);
     const before = at(rigid, 'a').P[0];
 
-    // Walk the kinematic mirror straight through where the box is standing.
     for (let i = 0; i < 180; i++) {
         rigid.setPlayer({ x: -6 + i * 0.06, y: 2.08, z: 0 });
         rigid.step(1 / 60);

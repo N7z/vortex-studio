@@ -24,7 +24,6 @@ function hparts(int $n): array
     return array_fill(0, $n, HPART);
 }
 
-/** A save on its own leaves nothing to go back to: the first save has no pre-image. */
 it('keeps no version for the very first save', function () {
     $a = User::factory()->create();
     $this->actingAs($a)->putJson('/api/maps/m', ['parts' => [HPART]])->assertOk();
@@ -40,15 +39,12 @@ it('snapshots the pre-image when a different editor saves', function () {
         ->assertOk();
 
     $this->actingAs($a)->putJson("/api/maps/m?team=$team", ['parts' => hparts(3)])->assertOk();
-    // The first overwrite is always kept: until it happens there is nothing to go back to.
     $this->actingAs($a)->putJson("/api/maps/m?team=$team", ['parts' => hparts(4)])->assertOk();
-    // Same editor, seconds later, one part changed: not worth its own copy.
     $this->actingAs($a)->putJson("/api/maps/m?team=$team", ['parts' => hparts(5)])->assertOk();
     $this->actingAs($b)->putJson("/api/maps/m?team=$team", ['parts' => hparts(6)])->assertOk();
 
     $v = $this->actingAs($a)->getJson("/api/maps/m/history?team=$team")->assertOk()->json('versions');
 
-    // Newest first: what B replaced, then what A's first overwrite replaced.
     expect($v)->toHaveCount(2)
         ->and(array_column($v, 'parts'))->toBe([5, 3])
         ->and($v[0]['by'])->toBe($a->name);
@@ -76,7 +72,6 @@ it('restores a version and can undo the restore', function () {
         ->assertOk()->assertJson(['parts' => 5]);
     expect(DB::table('maps')->where('name', 'm')->value('parts'))->toBe(5);
 
-    // The restore snapshotted what it replaced, so putting the wrong one back is undoable.
     $before = collect($this->actingAs($a)->getJson('/api/maps/m/history')->json('versions'))
         ->firstWhere('parts', 1);
     expect($before)->not->toBeNull();
@@ -126,7 +121,6 @@ it('asks before a save that throws most of a team map away', function () {
 
     expect(DB::table('maps')->where('name', 'm')->value('parts'))->toBe(5)
         ->and(DB::table('audit_log')->where('action', 'map.save_destructive')->count())->toBe(1)
-        // The confirmed wreck is what created the copy to come back to.
         ->and(DB::table('map_versions')->where('reason', 'destructive')->value('parts'))->toBe(400);
 });
 
@@ -157,7 +151,6 @@ it('keeps a pinned version through retention and drops an old ordinary one', fun
 
     MapHistory::prune((int) $map->id);
 
-    // The three newest are kept whatever their age, and the pinned one always is.
     expect(DB::table('map_versions')->where('reason', 'manual')->count())->toBe(1)
         ->and(DB::table('map_versions')->count())->toBe(4);
 

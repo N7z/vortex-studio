@@ -9,11 +9,6 @@ const measure = (font, text) => {
     return Math.ceil(g.measureText(text).width);
 };
 
-/**
- * A name drawn into a canvas sized to the text itself: a fixed canvas stretched to a
- * fixed sprite is what makes these blurry, since a short name is scaled up the most.
- * Mipmaps are off for the same reason, and the sprite keeps the canvas aspect.
- */
 export function labelMaterial(name, color = '#dddddd', {
     fontPx = 28, weight = 600, opacity = 1, depthTest = true,
 } = {}) {

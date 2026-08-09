@@ -734,7 +734,6 @@ test('a malformed group op is refused', async () => {
     owner.ws.close();
 });
 
-
 const token2 = (over = {}) => {
     const claim = JSON.stringify({
         v: 2, u: 1, n: 'Ada', m: 'testmap', t: null, r: 'editor', ...over,
@@ -755,7 +754,6 @@ test('a stranger joining first does not become owner of an account map', async (
     const hi = await c.next('welcome');
     assert.equal(hi.you.owner, true);
 
-    // The owner leaves; the room keeps its account, so an anonymous joiner cannot take it.
     c.ws.close();
     const { c: other, welcome } = await guest(hi.code);
     assert.equal(welcome.you.owner, false);
@@ -800,7 +798,6 @@ test('a token minted for another map grants nothing here', async () => {
     other.ws.close();
 });
 
-// Rooms are keyed by map and team and outlive each test, so every test needs its own.
 let teamSeq = 100;
 const nextTeam = () => ++teamSeq;
 
@@ -820,7 +817,6 @@ test('the first to open a team map starts the room and the next one lands in it'
     const team = nextTeam();
     const a = await openTeam(team, { u: 1 });
     const first = await a.next('welcome');
-    // An editor never runs the room just by arriving first.
     assert.equal(first.you.owner, false);
     assert.equal(first.you.role, 'developer');
 
@@ -830,7 +826,6 @@ test('the first to open a team map starts the room and the next one lands in it'
     assert.equal(second.code, first.code);
     assert.equal(second.you.owner, false);
     assert.equal(second.you.role, 'developer');
-    // The room's map wins, not whatever the joiner happened to be holding.
     assert.deepEqual(second.parts.map((p) => p._id), ['a']);
 
     a.ws.close();
@@ -959,7 +954,6 @@ test('a team room cannot be reached by passing its code around', async () => {
     member.ws.close();
 });
 
-
 test('the team owner runs the room whenever they arrive', async () => {
     const team = nextTeam();
     const editor = await openTeam(team, { u: 1, n: 'Ed' });
@@ -969,7 +963,6 @@ test('the team owner runs the room whenever they arrive', async () => {
     const hi = await boss.next('welcome');
     assert.equal(hi.you.owner, true);
 
-    // And the editor is told the room now has one.
     const members = await editor.next('members', (m) => m.members.some((x) => x.owner));
     assert.equal(members.members.find((x) => x.owner).name, 'Boss');
 
@@ -1005,12 +998,10 @@ test('a kicked team member cannot come back by clearing its token', async () => 
     boss.send({ t: 'kick', memberId: them.you.id });
     assert.equal(await bad.closed, 4003);
 
-    // A fresh client with no stored token, but the same account.
     const again = await openTeam(team, { u: 7, n: 'Bad' });
     assert.match((await again.next('error')).message, /removed you/);
     assert.equal(await again.closed, 4004);
 
-    // Somebody else from the team is unaffected.
     const ok = await openTeam(team, { u: 8, n: 'Fine' });
     assert.equal((await ok.next('welcome')).code, hi.code);
 

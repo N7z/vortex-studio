@@ -1,6 +1,5 @@
 let csrf = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
 
-// Sign-in and sign-out rotate the session, so every reply carries a fresh token.
 async function account(path, body) {
     const r = await fetch(`/account${path}`, {
         method: body ? 'POST' : 'GET',
@@ -17,8 +16,6 @@ async function account(path, body) {
 }
 
 export const loadAccount = () => account('/');
-// The map is named so the token can carry what the caller may do to it. Joining by
-// code names nothing, and the token then proves the display name only.
 export const liveToken = (map = null, team = null) => {
     const q = new URLSearchParams();
     if (map) q.set('map', map);
@@ -37,7 +34,6 @@ export async function listMaps() {
     return r.json();
 }
 
-/** Any map by id, for an admin opening someone else's. 404 for everyone else. */
 export async function loadMapAsAdmin(id) {
     const r = await fetch(`/admin/maps/${encodeURIComponent(id)}`, { headers: { Accept: 'application/json' } });
     if (!r.ok) throw new Error('that map could not be opened');
@@ -46,7 +42,6 @@ export async function loadMapAsAdmin(id) {
 
 const mapUrl = (name, team) => `/api/maps/${encodeURIComponent(name)}${team != null ? `?team=${team}` : ''}`;
 
-// A bare array is what an older server returns; both shapes stay readable.
 export async function loadMap(name, team = null) {
     const r = await fetch(mapUrl(name, team));
     if (!r.ok) throw new Error(`failed to load ${name}`);
@@ -63,7 +58,6 @@ export async function loadMap(name, team = null) {
         };
 }
 
-/** Throws a StaleError when somebody else saved since this copy was loaded. */
 export class StaleError extends Error {
     constructor(version) {
         super('someone else saved this map');
@@ -81,17 +75,12 @@ export class DestructiveError extends Error {
     }
 }
 
-// PHP discards a request body over post_max_size (8 MB by default) before any code
-// sees it, and a big map is mostly repeated key names, so it gzips to about a fifth.
-// Sent under our own header: nginx and Cloudflare do not touch request bodies, but
-// they do act on Content-Encoding.
 const GZIP_OVER = 512 * 1024;
 
 const gzip = async (text) => new Response(
     new Blob([text]).stream().pipeThrough(new CompressionStream('gzip')),
 ).arrayBuffer();
 
-/** The JSON a save would send, so a caller can size it without building it twice. */
 export const saveBody = (parts, groups, version, lights = [], projectId = null) => JSON.stringify({
     parts, groups, lights, project_id: projectId, version,
 });

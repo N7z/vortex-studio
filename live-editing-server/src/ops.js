@@ -1,8 +1,5 @@
 export const PART_KEYS = [
     '_id', 'T', 'P', 'S', 'R', 'C', 'Tr', 'Shape', 'Sh', 'ItemId',
-    // The official document's own per-part properties: material, the three
-    // behaviour toggles, the baseplate flag and the per-face textures. All
-    // optional, so a part written before them is still a valid part.
     'M', 'Cs', 'An', 'Cc', 'Bp', 'Tx',
 ];
 

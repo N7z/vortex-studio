@@ -23,13 +23,8 @@ plugin = {
 local MAX_RUN = 64
 local TO_DEG = 180 / math.pi
 local AGREE = 0.4
--- 5 bits per channel: a texture's dithering lands in one bucket, two real shades
--- of the same red do not.
 local BUCKET = 8
 local MAX_PALETTE = 64
--- Two palette entries closer than this are the same colour twice. Spending a slot
--- on the second costs one the model has little of and could not spare, like a gold
--- button on a red and blue suit.
 local APART = 40 * 40
 local NEIGHBOURS = {
     { 1, 0, 0 }, { -1, 0, 0 }, { 0, 1, 0 }, { 0, -1, 0 }, { 0, 0, 1 }, { 0, 0, -1 },
@@ -85,8 +80,6 @@ local function to_hex(r, g, b)
     return string.format("%02x%02x%02x", r, g, b)
 end
 
--- The mesher merges on exact equality, so one texel of drift per voxel stops it
--- joining anything. Snapping to a small palette is what makes it work at all.
 local function palettise(cs, count, want)
     local pop, sum, shades = {}, {}, {}
     local distinct = 0
@@ -109,8 +102,6 @@ local function palettise(cs, count, want)
             pop[key] = 1
         end
     end
-    -- On the distinct colours, not the buckets: a model can spread a hundred
-    -- near-identical shades over four buckets and still merge nothing.
     if distinct <= want then return nil end
 
     local keys = {}
@@ -128,8 +119,6 @@ local function palettise(cs, count, want)
         }
     end
 
-    -- Most populous first, but skipping anything too near a colour already kept,
-    -- then filling what is left over with the most populous of the rest.
     local pal, kept = {}, {}
     for pass = 1, 2 do
         for i = 1, #keys do
@@ -155,7 +144,6 @@ local function palettise(cs, count, want)
     end
     want = #pal
 
-    -- Once per distinct colour, not once per voxel.
     local seen = {}
     local out = {}
     for i = 1, count do
@@ -199,9 +187,6 @@ local function prepared(radius, want, clean)
         slot[(y * D + z) * W + x] = i
     end
 
-    -- Bounds checked, or a neighbour one past an edge wraps round to the far side
-    -- of the grid. The voxels are normalised to the model's bounding box, so every
-    -- model touches all six faces and every one of them was reading a stranger.
     local function at(x, y, z)
         if x < 0 or y < 0 or z < 0 or x >= W or y >= H or z >= D then return nil end
         return slot[(y * D + z) * W + x]
@@ -211,8 +196,6 @@ local function prepared(radius, want, clean)
         cs = palettise(cs, Model.count, want) or cs
     end
 
-    -- A colour no neighbour shares is texture noise, not something the artist
-    -- painted, so it takes the commonest neighbour instead.
     progress_span(0, 0.15)
     for pass = 1, clean do
         local next_cs = {}

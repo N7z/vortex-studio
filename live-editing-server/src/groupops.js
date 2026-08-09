@@ -1,7 +1,3 @@
-// Group edits travel as ops for the same reason part edits do: the room orders
-// them, so two people grouping at once merge instead of overwriting each other.
-// Every op is idempotent, because it is applied optimistically and again on echo.
-
 const MAX_NAME = 64;
 
 const okId = (v) => typeof v === 'string' && !!v && v.length <= MAX_NAME;

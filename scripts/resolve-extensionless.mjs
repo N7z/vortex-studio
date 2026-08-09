@@ -1,6 +1,3 @@
-// The studio's own modules import each other without a file extension, which the
-// bundler resolves and plain Node does not. This hook fills the extension in so a
-// test can import them directly, with no bundle step and no extra dependency.
 import { register } from 'node:module';
 import { pathToFileURL } from 'node:url';
 

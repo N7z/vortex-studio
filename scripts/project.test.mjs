@@ -1,7 +1,3 @@
-// The official Studio project format, checked against a file the desktop Studio
-// wrote itself rather than against our own idea of it. VortexStuff is a sibling
-// checkout; without it these skip rather than fail, so CI on this repo alone stays
-// green.
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -18,8 +14,6 @@ const REFERENCE = new URL(
 const have = existsSync(REFERENCE);
 const official = have ? JSON.parse(readFileSync(REFERENCE, 'utf8')) : null;
 
-// Floats go out through a quaternion and come back through Euler degrees, so they
-// are compared at the precision the format itself is written to.
 const round = (doc) => JSON.parse(JSON.stringify(
     doc, (k, v) => (typeof v === 'number' ? Math.round(v * 1e5) / 1e5 : v),
 ));
@@ -30,7 +24,6 @@ test('a project the Studio wrote is recognised as one', { skip: !have }, () => {
 
 test('a project the Studio wrote survives import and export unchanged', { skip: !have }, () => {
     const read = fromProject(official);
-    // Rebuild what the editor would be holding, ids and all.
     const parts = read.parts.map(withNewId);
     const groups = read.groups.map((g) => newGroup(g.name, g.slots.map((i) => parts[i]._id)));
 
@@ -43,7 +36,6 @@ test('a group is an index into groups, and ungrouped is null', { skip: !have }, 
     const groups = read.groups.map((g) => newGroup(g.name, g.slots.map((i) => parts[i]._id)));
     const out = toProject(parts, groups, read.projectId, read.lights);
 
-    // A string in either place is a type error to serde and rejects the whole file.
     for (const g of out.groups) {
         assert.deepEqual(Object.keys(g).sort(), ['name', 'parent_group']);
         assert.equal(g.parent_group, null);
@@ -92,7 +84,6 @@ test('every part property the format carries survives a round trip', () => {
     for (const k of ['M', 'Cs', 'An', 'Cc', 'Bp', 'Tx', 'C', 'Tr', 'T', 'P', 'S']) {
         assert.deepEqual(back[k], part[k], `${k} did not survive`);
     }
-    // Degrees out through a quaternion and back are not bit-exact.
     assert.ok(Math.abs(back.R[1] - 45) < 1e-3, `rotation drifted to ${back.R[1]}`);
 });
 

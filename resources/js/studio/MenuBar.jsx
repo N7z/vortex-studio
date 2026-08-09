@@ -22,8 +22,6 @@ const STAT_LABELS = [
     ['parts', 'Parts across saved maps'],
 ];
 
-// One menu title plus its dropdown. `open` is owned by MenuBar so that hovering
-// another title while a menu is open switches to it, the way a real menubar does.
 function Menu({ title, items, open, onOpen, onHover, onClose }) {
     return (
         <div className="menu">
@@ -56,7 +54,6 @@ function Menu({ title, items, open, onOpen, onHover, onClose }) {
     );
 }
 
-// Sticky and zero height, so it stays pinned while a long popup scrolls under it.
 const ClosePop = ({ onClose }) => (
     <div className="help-close-bar">
         <button className="help-close" title="Close" onClick={onClose}>×</button>

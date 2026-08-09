@@ -13,13 +13,9 @@ import { DEFAULT_ILLUMINANCE, isLightRef, lightIdOf, lightRef } from './lighting
 import { MARK_KINDS, makeMarkTexture } from './facemarks';
 
 const TOOL_MODE = { move: 'translate', rotate: 'rotate', scale: 'scale' };
-// A light has no size, so the scale tool falls back to moving it rather than
-// detaching the gizmo and leaving the user with nothing to grab.
 const LIGHT_TOOL_MODE = { move: 'translate', rotate: 'rotate', scale: 'translate' };
 const DEG = Math.PI / 180;
 
-// The document writes illuminance in lux. This is the divisor that turns the
-// default sun into the intensity the editor's hardcoded one always had.
 const SUN_PER_LUX = DEFAULT_ILLUMINANCE / 1.6;
 
 const LIGHT_MARKER_R = 1.2;
@@ -140,9 +136,6 @@ export default function Viewport({
         const hemi = new THREE.HemisphereLight(0xcfe8ff, 0x5a5a52, 0.9);
         scene.add(hemi);
 
-        // Every directional light in the scene belongs to the map. A rig is the
-        // light, the target it aims at, and a handle: an empty carrying the position
-        // and rotation the document stores, which is also what the gizmo drives.
         const lightRigs = new Map();
         const markerGeom = new THREE.SphereGeometry(LIGHT_MARKER_R, 12, 8);
         const markerMat = new THREE.MeshBasicMaterial({ color: 0xffe066 });
@@ -193,8 +186,6 @@ export default function Viewport({
                     rig = makeRig();
                     lightRigs.set(l._id, rig);
                 }
-                // Whoever is dragging the handle owns it until they let go, exactly
-                // like a part held by the gizmo.
                 const held = gizmo.dragging && gizmo.object === rig.handle;
                 if (!held) {
                     rig.handle.position.set(l.P[0], l.P[1], l.P[2]);
@@ -219,8 +210,6 @@ export default function Viewport({
             reshadow();
         };
 
-        // The gizmo moves the handle; the light and its target have to follow within
-        // the same frame or the scene only relights once the drag ends.
         const followDraggedLight = () => {
             if (!gizmo.dragging) return;
             for (const rig of lightRigs.values()) {
@@ -253,10 +242,6 @@ export default function Viewport({
         if (window.matchMedia?.('(pointer: coarse)').matches) gizmo.size = 1.6;
         scene.add(gizmo.getHelper());
 
-        // One outline per selected part, created on demand and reused. Every part is a
-        // unit cube scaled by its size, so an outline is that cube's edges wearing the
-        // part's world matrix, which keeps it tight around rotated parts, unlike an
-        // axis-aligned Box3Helper.
         const selEdges = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
         const selMat = new THREE.LineBasicMaterial({
             color: 0x2f7fd9, depthTest: false, depthWrite: false,
@@ -275,8 +260,6 @@ export default function Viewport({
             return b;
         };
 
-        // The same outline in someone else's colour: one material per colour, reused,
-        // and a pool of boxes whose material is reassigned each frame.
         const peerMats = new Map();
         const peerMat = (color) => {
             let m = peerMats.get(color);
@@ -288,9 +271,6 @@ export default function Viewport({
             }
             return m;
         };
-        // Where each peer is looking from: a cone at their camera, pointing the way they
-        // face, with their name over it. Drawn without depth testing so a collaborator
-        // behind a wall is still findable, which is the whole point of the marker.
         const markGeom = new THREE.ConeGeometry(0.5, 1.6, 12);
         markGeom.rotateX(Math.PI / 2);
         const markMats = new Map();
@@ -369,7 +349,6 @@ export default function Viewport({
 
         const batches = new Map();
         const bumped = new Set();
-        // Meshes the play test's rigid bodies have moved off their authored transform.
         const playMoved = new Set();
 
         const dropBatch = (inst) => {
@@ -539,8 +518,6 @@ export default function Viewport({
             }
         };
 
-        // With more than one part selected the gizmo drives this empty pivot, and
-        // the parts ride along as its children (attach keeps their world transform).
         const pivot = new THREE.Group();
         scene.add(pivot);
         const resetPivot = () => {
@@ -549,11 +526,6 @@ export default function Viewport({
             pivot.scale.set(1, 1, 1);
         };
 
-        // The scale gizmo grows a part around its own centre, so both faces move at
-        // once. Resizing in a studio pins the face opposite the handle you grabbed and
-        // only your side travels, so we remember that anchor at drag start and slide the
-        // part back by however much the scale pushed it. Left ctrl skips the
-        // compensation, which is the plain grow-both-ways behaviour.
         const scaleBox = new THREE.Box3();
         const scaleHalf = new THREE.Vector3();
         const scaleMid = new THREE.Vector3();
@@ -565,7 +537,6 @@ export default function Viewport({
         const beginScale = (held, group) => {
             anchored = null;
             const axis = gizmo.axis;
-            // The uniform handle sits at the centre, so there is no side to pin.
             if (gizmo.mode !== 'scale' || !axis || axis.includes('XYZ')) return;
             if (held.scale.x === 0 || held.scale.y === 0 || held.scale.z === 0) return;
             if (group) {
@@ -581,8 +552,6 @@ export default function Viewport({
                 g.boundingBox.getSize(scaleHalf).multiplyScalar(0.5).multiply(held.scale);
                 g.boundingBox.getCenter(scaleMid).multiply(held.scale);
             }
-            // Which side of the part the grabbed handle sits on, read in the part's own
-            // axes: pointStart is the grab offset from the part's centre, in world space.
             held.getWorldQuaternion(scaleQuat);
             scaleGrab.copy(gizmo.pointStart).applyQuaternion(scaleQuat.invert());
             const face = (k, comp) => (axis.includes(k)
@@ -825,8 +794,6 @@ export default function Viewport({
 
         const pickMesh = (e) => pickHit(e)?.mesh ?? null;
 
-        // Light markers are picked on their own, ahead of the parts: they are small,
-        // they are not part of any batch, and selecting one means something else.
         const lightPickList = [];
         const pickLight = (e) => {
             if (!ctx.current?.showLights || !lightRigs.size) return null;
@@ -1068,8 +1035,6 @@ export default function Viewport({
                 ctx.current.onBrush?.(hit.point, 'start');
                 return;
             }
-            // A light marker takes the click but nothing else: it is selected on the
-            // way up, and the gizmo, not a drag, is what moves it.
             if (!e.altKey && pickLight(e)) return;
             const mesh = e.altKey ? null : pickMesh(e);
             if (mesh && e.pointerType !== 'mouse') {
@@ -1184,10 +1149,6 @@ export default function Viewport({
         renderer.domElement.addEventListener('pointerup', onAnyPointer);
         renderer.domElement.addEventListener('pointerleave', onAnyPointer);
 
-        // Where a newly added part should go: on the ground under the middle of the
-        // view, so it lands where the user is looking instead of at the origin. If the
-        // camera looks up or at the horizon there is no ground to hit, so drop back to
-        // a point a short way in front of it.
         const ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
         const spawnDir = new THREE.Vector3();
         const spawnHit = new THREE.Vector3();
@@ -1302,8 +1263,6 @@ export default function Viewport({
             };
         };
 
-        // Team members testing the map are drawn in the editor too, so a builder who is
-        // not in play mode still sees them move. The session owns them while playing.
         let livePeers = null;
         let livePeersPending = false;
 
@@ -1328,7 +1287,6 @@ export default function Viewport({
             const had = livePeers.count;
             livePeers.set(any ? states : EMPTY_PLAY, c.memberNames);
             if (!any && !livePeers.count) {
-                // The last tester leaving removes a rig, which needs one more frame.
                 if (had) reshadow();
                 return;
             }
@@ -1337,14 +1295,10 @@ export default function Viewport({
             invalidate();
         };
 
-        // Where each builder is looking from, drawn in play mode as well, so a tester
-        // sees the editors move around the map while they play.
         const stepMarks = (c) => {
             let k = 0;
             const playing = c?.playRef?.current;
             for (const peer of c?.peers ?? []) {
-                // Someone testing stops updating their camera, so their last view would
-                // hang in the air beside the character drawn for them.
                 if (!peer.view || playing?.has(peer.id)) continue;
                 const { cone, label } = marks[k] ?? mark();
                 k++;
@@ -1535,9 +1489,6 @@ export default function Viewport({
             },
             snapMove: 0,
             session: null,
-            // Where the rigid bodies push their transforms. Nothing is written back to
-            // the document: the play test is a test, so leavePlay puts every part back
-            // where the author left it.
             movePlayParts: (moved) => {
                 const c = ctx.current;
                 if (!c) return;
@@ -1563,7 +1514,6 @@ export default function Viewport({
                 reshadow();
             },
             leavePlay: () => {
-                // Put anything the physics moved back on its authored transform.
                 for (const mesh of playMoved) {
                     const part = mesh.userData.part;
                     if (!part) continue;
@@ -1586,14 +1536,11 @@ export default function Viewport({
             peers: [],
             meshes: new Map(),
             meshList: [],
-            // meshList minus what is hidden (solidList) and minus locks too (selectList).
             solidList: [],
             selectList: [],
             flags: EMPTY,
             geometry: makePartGeometry(),
             trussGeometry: makeTrussGeometry(),
-            // The scanned material maps land after the first frame, so the scene has
-            // to be told to draw again once a set has been dressed in them.
             sets: makeMaterialSets(tex, () => {
                 renderer.shadowMap.needsUpdate = true;
                 invalidate();
@@ -1711,8 +1658,6 @@ export default function Viewport({
         if (spawnRef) spawnRef.current = c.spawnPoint;
         if (tintRef) tintRef.current = c.tintParts;
         if (thumbRef) {
-            // The markers are editor furniture, not the map, so they step out of the
-            // picture the way the gizmo does not yet but should.
             thumbRef.current = (snapshot) => {
                 const shown = [...c.lightRigs.values()].filter((r) => r.handle.visible);
                 for (const r of shown) r.handle.visible = false;
@@ -1778,8 +1723,6 @@ export default function Viewport({
             rig.light.shadow.map?.dispose();
             rig.light.shadow.map = null;
         }
-        // Whether a light casts shadows is the map's to say and the setting's to
-        // veto, so it is recomputed from the document rather than toggled in place.
         c.syncLights(c.lights);
         for (const mesh of c.meshes.values()) {
             mesh.castShadow = shadows;
@@ -1935,8 +1878,6 @@ export default function Viewport({
         c.reshadow();
     }, [preview]);
 
-    // The primary selection is a light when the last thing clicked was one; a light
-    // and a part are never selected together, so this is either/or.
     const selectedLightId = useMemo(() => {
         const last = selectedIds.length ? selectedIds[selectedIds.length - 1] : null;
 
@@ -1981,7 +1922,6 @@ export default function Viewport({
             c.gizmo.setMode(mode);
             c.gizmo.attach(meshes[0]);
         } else {
-            // Park the pivot at the centre of the selection so the gizmo sits there.
             const center = new THREE.Vector3();
             for (const m of meshes) center.add(m.position);
             center.divideScalar(meshes.length);

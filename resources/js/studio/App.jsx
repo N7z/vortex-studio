@@ -55,10 +55,6 @@ import { buildGrid, nearGrid } from './partgrid';
 
 const HISTORY_LIMIT = 100;
 
-// The undo stack holds two kinds of entry. A part change is an op, inverted against
-// the parts it was applied to. A light change is the whole array as it was: there
-// are at most a handful of lights, so a snapshot is cheaper than an op vocabulary
-// for them, and one undoes an add, a delete and a move alike.
 const remember = (stack, entry) => {
     stack.current.push(entry);
     if (stack.current.length > HISTORY_LIMIT) stack.current.shift();
@@ -69,29 +65,19 @@ const NEW_PART = {
     T: 'Part', Shape: 'Block', C: 'a3a2a5',
 };
 
-// y sits it on the baseplate rather than above it: the slab is 2 tall around the
-// origin, so its top is 1, and a spawn 1 tall rests with its centre at 1.5. Adding
-// one from the toolbar overrides this with wherever the camera is looking.
 const NEW_SPAWN = {
     Tr: 0, P: [0, 1.5, 0], S: [6, 1, 6], R: [0, 0, 0],
     T: 'SpawnLocation', Shape: 'Block', C: '4db84b',
 };
 
-// The slab a new map starts with is the baseplate the official document names, and
-// it wears the same two textures a project Studio creates itself does. The sun a new
-// map gets is the one the editor used to hardcode, see DEFAULT_SUN.
 const NEW_BASEPLATE = {
     Tr: 0, P: [0, 0, 0], S: [200, 2, 200], R: [0, 0, 0],
     T: 'Part', Shape: 'Block', C: '7d7d85', Bp: true,
     Tx: { Top: 'Studs', Bottom: 'Inlets' },
 };
 
-
 const MAX_PLUGIN_PARTS = 60000;
-// The only two controls the voxeliser reads. Everything else on a panel is the
-// plugin's own business, and re-reading the model for it costs seconds.
 const modelSig = (c, values) => `${values?.[c.res] ?? ''}/${values?.[c.solid] ?? ''}`;
-// A number field commits on every keystroke, so 700 arrives as 7, 70, 700.
 const VOXEL_DEBOUNCE = 300;
 const MAX_MODEL_VOXELS = 400000;
 
@@ -105,19 +91,12 @@ const BRUSH_AGAIN = 0.05;
 
 const GROUPS_DEBOUNCE_MS = 400;
 
-// Heavy work in the same tick as setBusy paints nothing, so the spinner is given a
-// frame of its own first. Two frames, not one: a rAF callback runs *before* the
-// paint it belongs to, so a single one still hands the thread back with nothing on
-// screen, which is why a long plugin run used to show no spinner at all.
 const paint = () => new Promise((r) => {
     requestAnimationFrame(() => requestAnimationFrame(() => r()));
 });
 
-// Autosave runs every 20s; a picture that often is wasted upload for a view that
-// barely changed.
 const THUMB_EVERY_MS = 120_000;
 
-// A save the user asked for is worth a fresher picture, but not one per Ctrl+S.
 const THUMB_MIN_MS = 15_000;
 
 export default function App() {
@@ -174,13 +153,10 @@ export default function App() {
     const lightsRef = useRef(lights);
     lightsRef.current = lights;
     const loadedLights = useRef(lights);
-    // The identity the official project keeps across exports. Minted for a new map,
-    // kept from the file for an import, and stored with the map from then on.
     const projectId = useRef(null);
     const mapNameRef = useRef(null);
     const mapTeamRef = useRef(null);
     mapTeamRef.current = mapTeam;
-    // The stored version this copy was built on; a save that does not match it is refused.
     const versionRef = useRef(null);
     const staleSeen = useRef(false);
     const thumbRef = useRef(null);
@@ -188,22 +164,16 @@ export default function App() {
     const { dialogs, confirm, ask } = useDialogs();
     const [busy, setBusy] = useState(null);
     const [building, setBuilding] = useState(null);
-    // An admin is trusted with maps of any size, so nothing here caps them.
     const [unlimited, setUnlimited] = useState(false);
     const [account, setAccount] = useState(null);
     const [accountTtl, setAccountTtl] = useState(24);
     const [claimed, setClaimed] = useState(0);
-    // Bumped when signing in or out, so the start screen refetches what is visible.
     const [accountSeq, setAccountSeq] = useState(0);
     const [teamsOpen, setTeamsOpen] = useState(false);
     const mapCap = unlimited ? Infinity : MAX_MAP_PARTS;
     const pluginCap = unlimited ? Infinity : MAX_PLUGIN_PARTS;
-    // A coordinate is three hex digits on the wire, so MAX_DIM is the format's own
-    // ceiling rather than a policy: past it every field after it shifts.
     const resCap = unlimited ? MAX_DIM : MAX_RES;
 
-    // Only the id travels with a map, so the names are looked up once and again
-    // whenever one turns up that this list does not know.
     useEffect(() => {
         if (mapTeam != null && teams.some((t) => t.id === mapTeam)) return;
         listTeams().then((d) => setTeams(d.teams ?? []));
@@ -258,8 +228,6 @@ export default function App() {
         loadedLights.current = litUp;
         setLights(litUp);
         projectId.current = remoteProjectId ?? (name ? newProjectId() : null);
-        // Anything an older build left in localStorage is drained once, and only
-        // when the map itself carries none, so an import cannot overwrite real data.
         const legacy = remoteGroups?.length ? [] : takeLegacyGroups(name, data);
         const next = legacy.length ? legacy : (remoteGroups ?? []);
         loadedGroups.current = next;
@@ -282,7 +250,6 @@ export default function App() {
                 setLights(repairLights(msg.lights ?? []));
                 setSelectedIds((cur) => cur.filter((id) => alive.has(id)));
             } else {
-                // A team map is always in session, so the panel is not news.
                 if (mapTeamRef.current == null) setTeamOpen(true);
                 resetDocument(msg.mapName, msg.parts, false, msg.groups ?? [],
                     mapTeamRef.current, versionRef.current, msg.lights ?? [], projectId.current);
@@ -295,9 +262,6 @@ export default function App() {
                     : `Live session ${msg.code} as ${msg.you.name}`);
             }
         },
-        // Own ops are applied again when they echo back, not skipped: the room's order
-        // is the authoritative one, and re-running an op that was already applied
-        // optimistically is what makes two people editing the same part agree on who won.
         onOp: (msg) => {
             setParts((ps) => applyOp(ps, msg.op));
             if (liveRef.current?.canEdit) dirty.current = true;
@@ -331,10 +295,6 @@ export default function App() {
             setTeamOpen(false);
             resetDocument(null, [], false);
         },
-        // A team map only exists inside its session, so being turned away means the
-        // map goes too. A personal map keeps its unsaved work and just stays offline.
-        // Somebody in the room persisted the state everyone shares, so nobody is
-        // holding unsaved work any more.
         onSaved: () => { dirty.current = false; },
         onRefused: (message) => {
             flash(message ?? 'That session turned you away.');
@@ -350,7 +310,6 @@ export default function App() {
     const canEditRef = useRef(canEdit);
     canEditRef.current = canEdit;
 
-    // The last id added is the "primary" selection: what Properties and plugins act on.
     const selectedId = selectedIds.length ? selectedIds[selectedIds.length - 1] : null;
     const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
     const selected = useMemo(
@@ -369,8 +328,6 @@ export default function App() {
         return id ? lights.find((l) => l._id === id) ?? null : null;
     }, [selectedIds, lights]);
     const pluginTarget = selected;
-    // Plugins are called one part at a time, so the bounds of a whole folder are
-    // something only the app can work out. Handed over before every run.
     const selectionInfo = useMemo(() => {
         if (!selectedParts.length) return null;
         const min = [Infinity, Infinity, Infinity];
@@ -400,8 +357,6 @@ export default function App() {
     const activeModels = activePlugin ? pluginModels[activePlugin.id] ?? null : null;
 
     const select = useCallback((id, additive, normal, solo) => {
-        // A light and a part are different kinds of thing with different panels, so
-        // selecting either one clears the other rather than mixing them.
         if (isLightRef(id)) {
             setSelectedIds([id]);
             setFaces({});
@@ -802,8 +757,6 @@ export default function App() {
                 const made = await activePlugin.click(btnId, stripId(target), activeValues);
                 done += 1;
                 setBusy({ label, estimate, progress: done / total });
-                // Only the first Replace can land on the source; the rest have no
-                // part of their own to update, so they are added like anything else.
                 let taken = false;
                 for (const { part, replace } of made) {
                     if (replace && !taken) {
@@ -820,7 +773,6 @@ export default function App() {
                 }
                 if (capped) break;
             }
-            // The voxel plugin emits bottom-up, so a silent cap beheads the model.
             if (capped) {
                 flash(`Too big: stopped at ${mapCap} parts, so the top is missing. `
                     + 'Lower the Detail and run it again.');
@@ -856,16 +808,11 @@ export default function App() {
         }
     };
 
-    // Applied here and again when the room echoes it back, exactly like part ops:
-    // the room's order is the authoritative one, and every group op is idempotent.
     const runGroupOp = useCallback((op) => {
         setGroups((gs) => applyGroupOp(gs, op));
         liveRef.current.sendGroupOp(op);
     }, []);
 
-    // Lights are a short list, so a change replaces the whole array rather than
-    // riding an op. Moving one is still an edit the user can take back, so the array
-    // as it was goes on the undo stack first.
     const commitLights = useCallback((next) => {
         remember(history, { t: 'lights', lights: lightsRef.current });
         future.current = [];
@@ -921,18 +868,12 @@ export default function App() {
 
     const renameGroup = (groupId, name) => runGroupOp({ t: 'rename', id: groupId, name });
 
-    // Debounced: a gizmo drag changes parts every frame, and pruning at that rate
-    // stalls the main thread.
     useEffect(() => {
         const t = setTimeout(() => setGroups((gs) => pruneGroups(gs, parts)), GROUPS_DEBOUNCE_MS);
 
         return () => clearTimeout(t);
     }, [parts]);
 
-    // Groups ride the normal save now, so a group-only change has to mark the
-    // document dirty or autosave never fires for it. The array resetDocument
-    // installed is the load itself, and pruneGroups returns its input unchanged
-    // when nothing was pruned, so identity is enough to tell an edit apart.
     useEffect(() => {
         if (mapName && groups !== loadedGroups.current) dirty.current = true;
     }, [groups]);
@@ -950,7 +891,6 @@ export default function App() {
     };
 
     const open = async (name, teamId = null) => {
-        // Reloading the open map would throw away unsaved edits, so just show it.
         if (name === mapName && teamId === mapTeamRef.current) {
             setActiveTab('game');
             return;
@@ -962,8 +902,6 @@ export default function App() {
             const ready = resetDocument(
                 name, doc.parts, false, doc.groups, teamId, doc.version, doc.lights, doc.projectId,
             );
-            // A team map is collaborative by default: everyone who opens it lands in
-            // the same room, so there is no code to pass around.
             if (teamId != null) {
                 liveRef.current.openTeam(name, ready.parts, ready.groups, teamId, ready.lights);
             }
@@ -974,8 +912,6 @@ export default function App() {
         }
     };
 
-    // A local backup goes straight back into the editor, dirty, so the next save
-    // (manual or auto) puts it on the server again.
     const restore = (name, doc) => {
         resetDocument(
             name, doc.parts, true, doc.groups ?? null, null, null,
@@ -1071,7 +1007,6 @@ export default function App() {
 
     const download = () => {
         if (!mapName) return;
-        // The engine refuses a map over 10 MB outright.
         const text = JSON.stringify(toProject(parts, groups, projectId.current ?? newProjectId(), lights));
         if (text.length > ENGINE_MAX_BYTES) {
             flash(`This map is ${(text.length / 1048576).toFixed(1)} MB, over the 10 MB the game `
@@ -1087,7 +1022,7 @@ export default function App() {
     };
 
     const createNew = (name, teamId = null) => {
-        // Drain any leftover under this name: its indices would land on the new parts.
+        // drain any leftover under this name: its indices would land on the new parts.
         takeLegacyGroups(name, []);
         if (liveRef.current.live) liveRef.current.leave();
         const ready = resetDocument(name, [
@@ -1101,10 +1036,6 @@ export default function App() {
 
     const canSaveToServer = !!mapName && (!live.live || live.canEdit) && !viewing;
 
-    // Fire and forget: a picture is never worth failing or delaying a save for.
-    // Rendering one means drawing the whole map offscreen and encoding it, which on
-    // a large map is slower than the save itself. A manual save asks for a fresher
-    // picture than autosave does, but neither gets one on every keystroke of Ctrl+S.
     const snapThumb = useCallback((name, team, snapshot, force) => {
         if (!thumbRef.current || !snapshot.length) return;
         const now = Date.now();
@@ -1125,13 +1056,9 @@ export default function App() {
         }
         const snapshot = partsRef.current;
         const grouped = groupsRef.current;
-        // Serialised once and handed to both: on a large map this is the single most
-        // expensive thing a save does, and it used to happen twice over.
         const lit = lightsRef.current;
         const project = projectId.current;
         const body = saveBody(snapshot, grouped, versionRef.current, lit, project);
-        // Mirror locally first: the copy that matters most is the one for a save that
-        // is about to fail. A save also restarts the server-side 24h TTL for this map.
         const backed = writeBackup(mapName, snapshot, body);
         try {
             const r = await saveMap(
@@ -1139,7 +1066,6 @@ export default function App() {
                 lit, project,
             );
             versionRef.current = r.version ?? null;
-            // Edits made while the request was in flight must stay dirty.
             if (partsRef.current === snapshot) dirty.current = false;
             liveRef.current.notifySaved();
             flash(auto === true ? 'Auto-saved' : `Saved ${mapName}.json`);
@@ -1147,8 +1073,6 @@ export default function App() {
 
             return true;
         } catch (e) {
-            // A teammate saved in between. Never retry on its own: that would be the
-            // overwrite this check exists to prevent. Autosave says it once and stops.
             if (e.stale) {
                 if (!staleSeen.current) flash('Someone else saved this map, reopen it to get their changes');
                 staleSeen.current = true;
@@ -1174,7 +1098,6 @@ export default function App() {
         }
     }, [mapName, flash, snapThumb, confirm]);
 
-    // Auto-save: every 20 s, but only when there are unsaved changes.
     useEffect(() => {
         if (!mapName) return;
         const t = setInterval(() => {
@@ -1220,7 +1143,6 @@ export default function App() {
         resetDocument(null, [], false);
     };
 
-    // Lock and hide never leave this browser: see flags.js.
     useEffect(() => {
         flagStore.save(flagStore.mapKey(mapName, mapTeam), flags);
     }, [flags, mapName, mapTeam]);
@@ -1235,20 +1157,16 @@ export default function App() {
 
     const clearFlag = useCallback((kind) => setFlags((cur) => flagStore.clear(cur, kind)), []);
 
-    // Dropping onto something out of sight would be baffling, so Arrange only sees
-    // what is on screen.
     const visibleParts = useMemo(
         () => (flags.hide.size ? parts.filter((p) => !flagStore.isHidden(flags, p)) : parts),
         [parts, flags],
     );
 
-    // A property edit applies to every selected part, not just the primary one.
     const updateSelected = (patch) => {
         if (!selectedIds.length) return;
         edit(patchOp(selectedIds, patch));
     };
 
-    // The gizmo moved several parts at once: each one gets its own transform.
     const transformMany = (updates) => {
         edit(transformOp(updates));
     };
@@ -1361,7 +1279,6 @@ export default function App() {
 
     const reloadForUpdate = useCallback(async () => {
         if (dirty.current && canSaveToServer && !await save()) return false;
-        // The reload is the answer to a prompt, so it must not raise a second one.
         dirty.current = false;
         window.location.reload();
         return true;
@@ -1600,7 +1517,6 @@ export default function App() {
                     {mobile && playing && (
                         <TouchControls inputRef={touchRef} onExit={() => setPlaying(false)} />
                     )}
-                    {/* Keyed on the count so a second death restarts the animation. */}
                     {playing && died > 0 && <div className="play-died" key={died} />}
                     {activePlugin && mapName && !mobile && (
                         <PluginPanel

@@ -24,7 +24,6 @@ const markClosed = (key) => {
     try {
         localStorage.setItem(key, '1');
     } catch {
-        // Closing it for this visit is still worth doing.
     }
 };
 
@@ -80,12 +79,8 @@ export default function StartScreen({
             .catch((e) => setError(String(e.message ?? e)));
     };
 
-    // Signing in from the toolbar changes which maps and teams there are.
     useEffect(() => { refresh(); }, [accountSeq]);
 
-    // Once per browser: the official editor is out, and people should hear from us
-    // that this one kept up. Marked seen as it opens, so dismissing it any way at
-    // all is the last of it.
     useEffect(() => {
         if (readClosed(OFFICIAL_LAUNCH_KEY)) return;
         markClosed(OFFICIAL_LAUNCH_KEY);
@@ -203,7 +198,6 @@ export default function StartScreen({
         return personal.filter((m) => match(m.name));
     }, [scope, query, backups, trash, mine, personal, team]);
 
-    // A device backup is not a stored map, and a trashed one is not open to editing.
     const manageable = (m) => {
         if (scope === 'device' || scope === 'trash') return false;
         if (scope === 'groups') return roleIn(m.team_id) !== 'viewer';

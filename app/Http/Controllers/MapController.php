@@ -22,8 +22,6 @@ class MapController extends Controller
 
     private const DESTRUCTIVE_RATIO = 0.5;
 
-    // A part measures ~115 bytes with its id, so this is MAX_PARTS with headroom
-    // for groups. Raising one without the other silently caps the map at the lower.
     private const MAX_BYTES = 8_000_000;
 
     private const MAX_MAPS_PER_OWNER = 50;
@@ -36,7 +34,6 @@ class MapController extends Controller
 
     private const MAX_LIGHTS = 32;
 
-    /** Keys the editor writes; anything else is rejected. */
     private const PART_KEYS = [
         '_id', 'T', 'P', 'S', 'R', 'C', 'Tr', 'Shape', 'Sh', 'ItemId',
         'M', 'Cs', 'An', 'Cc', 'Bp', 'Tx',
@@ -52,10 +49,6 @@ class MapController extends Controller
 
     private const MAX_ILLUMINANCE = 200_000;
 
-    /**
-     * An admin is trusted with maps of any size. The request still has to fit PHP's
-     * own post_max_size, which is the ceiling nothing here can lift.
-     */
     private const MAX_THUMB_BYTES = 300_000;
 
     private static function thumbDisk()
@@ -63,7 +56,6 @@ class MapController extends Controller
         return Storage::disk();
     }
 
-    /** A bucket serves files itself; a local disk has no public URL, so the app streams them. */
     private static function thumbsAreRemote(): bool
     {
         return config('filesystems.disks.'.config('filesystems.default').'.driver') !== 'local';
@@ -74,24 +66,16 @@ class MapController extends Controller
         return "thumbs/$key.webp";
     }
 
-    /**
-     * A bucket serves the file itself; a plain local disk has no public URL, so the
-     * app streams it instead. Both are cache-busted by when it was written.
-     */
     private static function thumbUrl(?object $row): ?string
     {
         if (! $row?->thumb_key) {
             return null;
         }
 
-        // A bucket addresses itself, so its own URL is the right one. A local disk
-        // would build one from APP_URL, which breaks the moment the port differs, so
-        // the app serves those from a path relative to whatever host is being used.
         if (self::thumbsAreRemote()) {
             try {
                 return self::thumbDisk()->url(self::thumbPath($row->thumb_key));
             } catch (\Throwable) {
-                // No public URL, so fall through to serving it here.
             }
         }
 
@@ -108,7 +92,6 @@ class MapController extends Controller
 
         return response($disk->get($path), 200, [
             'Content-Type' => 'image/webp',
-            // The name changes whenever the picture does, so this never goes stale.
             'Cache-Control' => 'public, max-age=31536000, immutable',
         ]);
     }
@@ -123,7 +106,7 @@ class MapController extends Controller
         $body = $request->getContent();
         abort_unless(is_string($body) && $body !== '', 400, 'no image');
         abort_if(strlen($body) > self::MAX_THUMB_BYTES, 413, 'thumbnail too large');
-        // Trust the bytes, not the header: this is written to storage and served back.
+        // trust the bytes, not the header: this is written to storage and served back.
         abort_unless(
             str_starts_with($body, 'RIFF') && substr($body, 8, 4) === 'WEBP',
             400,
@@ -131,11 +114,7 @@ class MapController extends Controller
         );
 
         $disk = self::thumbDisk();
-        // A new name every time, so a cached URL can never show a stale picture and
-        // the old file does not linger.
         $key = bin2hex(random_bytes(16));
-        // No visibility argument: R2 rejects per-object ACLs, and the disks that do
-        // take one already carry their own default.
         if (! $disk->put(self::thumbPath($key), $body)) {
             Log::warning('thumbnail write failed', ['disk' => config('filesystems.default'), 'map' => $row->id]);
 
@@ -159,7 +138,6 @@ class MapController extends Controller
         return MapAccess::token($request);
     }
 
-    /** The team a request is scoped to, or null for the caller's personal maps. */
     private function teamId(Request $request): ?int
     {
         $raw = $request->query('team', $request->json('team_id'));
@@ -173,7 +151,6 @@ class MapController extends Controller
         return $id;
     }
 
-    /** Only anonymous maps expire; an account's maps are kept. */
     public static function prune(): void
     {
         DB::table('maps')
@@ -212,7 +189,7 @@ class MapController extends Controller
     public function stats()
     {
         return response()->json(Cached::remember('studio_stats', 60, function () {
-            // Never select `data`: a map is megabytes and there is no bound on rows.
+            // never select `data`: a map is megabytes and there is no bound on rows.
             $agg = DB::table('maps')->selectRaw(
                 'count(*) as maps, count(distinct token) as sessions, coalesce(sum(parts), 0) as parts, max(updated_at) as last_save',
             )->first();
@@ -282,7 +259,6 @@ class MapController extends Controller
 
         $from = $this->teamId($request);
 
-        // Rename travels on the same request: both are "where does this map live".
         $rename = $request->json('to_name');
         if ($rename !== null) {
             return $this->rename($request, $name, $from, (string) $rename);
@@ -297,7 +273,6 @@ class MapController extends Controller
         abort_unless($row, 404);
         abort_unless(MapAccess::canEdit($row), 403, 'you can only view this map');
 
-        // Taking a map out of a team removes it from everyone else in that team.
         if ($from !== null) {
             abort_unless(MapAccess::teamRole($from) === MapAccess::OWNER, 403, 'only the team owner can move a map out');
         }
@@ -355,7 +330,6 @@ class MapController extends Controller
         abort_unless($row, 404);
         abort_unless(MapAccess::canEdit($row), 403, 'you can only view this map');
 
-        // Deleting a team map takes it from everyone in the team.
         if ($team !== null) {
             abort_unless(
                 MapAccess::teamRole($team) === MapAccess::OWNER,
@@ -511,7 +485,6 @@ class MapController extends Controller
         return response()->json(['ok' => true, 'id' => $id]);
     }
 
-    /** Everything travels together, so the stored JSON is wrapped rather than re-encoded. */
     private function document(string $parts, ?string $groups, ?string $lights, ?string $projectId, int $version)
     {
         return response(
@@ -523,12 +496,6 @@ class MapController extends Controller
         )->header('Content-Type', 'application/json');
     }
 
-    /**
-     * The request body, gunzipped when the client says it is compressed. A big map
-     * is mostly repeated key names and gzips to about a fifth, which is what keeps
-     * it under PHP's post_max_size: over that, PHP drops the body before this runs
-     * and all the app can see is that nothing arrived.
-     */
     private function body(Request $request): mixed
     {
         $raw = $request->getContent();
@@ -552,8 +519,6 @@ class MapController extends Controller
         $body = $this->body($request);
         abort_unless(is_array($body), 400, 'body must be a JSON array of parts');
 
-        // The bare list is the old shape. Its groups are null, meaning "leave the
-        // stored groups alone", so a tab open across a deploy cannot wipe them.
         if (array_is_list($body)) {
             $parts = $body;
             $groups = null;
@@ -609,8 +574,6 @@ class MapController extends Controller
             abort_if($count >= $limit, 403, 'map limit reached');
         }
 
-        // A null means "leave what is stored alone", so a tab open across a deploy
-        // cannot wipe lights or the project's identity any more than it can groups.
         $values = [
             'token' => $token, 'data' => $data, 'parts' => count($parts),
             'bytes' => strlen($data), 'saved_by' => $id, 'updated_at' => now(),
@@ -645,9 +608,6 @@ class MapController extends Controller
             count($parts),
         );
 
-        // Optimistic concurrency: a save built on an older copy is refused rather
-        // than silently overwriting whoever saved in between. A client that sends
-        // no version is trusted, which is what keeps the single-editor case simple.
         $sent = $request->json('version');
         $next = (int) $row->version + 1;
         $q = DB::table('maps')->where('id', $row->id);
@@ -682,11 +642,6 @@ class MapController extends Controller
             && $incoming < (int) $row->parts * self::DESTRUCTIVE_RATIO;
     }
 
-    /**
-     * Groups reference parts by `_id`. A group naming a part that is not in the
-     * same body would be dead on arrival, and a part in two groups contradicts
-     * the editor's own invariant, so both are rejected rather than repaired.
-     */
     private function validGroups(array $groups, array $parts): bool
     {
         if (count($groups) > self::MAX_GROUPS) {
@@ -725,11 +680,6 @@ class MapController extends Controller
         return true;
     }
 
-    /**
-     * Light shape check: parts only need to look like what the editor produces.
-     * Guards against garbage rows counting toward stats and against any future
-     * feature that shares maps between users inheriting unvetted data.
-     */
     private function validParts(array $parts): bool
     {
         if (! self::unlimited() && count($parts) > self::MAX_PARTS) {
@@ -741,9 +691,6 @@ class MapController extends Controller
             if (! is_array($p) || array_diff_key($p, array_flip(self::PART_KEYS))) {
                 return false;
             }
-            // Optional, so older clients still validate. When present
-            // it must be unique: groups reference parts by it, and a duplicate would
-            // point one group entry at two parts.
             if (array_key_exists('_id', $p)) {
                 if (! is_string($p['_id']) || ! preg_match('/^[A-Za-z0-9_\-]{1,64}$/', $p['_id'])) {
                     return false;
@@ -784,8 +731,6 @@ class MapController extends Controller
             if (isset($p['M']) && ! in_array($p['M'], self::MATERIALS, true)) {
                 return false;
             }
-            // The behaviour toggles and the baseplate flag. Absent means the default
-            // the official exporter writes, so only a real boolean is accepted.
             foreach (['Cs', 'An', 'Cc', 'Bp'] as $k) {
                 if (array_key_exists($k, $p) && ! is_bool($p[$k])) {
                     return false;
@@ -799,7 +744,6 @@ class MapController extends Controller
         return true;
     }
 
-    /** Per-face textures, keyed by face so the same one cannot be named twice. */
     private function validTextures(mixed $tx): bool
     {
         if (! is_array($tx) || array_is_list($tx) && $tx !== []) {
@@ -814,10 +758,6 @@ class MapController extends Controller
         return true;
     }
 
-    /**
-     * Lights are map data like groups: a short list replaced whole. The engine does
-     * not read them, but they travel in the document, so they are vetted the same way.
-     */
     private function validLights(array $lights): bool
     {
         if (! array_is_list($lights) || count($lights) > self::MAX_LIGHTS) {
