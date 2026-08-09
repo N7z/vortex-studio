@@ -207,13 +207,15 @@ export default function Explorer({
                                         <span className="icon"><WorkspaceIcon /></span>
                                         Workspace{mapName ? `: ${mapName}` : ''}
 
-                                        <button
-                                            className="add"
-                                            title="Add a part"
-                                            onClick={(e) => { e.stopPropagation(); onAddPart(NEW_PART); }}
-                                        >
-                                            +
-                                        </button>
+                                        {onAddPart && (
+                                            <button
+                                                className="add"
+                                                title="Add a part"
+                                                onClick={(e) => { e.stopPropagation(); onAddPart(NEW_PART); }}
+                                            >
+                                                +
+                                            </button>
+                                        )}
                                         <span className="tree-flags">
                                             {!!flags.hide.size && (
                                                 <button
