@@ -56,6 +56,9 @@ export function createSession({ scene, camera, canvas, parts, onExit, onDeath, o
         if (e.code === 'Space') e.preventDefault();
         if (e.code.includes('Shift')) {
             shift_lock = !shift_lock;
+            if (shift_lock) {
+                try { canvas.requestPointerLock?.()?.catch?.(() => {}); } catch { /* unsupported */ }
+            }
         }
         if (e.code == 'Comma') {
             view.turn(0, -1, 0);
