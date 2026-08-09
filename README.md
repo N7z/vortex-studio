@@ -81,6 +81,32 @@ It enables users to construct 3D environments, script game behavior in Lua, test
 * Dual Interface Themes: Switch anytime between the classic light theme and the modern dark theme.
 * Administrative Dashboard: Overview metrics, user management, map moderation, audit logging with thumbnail snapshots, and system usage analytics.
 
+## Framework Foundation and Learning
+
+### About Laravel
+Vortex Studio is built on top of Laravel, a PHP web application framework providing:
+* Fast routing engine
+* Dependency injection container
+* Session and cache storage backends
+* Database ORM (Eloquent)
+* Schema migrations
+* Background job processing
+* Real time event broadcasting
+
+### Learning Laravel
+To learn more about the underlying Laravel framework:
+* [Laravel Documentation](https://laravel.com/docs)
+* [Laracasts Video Tutorials](https://laracasts.com)
+* [Laravel Learn](https://laravel.com/learn)
+
+### Agentic Development
+Laravel provides a predictable structure for AI coding agents. You can install Laravel Boost:
+
+```bash
+composer require laravel/boost --dev
+php artisan boost:install
+```
+
 ## Prerequisites
 
 * PHP 8.3 or newer
@@ -176,6 +202,17 @@ cd live-editing-server && npm test
 * Backend: Laravel 13 framework on PHP 8.3 handling database storage, user auth, team access rules, map versioning, and HMAC token signing.
 * Frontend: React 19 single page application rendering 3D graphics via Three.js, executing physics with Rapier3D, and evaluating Lua scripts via Wasmoon.
 * Live Editing Microservice: Standalone Node.js WebSocket process maintaining room state in memory and broadcasting operational edits.
+
+## Contributing and Community
+
+### Contributing
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) for branch naming conventions, code style, commit standards, and pull request requirements.
+
+### Code of Conduct
+Please review the [Laravel Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct) to ensure a welcoming community environment.
+
+### Security Vulnerabilities
+If you discover a security vulnerability within the framework or application, please send an email to Taylor Otwell via taylor@laravel.com. All security vulnerabilities will be promptly addressed.
 
 ## Contributors
 
