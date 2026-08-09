@@ -20,7 +20,8 @@ const NO_LIGHTS = [];
 
 export default function Explorer({
     parts, selectedIds, setSelectedId, selectMany, groups = [], onUngroup, onRenameGroup, mapName,
-    flags = EMPTY, onFlag, onClearFlags, lights = NO_LIGHTS, onAddLight, onRemoveLight,
+    flags = EMPTY, onFlag, onClearFlags, lights = NO_LIGHTS, onAddPart, onAddLight, onRemoveLight,
+    NEW_PART
 }) {
     const listRef = useRef(null);
     const [query, setQuery] = useState('');
@@ -200,10 +201,19 @@ export default function Explorer({
                             if (it.k === 'part') return partRow(it.row, it.nested);
                             if (it.k === 'group') return groupRow(it.g);
                             if (it.k === 'ws') {
+                                        // I  anyone will replace this with "Add a part" with "Add a instance" and menu of instances because i dont know react :D
                                 return (
                                     <div className="tree-item" key="ws" onClick={() => setSelectedId(null)}>
                                         <span className="icon"><WorkspaceIcon /></span>
                                         Workspace{mapName ? `: ${mapName}` : ''}
+
+                                        <button
+                                            className="add"
+                                            title="Add a part"
+                                            onClick={(e) => { e.stopPropagation(); onAddPart(NEW_PART); }}
+                                        >
+                                            +
+                                        </button>
                                         <span className="tree-flags">
                                             {!!flags.hide.size && (
                                                 <button
