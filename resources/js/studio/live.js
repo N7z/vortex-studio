@@ -1,14 +1,10 @@
 const DEFAULT_URL = 'ws://localhost:8787';
 const RETRY_MS = [500, 1000, 2000, 4000, 8000];
 const SELECTION_THROTTLE_MS = 80;
-// Must match the server's own cap, or the echo comes back smaller than what was sent.
 export const SELECTION_LIMIT = 200;
 const VIEW_THROTTLE_MS = 120;
 const PLAY_THROTTLE_MS = 50;
 
-// A browser on an https page may not open a ws:// socket, so VITE_LIVE_URL is allowed
-// to be a bare path ("/live"): the host and the scheme then come from the page, which
-// is what makes a reverse-proxied session work in production and plain http work locally.
 export function liveUrl() {
     const configured = import.meta.env?.VITE_LIVE_URL?.trim();
     if (!configured) return DEFAULT_URL;
@@ -111,8 +107,6 @@ export class LiveClient {
         this.connect();
     }
 
-    // Detaches the handlers first, so the close does not read as a lost connection
-    // and start a retry against the socket that replaced it.
     dropSocket() {
         const ws = this.ws;
         if (!ws) return;
@@ -128,7 +122,6 @@ export class LiveClient {
         this.closing = false;
         const gen = ++this.generation;
         this.dropSocket();
-        // Refetched per attempt: the proof expires, and a reconnect can be much later.
         this.identity = await this.handlers.onIdentity?.().catch(() => null) ?? null;
         if (this.closing || gen !== this.generation) return;
         const url = liveUrl();
@@ -179,8 +172,6 @@ export class LiveClient {
             this.stopSelectionTimer();
             this.stopViewTimer();
             this.stopPlayTimer();
-            // 4003 kicked, 4004 the room refused us. Neither is worth retrying, and
-            // retrying a room that no longer exists would loop forever.
             if (this.closing || e.code === 4003 || e.code === 4004) {
                 if (e.code === 4004) {
                     if (this.code) {
@@ -189,8 +180,6 @@ export class LiveClient {
                         this.code = null;
                         this.token = null;
                     }
-                    // Being turned away is not the same as losing the connection:
-                    // leaving the map open would look like an editable offline copy.
                     this.handlers.onRefused?.(this.lastError);
                 }
                 this.lastError = null;
@@ -225,7 +214,6 @@ export class LiveClient {
                 this.lastView = '';
                 this.lastPlay = 'off';
                 writeToken(msg.code, msg.you.token);
-                // A team room has no shareable code, so it never goes in the address bar.
                 showRoomInUrl(msg.teamMap ? null : msg.code);
                 this.handlers.onWelcome?.(msg);
 

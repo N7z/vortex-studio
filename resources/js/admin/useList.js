@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 
-/** Paginated admin list with a debounced search box. */
 export default function useList(fetcher) {
     const [q, setQ] = useState('');
     const [page, setPage] = useState(1);

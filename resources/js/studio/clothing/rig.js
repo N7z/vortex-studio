@@ -129,9 +129,6 @@ export async function loadRig() {
 
     const dropHat = () => {
         if (!hat) return;
-        // The model itself is reused across tweaks, so it leaves with the holder.
-        // Left behind it would still carry the holder's world matrix and every
-        // later measurement would be scaled by the one before it.
         for (const child of [...hat.children]) child.removeFromParent();
         hat.removeFromParent();
         hat = null;

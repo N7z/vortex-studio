@@ -37,10 +37,6 @@ function Toggle({ label, checked, readOnly, onChange }) {
     );
 }
 
-/**
- * A colour field commits on a timer: the picker fires on every pixel of drag, and
- * one edit per frame would fill the undo stack and the live session with noise.
- */
 function useColorDraft(id, commit) {
     const [draft, setDraft] = useState(null);
     const timer = useRef(0);
@@ -157,8 +153,6 @@ export default function Properties({
     }
 
     const textures = texturesOf(part);
-    // The panel edits the whole map at once, so a face is cleared by leaving it out
-    // rather than by writing an empty kind.
     const setFace = (face, kind) => {
         const next = { ...textures };
         if (kind) next[face] = kind;

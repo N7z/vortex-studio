@@ -177,8 +177,6 @@ check('a CanCollide=false part is not ground', ghostWorld.groundAt(0, -10, 40, 1
 
 // --- ceilings ---
 
-// A standing player occupies feet..feet+5, so a ceiling has to clear that to be a
-// ceiling at all; an unobstructed jump takes the head to 11.37.
 const roofAt = (y, thickness = 1) => buildWorld([
     ...floor,
     { T: 'Part', P: [0, y, 0], S: [20, thickness, 20], R: [0, 0, 0] },
@@ -198,7 +196,6 @@ check('the head stops at the ceiling', peakHead, 7.5, 0.05);
 check('the bump is reported', bumped ? 1 : 0, 1, 0);
 check('the player falls back to the floor', move.feetY(s), 0, 0.02);
 
-// Without the ceiling the same jump goes well past it.
 s = move.spawn(0, 0, 0);
 run(s, 240, idle);
 let freeHead = -Infinity;
@@ -208,18 +205,15 @@ for (let i = 0; i < 240; i++) {
 }
 check('the same jump is unobstructed without one', freeHead > 11 ? 1 : 0, 1, 0);
 
-// The jump must not end with the player standing on the roof.
 s = move.spawn(0, 0, 0);
 run(s, 240, idle);
 for (let i = 0; i < 480; i++) move.step(s, { ...idle, jump: i === 0 }, 1 / 240, lowRoof);
 check('a jump does not pop through a platform', move.feetY(s), 0, 0.05);
 
-// Standing on top of one is still standing on top of one.
 s = move.spawn(0, 8.5, 0);
 for (let i = 0; i < 480; i++) move.step(s, idle, 1 / 240, lowRoof);
 check('the top of a platform still holds', move.feetY(s), 8.5, 0.02);
 
-// A ceiling never grounds the player.
 s = move.spawn(0, 0, 0);
 run(s, 240, idle);
 let groundedAtBump = false;
@@ -228,11 +222,6 @@ for (let i = 0; i < 240; i++) {
     if (s.bumped) groundedAtBump = groundedAtBump || s.grounded;
 }
 check('a bump does not ground the player', groundedAtBump ? 1 : 0, 0, 0);
-
-// --- obby blocks ---
-// Small parts standing beside the player are the case the ceiling resolve used to
-// read as a roof and slam the player down out of. Nothing here may move anyone down
-// faster than gravity does.
 
 const fell = (state, frames, input, w) => {
     let worst = 0;
@@ -243,16 +232,13 @@ const fell = (state, frames, input, w) => {
     }
     return worst;
 };
-// One frame of free fall from rest is nowhere near this; anything past it is a teleport.
 const GRAVITY_STEP = -0.5;
 
-// A block to the side, overlapping the body box but not underfoot.
 const beside = buildWorld([{ T: 'Part', P: [2.5, 14, 0], S: [4, 4, 4], R: [0, 0, 0] }]);
 s = move.spawn(0, 10, 0);
 const drop = fell(s, 3, idle, beside);
 check('a block beside the player does not shove them down', drop > GRAVITY_STEP ? 1 : 0, 1, 0);
 
-// Hopping from a low block onto a taller one right against it.
 const stepUp = buildWorld([
     { T: 'Part', P: [0, 10, 0], S: [4, 2, 4], R: [0, 0, 0] },
     { T: 'Part', P: [4, 13, 0], S: [4, 4, 4], R: [0, 0, 0] },
@@ -266,13 +252,11 @@ worstHop = Math.min(worstHop, fell(s, 300, idle, stepUp));
 check('a hop onto a taller neighbour lands on it', move.feetY(s), 15, 0.02);
 check('nothing in that hop teleports downward', worstHop > GRAVITY_STEP ? 1 : 0, 1, 0);
 
-// Standing on a small block with a taller one alongside must stay put.
 s = move.spawn(0, 11, 0);
 const rest = fell(s, 480, idle, stepUp);
 check('resting beside a taller block holds', move.feetY(s), 11, 0.02);
 check('resting beside one never lurches', rest > GRAVITY_STEP ? 1 : 0, 1, 0);
 
-// The ceiling must still be a ceiling when it really is overhead.
 s = move.spawn(0, 0, 0);
 run(s, 240, idle);
 let hitHead = false;
@@ -281,9 +265,6 @@ for (let i = 0; i < 240; i++) {
     hitHead = hitHead || s.bumped;
 }
 check('a part actually overhead still stops the head', hitHead ? 1 : 0, 1, 0);
-
-// --- the residual channel ---
-// Grounded, the client clears the residual every frame, so these run in the air.
 
 const airborne = (set) => {
     const p = move.spawn(0, 400, 0);
@@ -299,13 +280,11 @@ check('residual under 0.3 snaps to zero', airborne((p) => { p.residualX = 0.2; }
 check('with a speed override it steps by 142',
     airborne((p) => { p.residualX = 300; p.speedOverride = 1; }).residualX, 300 - 142 / 60, 0.01);
 
-// residual + wish is capped once, so a tailwind cannot be walked into overspeed
 s = move.spawn(0, 400, 0);
 s.residualX = 12;
 move.step(s, { forward: 1, strafe: 0, jump: false, yaw: 0 }, 1 / 240, world);
 check('walking with a residual stays under the cap', s.speed, 16, 0.001);
 
-// but a big residual with an override raises the cap to its own magnitude
 s = move.spawn(0, 400, 0);
 s.residualX = 60;
 s.speedOverride = 1;

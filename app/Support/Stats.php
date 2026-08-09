@@ -7,7 +7,6 @@ use Illuminate\Support\Facades\DB;
 
 class Stats
 {
-    /** Current totals. Reads `data` a chunk at a time: a map is up to 2 MB. */
     public static function totals(): array
     {
         $maps = DB::table('maps')->selectRaw(
@@ -24,10 +23,6 @@ class Stats
         ];
     }
 
-    /**
-     * One row per day, written by `stats:snapshot`. Totals have no history in the
-     * maps table itself, so a day never recorded stays missing rather than guessed.
-     */
     public static function snapshot(): array
     {
         MapController::prune();

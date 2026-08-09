@@ -27,7 +27,6 @@ class TeamController extends Controller
         return $id;
     }
 
-    /** 404 rather than 403: a team you are not in should not be discoverable. */
     private function member(int $teamId): object
     {
         $row = DB::table('team_members')
@@ -173,11 +172,6 @@ class TeamController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    /**
-     * The team goes, its maps do not: nothing else in the app can delete a map, so
-     * dropping them here would be the only way to lose work and it would be silent.
-     * They move to the owner's own space instead, renamed where that collides.
-     */
     public function destroy(int $team)
     {
         $me = $this->me();
@@ -228,7 +222,6 @@ class TeamController extends Controller
         return null;
     }
 
-    /** The owner removes anyone but themselves; anyone else may only leave. */
     public function removeMember(int $team, int $user)
     {
         $mine = $this->member($team);

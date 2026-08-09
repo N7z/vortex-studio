@@ -5,14 +5,8 @@ const WIDTH = SIZE;
 const HEIGHT = SIZE;
 const QUALITY = 0.72;
 
-// Fixed corner, so every map is framed the same way and is recognisable by shape.
 const DIR = new THREE.Vector3(1, 0.85, 1).normalize();
 
-/**
- * Renders the scene into an offscreen target rather than reading the live canvas:
- * capturing that one would need preserveDrawingBuffer, which costs every frame for
- * something taken once in a while.
- */
 export function captureThumb(renderer, scene, parts) {
     if (!renderer || !scene || !parts?.length) return Promise.resolve(null);
 

@@ -5,8 +5,6 @@ import { buildWorld } from '../resources/js/studio/play/collision.js';
 import { createBodyAudio } from '../resources/js/studio/play/audio.js';
 import * as move from '../resources/js/studio/play/movement.js';
 
-// The sound is driven off the controller's own flags, so the only honest way to ask
-// what a player hears is to walk one around and count what came out.
 const scene = { add() {}, remove() {} };
 
 const spy = (heard) => {
@@ -22,7 +20,6 @@ const spy = (heard) => {
 
 const floor = { _id: 'f', T: 'Part', P: [0, -1, 0], S: [400, 2, 400], R: [0, 0, 0] };
 
-// Returns how many times each clip started over `seconds` of play.
 const play = ({ parts = [floor], from = [0, 0, 0], seconds, input = () => ({}) }) => {
     const world = buildWorld(parts, true);
     const heard = [];

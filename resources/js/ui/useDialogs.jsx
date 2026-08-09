@@ -1,10 +1,6 @@
 import React, { useCallback, useRef, useState } from 'react';
 import Modal from './Modal';
 
-/**
- * Promise-based replacements for alert/confirm/prompt, so a call site reads the
- * same way the blocking original did. Dismissing resolves false/null, never throws.
- */
 export default function useDialogs() {
     const [open, setOpen] = useState(null);
     const resolve = useRef(null);

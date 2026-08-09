@@ -143,8 +143,6 @@ export default function ScriptTab({ tab, visible, onChange, onSave, onDelete, on
         if (handlers.current.error !== null) setError(null);
     }, []);
 
-    // A dark editor pane inside a Windows XP window would be the one thing that
-    // gives the theme away, so Classic gets CodeMirror's light theme.
     const cmTheme = useTheme() === 'classic' ? 'light' : oneDark;
 
     const editor = useMemo(() => (

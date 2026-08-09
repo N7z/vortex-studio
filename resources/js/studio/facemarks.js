@@ -1,11 +1,5 @@
 import * as THREE from 'three';
 
-// The marks drawn on a part's faces. They are drawn rather than loaded so they stay
-// crisp at any size, which matters twice over: the viewport wants one small tile per
-// stud, and compositing one into a scanned material wants it at the material's own
-// resolution. Upscaling a 64px tile into a 512px albedo would blur the studs.
-
-// The coordinate system every mark below is drawn in; the context is scaled from it.
 const UNIT = 64;
 
 const MARKS = {
@@ -78,7 +72,6 @@ const MARKS = {
 
 export const MARK_KINDS = Object.keys(MARKS);
 
-/** One mark on white, at whatever resolution the caller needs. */
 export function drawMark(kind, size = UNIT) {
     const canvas = document.createElement('canvas');
     canvas.width = size;

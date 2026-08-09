@@ -39,7 +39,6 @@ function quatOf(v) {
     return new THREE.Quaternion(num(v.x), num(v.y), num(v.z), num(v.w, 1));
 }
 
-/** Degrees, the shape the editor stores, out of the document's quaternion. */
 function eulerOf(rotation) {
     const q = quatOf(rotation);
     if (!q) return [0, 0, 0];
@@ -70,8 +69,6 @@ function partToProject(part, group) {
     const [r, g, b] = rgbOf(part.C);
     const kind = typeof part.T === 'string' && part.T ? part.T : 'Part';
     const textures = texturesOf(part);
-    // The name mirrors what the part is, the way SpawnLocation and Truss do: a
-    // project Studio wrote itself calls its slab "Baseplate", not "Part".
     const baseplate = isBaseplate(part);
 
     return {
@@ -90,8 +87,6 @@ function partToProject(part, group) {
         spawn_location: kind === 'SpawnLocation',
         baseplate,
         truss: kind === 'Truss',
-        // The document's list, in the panel's own face order so two exports of the
-        // same map compare equal.
         textures: FACES.filter((f) => textures[f]).map((f) => ({ face: f, kind: textures[f] })),
     };
 }
@@ -160,9 +155,6 @@ function partFromProject(part) {
         Shape: 'Block',
     };
 
-    // Only what differs from the default is written back: an absent key already means
-    // the default everywhere else, and keeping the part small is what keeps a large
-    // map under the save limit.
     if (MATERIALS.includes(part.material) && part.material !== DEFAULT_MATERIAL) {
         out.M = part.material;
     }

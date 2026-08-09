@@ -58,8 +58,6 @@ export function cleanPlay(input) {
     };
 }
 
-// `known` bounds membership to parts the room actually holds. Without it a client
-// can pin unbounded id lists in memory, and Room.pruneGroups only cleans up after.
 export function cleanGroups(input, known = null) {
     if (input === undefined || input === null) return [];
     if (!Array.isArray(input) || input.length > config.maxGroups) return null;
@@ -100,8 +98,6 @@ class Room {
         this.members = new Map();
         this.departed = new Map();
         this.banned = new Map();
-        // A token lives in the browser, so a kick keyed only on it is undone by
-        // clearing storage. These last as long as the room does.
         this.bannedUsers = new Set();
         this.roles = new Map();
         this.ownerId = null;
@@ -176,11 +172,6 @@ class Room {
         return identity?.userId != null && this.bannedUsers.has(identity.userId);
     }
 
-    /**
-     * A role the owner set by hand outlives a reconnect, and never rises above what
-     * the token allows: a team viewer promoted in-room would be editing a map the
-     * team says they may only look at.
-     */
     roleFor(identity) {
         const claimed = this.claimedRole(identity);
         const set = identity?.userId != null ? this.roles.get(identity.userId) : null;
@@ -208,8 +199,6 @@ class Room {
             member.token = token;
             member.name = back.name;
             member.color = back.color;
-            // Role comes from the fresh token, not from what it was: a demoted user
-            // must not keep edit rights for the whole grace period.
             member.role = this.roleFor(identity) ?? back.role;
         } else {
             member.color = this.freeColor();
@@ -233,10 +222,6 @@ class Room {
         return { member, resumed: !!back };
     }
 
-    /**
-     * A token minted for one map must not grant edit rights in another room, so the
-     * claim only counts when its map and team match this room's.
-     */
     claimedRole(identity) {
         if (!identity?.role) return null;
         if (identity.mapName !== this.mapName) return null;
@@ -245,7 +230,6 @@ class Room {
         return identity.role === 'viewer' ? ROLE_SPECTATOR : ROLE_DEVELOPER;
     }
 
-    /** Only the team's own owner runs a team room, however early anyone else arrived. */
     claimsOwnership(identity) {
         if (this.teamId == null) return false;
         if (identity?.role !== 'owner') return false;
@@ -253,10 +237,6 @@ class Room {
         return identity.mapName === this.mapName && (identity.teamId ?? null) === this.teamId;
     }
 
-    /**
-     * A team room outlives whoever opened it, so any of its editors may take it on.
-     * A personal room stays with its account, or a stranger could claim someone's map.
-     */
     mayOwn(member) {
         if (this.teamId != null) return member.owns;
         if (this.ownerUserId == null) return true;
@@ -400,7 +380,6 @@ class Room {
         return null;
     }
 
-    /** Lights are a short list, so they are replaced whole rather than patched. */
     setLightsFrom(member, lights) {
         if (!this.canEdit(member)) return 'you are a spectator in this room';
         const clean = cleanLights(lights);
@@ -424,7 +403,6 @@ class Room {
         return null;
     }
 
-    /** Anyone in the room may talk, spectators included: the room is the moderation. */
     chatFrom(member, text) {
         if (typeof text !== 'string') return;
         const body = text.replace(/\s+/g, ' ').trim().slice(0, config.maxChatLength);
@@ -461,10 +439,6 @@ export function getRoom(code) {
     return rooms.get(code) ?? null;
 }
 
-/**
- * The one room a team map may have. Everyone who opens that map lands in it, so
- * there is no code to pass around and no second room to split the team across.
- */
 export function findTeamRoom(mapName, teamId) {
     if (teamId == null) return null;
 

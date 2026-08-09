@@ -51,8 +51,6 @@ export function ungroupIds(groups, ids) {
     return groups.filter((g) => !g.ids.some((id) => touched.has(id)));
 }
 
-// Groups used to live here, keyed by position in the part list. They are map data
-// now, so this only drains what an older build left behind, once.
 const KEY = 'studio_groups';
 
 export function takeLegacyGroups(mapName, parts) {

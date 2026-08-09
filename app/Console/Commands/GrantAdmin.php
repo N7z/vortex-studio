@@ -5,7 +5,6 @@ namespace App\Console\Commands;
 use App\Models\User;
 use Illuminate\Console\Command;
 
-/** The only way to make the first admin: nothing in the UI can grant it. */
 class GrantAdmin extends Command
 {
     protected $signature = 'admin:grant {email} {--revoke}';

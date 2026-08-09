@@ -3,16 +3,11 @@ import * as THREE from 'three';
 export const MAX_RES = 100;
 
 const hex = (n) => n.toString(16).padStart(2, '0');
-// Three digits, because a coordinate is not a byte: an admin may voxelise past 255
-// on an axis, and a 2-digit overflow used to shift every field after it.
 export const MAX_DIM = 4096;
 const chex = (n) => n.toString(16).padStart(3, '0');
 
 const MAX_TEX = 2048;
 const ALPHA_CUT = 128;
-// Two surfaces within this much of a cell, measured along the normal, are the same
-// surface. Clothing sits a hair above the body it covers, so at a fine resolution
-// both land in one cell and averaging them makes a colour neither of them is.
 const DEPTH_EPS = 0.15;
 const GREY = [170, 170, 170];
 
@@ -53,8 +48,6 @@ function wrapped(t, mode) {
     return Math.min(Math.max(t, 0), 1);
 }
 
-// No more of the atlas than the grid can tell apart. Reading a 4096 square for a
-// 48 cell model costs seconds and resolves nothing.
 function texCap(size) {
     const want = 1 << Math.ceil(Math.log2(Math.max(size, 1) * 4));
     return Math.min(MAX_TEX, Math.max(64, want));
@@ -69,13 +62,9 @@ function textureSampler(map, cap) {
     canvas.width = w;
     canvas.height = h;
     const g = canvas.getContext('2d', { willReadFrequently: true });
-    // An atlas is islands of colour on blank padding, and a smoothed downscale
-    // averages the two together along every island border.
     g.imageSmoothingEnabled = false;
     let data;
     try {
-        // Five arguments: the three-argument form draws at intrinsic size and
-        // crops, so every model was coloured from the corner of its atlas.
         g.drawImage(img, 0, 0, w, h);
         ({ data } = g.getImageData(0, 0, w, h));
     } catch {
@@ -95,8 +84,6 @@ function textureSampler(map, cap) {
         const x = Math.min(Math.max(Math.floor(s * w), 0), w - 1);
         const y = Math.min(Math.max(Math.floor((flip ? 1 - t : t) * h), 0), h - 1);
         const i = (y * w + x) * 4;
-        // Nearest: filtering across a UV island border pulls the atlas's blank
-        // padding into every seam.
         if (data[i + 3] < ALPHA_CUT) return null;
         return [data[i], data[i + 1], data[i + 2]];
     };
@@ -136,14 +123,10 @@ function describe(m, cap) {
         sample: textureSampler(map, cap),
         tint,
         uvSet: map?.channel === 1 ? 1 : 0,
-        // A blend material this faint is a helper plane, not something anyone can
-        // see, and it would paint solid blocks over what is behind it.
         skip: m.transparent === true && m.opacity < 0.5,
     };
 }
 
-// A GLB usually ships hat, body and skin as groups of one mesh, so material[0]
-// for every face paints most of the model from the wrong atlas.
 function faceMaterials(geo, faces, materials) {
     if (materials < 2 || !geo.groups?.length) return null;
     const out = new Uint8Array(faces);
@@ -190,9 +173,6 @@ export async function voxelize(object, res, maxRes = MAX_RES, onProgress = null,
         y: Math.max(Math.ceil(span.y * scale), 1),
         z: Math.max(Math.ceil(span.z * scale), 1),
     };
-    // Per cell: colour summed in linear light, the sample count, the depth of the
-    // outermost surface seen, and the summed normal. Colour and normal are averaged
-    // over the samples at that depth only; anything further in is hidden behind it.
     const acc = new Map();
     const a = new THREE.Vector3();
     const b = new THREE.Vector3();
@@ -205,8 +185,6 @@ export async function voxelize(object, res, maxRes = MAX_RES, onProgress = null,
     const slot = (v, n) => Math.min(Math.max(Math.floor(v), 0), n - 1);
     const put = (x, y, z, r, g, bl) => {
         const key = (slot(y, dim.y) * dim.z + slot(z, dim.z)) * dim.x + slot(x, dim.x);
-        // Where the sample's own tangent plane sits. Two shells with the same normal
-        // differ here by how far out they are, so the larger value is the outer one.
         const t = x * face.x + y * face.y + z * face.z;
         const cell = acc.get(key);
         if (!cell) {
@@ -232,8 +210,6 @@ export async function voxelize(object, res, maxRes = MAX_RES, onProgress = null,
     const na = new THREE.Vector3();
     const nb = new THREE.Vector3();
     const nc = new THREE.Vector3();
-    // Per sample, not set by the first hit: one textured triangle used to claim
-    // the whole model.
     const used = { texture: 0, vertex: 0, flat: 0 };
 
     let totalFaces = 0;
@@ -251,10 +227,7 @@ export async function voxelize(object, res, maxRes = MAX_RES, onProgress = null,
         const geo = mesh.geometry;
         const pos = geo.attributes.position;
         const uvs = [geo.attributes.uv ?? null, geo.attributes.uv1 ?? geo.attributes.uv ?? null];
-        // The artist's own normals, which on a smooth-shaded model describe the
-        // surface the mesh stands for rather than the triangles it is made of.
         const nrm = geo.attributes.normal;
-        // Scans and sculpts usually carry their colour per vertex, not in a texture.
         const vcol = geo.attributes.color;
         normalMatrix.getNormalMatrix(mesh.matrixWorld);
         const index = geo.index;
@@ -279,7 +252,6 @@ export async function voxelize(object, res, maxRes = MAX_RES, onProgress = null,
             b.fromBufferAttribute(pos, i1).applyMatrix4(mesh.matrixWorld);
             c.fromBufferAttribute(pos, i2).applyMatrix4(mesh.matrixWorld);
 
-            // Built from the world-space corners, so it needs no normal matrix.
             face.copy(e1.subVectors(b, a).cross(e2.subVectors(c, a)));
             if (face.lengthSq() > 0) face.normalize();
             if (nrm) {
@@ -325,7 +297,6 @@ export async function voxelize(object, res, maxRes = MAX_RES, onProgress = null,
                             u0 * w0 + u1 * w1 + u2 * w2,
                             v0 * w0 + v1 * w1 + v2 * w2,
                         );
-                        // Below the cutout there is no surface here at all.
                         if (!hit) continue;
                         lr = SRGB_TO_LINEAR[hit[0]];
                         lg = SRGB_TO_LINEAR[hit[1]];
@@ -335,8 +306,6 @@ export async function voxelize(object, res, maxRes = MAX_RES, onProgress = null,
                             lg *= tint[1];
                             lb *= tint[2];
                         }
-                        // glTF multiplies COLOR_0 into the base colour, and a
-                        // mesh often carries its shading there.
                         if (vcol) {
                             lr *= cr0 * w0 + cr1 * w1 + cr2 * w2;
                             lg *= cg0 * w0 + cg1 * w1 + cg2 * w2;
@@ -439,8 +408,6 @@ export async function fillInside(grid, onProgress = null) {
         push(x, y, z + 1); push(x, y, z - 1);
     }
 
-    // Nearest shell colour, grown inward. One average for the whole model reads as
-    // grey mud wherever the shell is thin enough to see through.
     const front = [...cells.keys()];
     for (let head = 0; head < front.length; head++) {
         if (onProgress && performance.now() - mark > SLICE_MS) {
@@ -469,8 +436,6 @@ export async function fillInside(grid, onProgress = null) {
     return grid;
 }
 
-// A normal component is a byte, 128 meaning zero. A cell with no triangle in it -
-// the inside of a filled model - encodes as (0, 0, 0) and reads back as "unknown".
 const nhex = (v) => hex(Math.min(255, Math.max(0, Math.round(v * 127) + 128)));
 
 export function encode(grid) {

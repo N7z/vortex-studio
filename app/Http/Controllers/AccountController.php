@@ -10,7 +10,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules\Password;
 
-/** Signing in is optional and only keeps maps past the anonymous cookie's TTL. */
 class AccountController extends Controller
 {
     private const MAX_CLAIM = 50;
@@ -35,11 +34,6 @@ class AccountController extends Controller
         return ['account' => self::current()];
     }
 
-    /**
-     * The live server cannot ask this app anything, so the token is the whole
-     * authority: it carries who the user is and what they may do to one named map.
-     * The room never trusts a role or id the client states for itself.
-     */
     public function liveToken(Request $request): array
     {
         $user = Auth::user();
@@ -60,8 +54,6 @@ class AccountController extends Controller
 
         $role = null;
         if ($map !== null) {
-            // A team map carries the team role itself, so the room can tell its owner
-            // from an editor. A personal map is always the caller's own.
             $role = $teamId !== null ? MapAccess::teamRole($teamId) : MapAccess::EDITOR;
         }
 
@@ -139,10 +131,6 @@ class AccountController extends Controller
         ]);
     }
 
-    /**
-     * Adopt the maps this browser made while anonymous, so signing in never looks
-     * like losing work. A name the account already has is renamed, not overwritten.
-     */
     private function claim(?string $token, int $userId): int
     {
         if (! is_string($token) || ! preg_match('/^[A-Za-z0-9]{40}$/', $token)) {

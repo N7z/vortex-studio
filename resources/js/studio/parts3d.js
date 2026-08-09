@@ -7,8 +7,6 @@ export const PLACEHOLDER = new THREE.MeshBasicMaterial();
 
 export const PART_TYPES = ['Part', 'SpawnLocation', 'ShirtPad', 'Truss'];
 
-// What a part type wears when nothing on the part says otherwise. Named for the
-// document's own faces, which is also the order the box below is built in.
 const FACE_MARKS = {
     Part: { Top: 'stud', Bottom: 'inlet' },
     SpawnLocation: { Top: 'spawn', Bottom: 'inlet' },
@@ -18,7 +16,6 @@ const FACE_MARKS = {
     Truss: {},
 };
 
-// The material slot each face occupies, in the order makePartGeometry lays them out.
 const FACES = ['Right', 'Left', 'Front', 'Back', 'Top', 'Bottom'];
 
 const MARK_OF = { Studs: 'stud', Inlets: 'inlet' };
@@ -32,8 +29,6 @@ export function partType(part) {
 function marksFor(type, mode, studs, textures) {
     if (mode === 'wireframe' || mode === 'normals') return null;
     const spec = { ...(FACE_MARKS[type] ?? FACE_MARKS.Part) };
-    // Truss has no per-face groups to hang anything on, so its own empty spec wins
-    // over whatever the part carries.
     if (type !== 'Truss') {
         for (const [face, kind] of Object.entries(textures ?? {})) {
             if (MARK_OF[kind]) spec[face] = MARK_OF[kind];
@@ -49,9 +44,6 @@ function marksFor(type, mode, studs, textures) {
     return any ? out : null;
 }
 
-// One material slot per face, so a texture can be put on any of the six. The faces
-// are reordered first so the sides come before top and bottom, which is the order
-// FACES names.
 export function makePartGeometry() {
     const geo = new THREE.BoxGeometry(1, 1, 1);
     const src = Array.from(geo.index.array);
@@ -103,15 +95,10 @@ export function makeTrussGeometry() {
     return merged;
 }
 
-// The scanned maps only make sense on the lit path: wireframe and normals draw no
-// surface, and unlit has no roughness or normal to read.
 function dressStandard(m, maps, map) {
     if (!maps) return m;
     m.map = map ?? maps.albedo;
     if (maps.normal) m.normalMap = maps.normal;
-    // One ORM texture read twice: three.js takes roughness from its green channel and
-    // metalness from its blue, which is exactly how the file is packed. Its red is
-    // ambient occlusion, which would need a second UV set and is left unread.
     if (maps.orm) {
         m.roughnessMap = maps.orm;
         m.metalnessMap = maps.orm;
@@ -139,14 +126,6 @@ function baseMaterial(mode, color, opacity, material) {
     }
 }
 
-// The scanned maps tile with the studs, so every one of them has to be scaled by the
-// instance the same way. three.js gives each map its own varying unless their
-// transforms match, so each is scaled where it is defined.
-//
-// Which two of the part's three sizes to scale by depends on the face, and the face
-// is known here from its normal: a box's are axis-aligned, and BoxGeometry lays the
-// UVs out so u and v run along the two axes the face spans. Using x and z everywhere
-// is what smeared a tall thin part's sides into vertical streaks.
 const repeatPatch = (studs) => `#include <uv_vertex>
 #if defined( USE_INSTANCING )
     vec3 partSize = vec3(
@@ -204,23 +183,10 @@ export function makeMaterialSets(tex, onDressed = null) {
         return m;
     };
 
-    // The scanned maps only mean anything on the lit path, and only a repeating mark
-    // can be composited into one: a spawn badge or a shirt is drawn once across the
-    // whole face, so tiling it with the material would repeat the badge.
-    //
-    // They are also only hung on the instanced path. That is where the shader scales
-    // the tiling by the part's own size; a transparent part is drawn loose, where the
-    // same maps would stretch across the face instead of tiling, so those keep the
-    // flat look they have always had rather than a visibly different one.
     const build = (type, mode, color, opacity, marks, rx, rz, instanced, material) => {
         const lit = mode !== 'wireframe' && mode !== 'normals' && mode !== 'unlit';
         const base = baseMaterial(mode, color, opacity, material);
-        // Everything is built at one tile per stud, which is what a bare mark wants
-        // and what a material that ships no maps keeps for good. Dressing a set in a
-        // material re-patches it to that material's own tiling.
         if (lit && instanced) repeatByInstance(base, 1);
-        // What each material is wearing, so the maps can be hung on it once they
-        // finish loading without rebuilding the set.
         const dressable = lit && instanced ? [{ m: base, mark: null }] : [];
         if (!marks) return { materials: base, own: [base], dressable };
 
@@ -244,16 +210,11 @@ export function makeMaterialSets(tex, onDressed = null) {
         return { materials, own, dressable };
     };
 
-    // Loading is asynchronous and building is not, so a set goes up untextured and is
-    // dressed when its material arrives. Sets built later find it already resolved.
     let alive = true;
     const dress = (entry) => {
         if (!entry.dressable?.length) return;
         materialMaps(entry.material).then((found) => {
             if (!alive || !found || !sets.has(entry.key)) return;
-            // Everything in dressable is on the instanced path, so it all takes the
-            // material's tiling: the mark went into the composite and now repeats
-            // with it, one stud per stud inside a tile that spans several.
             const tiling = studsPerTile(entry.material);
             for (const { m, mark } of entry.dressable) {
                 const map = mark
@@ -279,9 +240,6 @@ export function makeMaterialSets(tex, onDressed = null) {
 
             const color = normals || !transparent ? '' : (part.C ?? 'a3a2a5');
             const repeats = !!marks && FACES.some((f) => REPEATING.has(marks[f]));
-            // The repeat is driven by the part's footprint for every face, not just
-            // the top: the instanced path reads the same two matrix columns whatever
-            // face it is drawing, so a side keeps the top's tiling rather than none.
             const rx = repeats && transparent ? Math.max(1, Math.round(part.S[0])) : 0;
             const rz = repeats && transparent ? Math.max(1, Math.round(part.S[2])) : 0;
             const marked = marks ? FACES.map((f) => marks[f] ?? '').join(',') : '';

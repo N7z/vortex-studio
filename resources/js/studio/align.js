@@ -6,7 +6,6 @@ const round = (v) => Math.round(v * 1000) / 1000;
 const euler = new THREE.Euler();
 const mat = new THREE.Matrix4();
 
-// Half extent of the world-axis box a rotated part occupies, per axis.
 export function extents(part) {
     const [rx, ry, rz] = part.R;
     if (!rx && !ry && !rz) return part.S.map((s) => Math.abs(s) / 2);
@@ -69,7 +68,6 @@ export function alignUpdates(parts, axis, mode) {
     }));
 }
 
-// Equal gaps between boxes, with the two outermost parts left where they are.
 export function distributeUpdates(parts, axis) {
     if (parts.length < 3) return [];
     const rows = parts
@@ -90,7 +88,6 @@ export function distributeUpdates(parts, axis) {
     return clean(out);
 }
 
-// Same again, but the caller sets the gap and the first part anchors the run.
 export function spaceUpdates(parts, axis, gap) {
     if (parts.length < 2) return [];
     const rows = parts
@@ -110,7 +107,6 @@ export function spaceUpdates(parts, axis, gap) {
 
 const overlaps = (a, b, axis) => a.min[axis] < b.max[axis] - 1e-4 && a.max[axis] > b.min[axis] + 1e-4;
 
-// Drops each part straight down onto the highest thing under it, or onto y = 0.
 export function dropUpdates(parts, all, floor = 0) {
     const moving = new Set(parts.map((p) => p._id));
     const below = all

@@ -82,7 +82,6 @@ it('hides a team entirely from a non-member', function () {
     $team = makeTeam($a);
     $this->actingAs($a)->putJson("/api/maps/shared?team=$team", ['parts' => [TPART], 'groups' => []])->assertOk();
 
-    // 404 not 403: the team's existence is not disclosed.
     $this->actingAs($c)->getJson("/api/maps/shared?team=$team")->assertNotFound();
     $this->actingAs($c)->putJson("/api/maps/shared?team=$team", ['parts' => [TPART]])->assertNotFound();
     $this->actingAs($c)->getJson("/api/teams/$team/members")->assertNotFound();
@@ -118,7 +117,6 @@ it('keeps personal and team quotas separate', function () {
     }
 
     $this->actingAs($a)->putJson('/api/maps/one-more', ['parts' => [TPART]])->assertStatus(403);
-    // The team has its own allowance, so a full personal space does not block it.
     $this->actingAs($a)->putJson("/api/maps/one-more?team=$team", ['parts' => [TPART]])->assertOk();
 });
 
@@ -224,7 +222,6 @@ it('refuses a second team with the same name for one owner', function () {
 
     $this->actingAs($a)->postJson('/api/teams', ['name' => 'Crew'])->assertStatus(422);
     $this->actingAs($a)->postJson('/api/teams', ['name' => '  Crew  '])->assertStatus(422);
-    // Another account is free to use the same name.
     $this->actingAs($b)->postJson('/api/teams', ['name' => 'Crew'])->assertCreated();
 });
 
@@ -257,7 +254,6 @@ it('renames a returning map that would collide', function () {
 
     expect(DB::table('maps')->where('user_id', $a->id)->pluck('name')->sort()->values()->all())
         ->toBe(['castle', 'castle-2']);
-    // The team's copy is the one that moved, so its contents are intact.
     $this->actingAs($a)->getJson('/api/maps/castle-2')->assertOk()->assertJsonCount(2, 'parts');
 });
 
@@ -449,6 +445,5 @@ it('keeps one team map from renaming onto another', function () {
     $this->actingAs($a)->putJson("/api/maps/two?team=$team", ['parts' => [TPART]])->assertOk();
 
     $this->actingAs($a)->patchJson("/api/maps/one?team=$team", ['to_name' => 'two'])->assertStatus(422);
-    // The same name is free in your own space, so the move is unaffected.
     $this->actingAs($a)->putJson('/api/maps/two', ['parts' => [TPART]])->assertOk();
 });

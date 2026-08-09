@@ -8,8 +8,6 @@ const compact = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e4 ? `${Ma
 
 const dayLabel = (d) => new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
-// Every metric here is a count, so the smallest usable step is 1: fractional
-// gridlines under a max of 2 would read as fractions of an account.
 function ticks(max) {
     if (max <= 0) return [0, 1];
     const step = Math.max(1, 10 ** Math.floor(Math.log10(max / 3)));

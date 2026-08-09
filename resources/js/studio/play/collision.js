@@ -14,16 +14,11 @@ function eulerMatrix(rx, ry, rz) {
     ];
 }
 
-/**
- * `skipLoose` leaves unanchored parts out, because those are handed to the rigid body
- * world instead and come back through combineWorlds at wherever they have moved to.
- * Off by default so a caller with no physics still collides with the whole map.
- */
 export function buildWorld(parts, skipLoose = false) {
     const solid = [];
     for (const p of parts) {
         if (!Array.isArray(p.P) || !Array.isArray(p.S)) continue;
-        // Absent means true, the way every other optional part key works.
+        // absent means true, the way every other optional part key works.
         if (p.Cc === false) continue;
         if (skipLoose && p.An === false) continue;
         const [px, py, pz] = p.P;
@@ -69,8 +64,6 @@ export function buildWorld(parts, skipLoose = false) {
 
     const cells = new Map();
     const always = [];
-    // A pure hash, so two cells can share a bucket. That only costs a few extra
-    // candidates: the AABB tests below reject them anyway.
     const key = (gx, gz) => (gx * 73856093) ^ (gz * 19349663);
 
     for (let i = 0; i < n; i++) {
@@ -167,8 +160,6 @@ export function buildWorld(parts, skipLoose = false) {
         return found;
     }
 
-    // Where the local -Y face of a rotated box sits over (x, z): the same slab walk
-    // as rayTop, cast upward instead, taking the face the ray enters through.
     function rayBottom(i, x, z, fromY) {
         const o = i * 9;
         const dx = x - cx[i];
@@ -202,17 +193,6 @@ export function buildWorld(parts, skipLoose = false) {
         return fromY + Math.max(tEnter, 0);
     }
 
-    // The lowest underside the head is under, or null.
-    //
-    // A point query over (x, z), deliberately the same shape as groundAt: you stand
-    // on a part whose top is under your centre, so you should only bump your head on
-    // one whose underside is over it. Testing a box the width of the body instead
-    // catches parts standing *beside* you — which is what small obby blocks are — and
-    // slams you down out of them.
-    //
-    // Which way a part pushes is decided per part, the way the client decides it: out
-    // through whichever face is nearer. A block whose top you are about to land on has
-    // its top nearer, so it is ground, not a ceiling.
     function ceilingAt(x, z, feet, head) {
         let best = null;
 
@@ -242,9 +222,6 @@ export function buildWorld(parts, skipLoose = false) {
         return best;
     }
 
-    // Distance along `dir` from `from` to the nearest part within `limit`, or null.
-    // Only the camera uses this, so it walks the grid coarsely: the cells the segment's
-    // own bounding box covers, which over 24 studs is a handful of buckets.
     function rayHit(from, dir, limit) {
         const x0 = Math.min(from.x, from.x + dir.x * limit);
         const x1 = Math.max(from.x, from.x + dir.x * limit);
@@ -337,11 +314,6 @@ export function buildWorld(parts, skipLoose = false) {
     return { groundAt, ceilingAt, rayHit, blocked, count: n, cells: cells.size };
 }
 
-/**
- * The anchored map plus whatever the rigid bodies are doing this frame, as one world
- * the character controller cannot tell apart. The loose set is small and rebuilt only
- * while something is awake, so the second query is cheap and usually skipped.
- */
 export function combineWorlds(fixed, loose) {
     if (!loose) return fixed;
     const spare = { y: 0, nx: 0, ny: 1, nz: 0 };
@@ -350,7 +322,6 @@ export function combineWorlds(fixed, loose) {
         groundAt(x, z, headY, feet, out) {
             const a = fixed.groundAt(x, z, headY, feet, out);
             if (!loose.groundAt(x, z, headY, feet, spare)) return a;
-            // The higher of the two is the one being stood on.
             if (a && out.y >= spare.y) return true;
             out.y = spare.y;
             out.nx = spare.nx;
@@ -381,7 +352,6 @@ export function combineWorlds(fixed, loose) {
 
 const SEARCH = 1e6;
 
-// `pick` is injectable so the self test can spawn deterministically.
 export function spawnPoint(parts, world, pick = (n) => Math.floor(Math.random() * n)) {
     const spawns = parts.filter((p) => p.T === 'SpawnLocation' && Array.isArray(p.P));
     if (spawns.length) {

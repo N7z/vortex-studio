@@ -9,10 +9,6 @@ use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
-/**
- * Every read and write of a map goes through here. A map belongs to one account,
- * or to a team, or to an anonymous browser cookie, and those are the only ways in.
- */
 class MapAccess
 {
     public const OWNER = 'owner';
@@ -21,10 +17,6 @@ class MapAccess
 
     public const VIEWER = 'viewer';
 
-    /**
-     * Anonymous per-visitor identity: a random cookie, no login.
-     * Re-queued on every request so the cookie outlives the map TTL.
-     */
     public static function token(Request $request): string
     {
         $t = $request->cookie('studio_token');
@@ -58,13 +50,11 @@ class MapAccess
         self::$memberships = [];
     }
 
-    /** Team ids the signed-in user belongs to. Empty for a guest. */
     public static function teamIds(): array
     {
         return array_keys(self::memberships());
     }
 
-    /** Everything the caller may open: their own maps plus every team they are in. */
     public static function visible(Request $request): Builder
     {
         $id = Auth::id();
@@ -84,7 +74,6 @@ class MapAccess
         });
     }
 
-    /** The caller's personal maps only, which is what their quota counts. */
     public static function personal(Request $request): Builder
     {
         $id = Auth::id();
@@ -136,7 +125,6 @@ class MapAccess
         return DB::table('maps')->where('id', $id)->first(['data', 'groups']);
     }
 
-    /** Null means no access at all, which callers report as 404 rather than 403. */
     public static function role(?object $map): ?string
     {
         if (! $map) {
@@ -155,7 +143,6 @@ class MapAccess
         return in_array(self::role($map), [self::OWNER, self::EDITOR], true);
     }
 
-    /** Membership check for a team the caller names before any map exists in it. */
     public static function teamRole(?int $teamId): ?string
     {
         if ($teamId === null) {
