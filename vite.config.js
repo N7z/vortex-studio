@@ -9,6 +9,7 @@ export default defineConfig({
             input: [
                 'resources/css/app.css', 'resources/js/app.jsx',
                 'resources/css/admin.css', 'resources/js/admin.jsx',
+                'resources/js/scan.js',
             ],
             refresh: true,
         }),

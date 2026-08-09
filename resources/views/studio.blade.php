@@ -7,6 +7,9 @@
     <meta name="build" content="{{ Illuminate\Support\Facades\Vite::manifestHash() }}">
     <title>Paulin Studio</title>
     @viteReactRefresh
+    @if (app()->environment('local'))
+        @vite('resources/js/scan.js')
+    @endif
     @vite(['resources/css/app.css', 'resources/js/app.jsx'])
 </head>
 <body>
