@@ -58,7 +58,6 @@ export function headY(s) {
 }
 
 export function step(s, input, rawDt, world) {
-    if (s.freecam) return;
     const dt = Math.min(rawDt, MAX_DT);
     s.jumped = false;
     s.landed = false;
@@ -73,7 +72,7 @@ export function step(s, input, rawDt, world) {
     let wishX = 0;
     let wishZ = 0;
     const inputSq = dx * dx + dz * dz;
-    if (inputSq >= INPUT_EPSILON) {
+    if (inputSq >= INPUT_EPSILON && !s.freecam) {
         const target = Math.atan2(dx, dz);
         s.heading = approachAngle(s.heading, target, 1 - Math.exp(-dt / TURN_EASE));
         wishX = dx * WALK_SPEED;
@@ -102,8 +101,8 @@ export function step(s, input, rawDt, world) {
     s.speed = Math.hypot(velX, velZ);
     if (velX !== 0 || velZ !== 0) moveHorizontal(s, velX * dt, velZ * dt, world);
 
-    if (input.jump) s.jumpBuffer = JUMP_BUFFER;
-    if (s.jumpBuffer > 0 && (s.grounded || s.coyote > 0)) {
+    if (input.jump && !s.freecam) s.jumpBuffer = JUMP_BUFFER;
+    if (s.jumpBuffer > 0 && (s.grounded || s.coyote > 0) && !s.freecam) {
         s.vy = JUMP_VELOCITY;
         s.grounded = false;
         s.coyote = 0;
