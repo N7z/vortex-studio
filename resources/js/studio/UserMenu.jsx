@@ -20,7 +20,6 @@ export default function UserMenu({ account, ttl, onChange, claimed }) {
         return () => window.removeEventListener('keydown', onKey);
     }, [open]);
 
-    // Signing in or out is the one thing worth seeing without opening it again.
     useEffect(() => { setOpen(false); }, [account?.id]);
 
     return (

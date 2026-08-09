@@ -229,8 +229,6 @@ function progress_span(from, to)
     span_from, span_to = from, to
 end
 
--- Yields so the page can paint. Only the click path runs on a coroutine, so
--- anywhere else this reports and carries on.
 function progress(done, total)
     if total == nil or total <= 0 then return end
     local f = done / total

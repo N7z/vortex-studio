@@ -1,6 +1,3 @@
-// Loads the built app in a headless browser and fails if it does not mount.
-// `vite build` only compiles: it cannot see a use-before-define, a bad hook order
-// or anything else that throws on the first render, and those ship as a blank page.
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\DB;
 
 uses(RefreshDatabase::class);
 
+const PART = ['T' => 'Part', 'P' => [0, 0, 0], 'S' => [1, 1, 1], 'R' => [0, 0, 0]];
+
 function admin(): User
 {
     return User::where('email', 'boss@example.com')->first()
@@ -21,7 +23,6 @@ function member(array $over = []): User
         'name' => $n === 1 ? 'Member' : "Member $n", 'email' => 'm@example.com', 'password' => 'correct horse',
     ]);
 
-    // is_admin and banned_at are not fillable: nothing but the console and the panel sets them.
     $user->forceFill(array_intersect_key($over, ['is_admin' => 0, 'banned_at' => 0]))->save();
 
     return $user;
@@ -33,7 +34,6 @@ function aMap(array $over = []): int
         'token' => str_repeat('A', 40), 'name' => 'world', 'data' => '[]',
         'created_at' => now(), 'updated_at' => now(),
     ];
-    // The parts column is what the stats read, and save() is what normally fills it.
     $row += ['parts' => count(json_decode((string) $row['data'], true) ?: [])];
 
     return DB::table('maps')->insertGetId($row);
@@ -114,8 +114,6 @@ it('deletes an account together with its maps', function () {
 
     $this->actingAs(admin())->deleteJson("/admin/users/{$user->id}")->assertOk();
 
-    // The account goes, its work goes to the trash: this used to be the one action
-    // in the app that destroyed maps with no way back.
     expect(User::find($user->id))->toBeNull()
         ->and(DB::table('maps')->whereNull('deleted_at')->count())->toBe(0)
         ->and(DB::table('maps')->whereNotNull('deleted_at')->count())->toBe(1);
@@ -171,10 +169,7 @@ it('keeps a json 404 for the admin api', function () {
         ->assertHeader('content-type', 'application/json');
 });
 
-// The payload is cached, and a cached Collection used to come back as an incomplete
-// class that encodes as a JSON object, which broke every chart on the second request.
 it('serves the overview as json lists even from the cache', function () {
-    // The suite's array store never serializes, so it cannot reproduce this at all.
     config()->set('cache.default', 'database');
     Cache::forget('admin_overview');
     $a = admin();

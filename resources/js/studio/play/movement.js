@@ -1,7 +1,3 @@
-// Every constant here is one the client itself carries. See
-// ../../../../VortexStuff/docs/MOVEMENT.md for the v0.2.16 pass and
-// MOVEMENT_0_2_2x.md for the re-derivation this file is matched to, which is where
-// the residual model, the collider offsets and the ceiling resolve come from.
 export const GRAVITY = -196.2;
 export const WALK_SPEED = 16;
 export const JUMP_VELOCITY = 50;
@@ -12,9 +8,6 @@ export const JUMP_BUFFER = 0.15;
 export const VOID_Y = -500;
 export const INPUT_EPSILON = 0.01;
 
-// External velocity — a slope, an impulse, a moving surface. The client decays it
-// two different ways and picks between them on speed_override; the multiply is the
-// one that runs in ordinary play.
 export const RESIDUAL_DECAY = 2.5;
 export const RESIDUAL_STOP = 0.3;
 export const RESIDUAL_LINEAR = 142;
@@ -22,8 +15,6 @@ export const RESIDUAL_LINEAR = 142;
 export const TURN_EASE = 0.06;
 export const SLOPE_LIMIT = Math.cos((45 * Math.PI) / 180);
 
-// The body box is not centred on the transform origin: the feet are 2.08 below it
-// and the head 2.92 above, for the 5 studs the client uses as the total.
 export const BODY_HEIGHT = 5;
 export const FEET_OFFSET = 2.08;
 export const HEAD_OFFSET = BODY_HEIGHT - FEET_OFFSET;
@@ -65,7 +56,7 @@ export function headY(s) {
     return s.y + HEAD_OFFSET;
 }
 
-export function step(s, view, input, rawDt, world) {
+export function step(s, input, rawDt, world) {
     const dt = Math.min(rawDt, MAX_DT);
     s.jumped = false;
     s.landed = false;
@@ -77,9 +68,6 @@ export function step(s, view, input, rawDt, world) {
     const dx = input.strafe * cos - input.forward * sin;
     const dz = -input.strafe * sin - input.forward * cos;
 
-    // The client normalizes the direction and scales it by the walk speed, then adds
-    // the residual and clamps the sum once. Splitting that into two moves is what
-    // lets a slide plus a walk exceed the cap.
     let wishX = 0;
     let wishZ = 0;
     const inputSq = dx * dx + dz * dz;
@@ -96,12 +84,6 @@ export function step(s, view, input, rawDt, world) {
     if (input.shift_lock) {
         s.yaw = input.yaw;
     }
-    if (input.arrow == -1) {
-        view.look(15, 0)
-    } else if (input.arrow == 1) {
-        view.look(-15, 0)
-    }
-
     let velX = s.residualX + wishX;
     let velZ = s.residualZ + wishZ;
     const cap = s.speedOverride > 0
@@ -133,9 +115,6 @@ export function step(s, view, input, rawDt, world) {
     const steep = onGround && ground.ny < SLOPE_LIMIT;
     s.sliding = steep;
 
-    // A steep face pushes into the residual, which is what the channel is for. The
-    // client has no slope handling of its own — its parts are axis-aligned boxes —
-    // so this is the studio's, routed through the client's speed cap and decay.
     if (steep) {
         const g = -GRAVITY * ground.ny;
         s.residualX += g * ground.nx * dt;
@@ -171,10 +150,6 @@ export function step(s, view, input, rawDt, world) {
 
 const ground = { y: 0, nx: 0, ny: 1, nz: 0 };
 
-// The client resolves the body box out of every part it overlaps, pushing along
-// whichever of the two vertical penetrations is smaller. Ours works off the same
-// surface query the ground snap uses, plus a ceiling query, which gives the same
-// answer for the boxes a map is made of.
 function resolveBody(s, target, steep, world) {
     if (target !== null && s.y <= target) {
         s.y = target;
@@ -190,8 +165,6 @@ function resolveBody(s, target, steep, world) {
         return;
     }
 
-    // ceilingAt has already dropped anything the head is not the shallower way out
-    // of, so whatever comes back is a ceiling and nothing else.
     if (!world?.ceilingAt) return;
     const hit = world.ceilingAt(s.x, s.z, feetY(s), headY(s));
     if (hit === null) return;
@@ -214,8 +187,6 @@ function decayResidual(s, dt, steep) {
     const k = Math.max(1 - RESIDUAL_DECAY * dt, 0);
     s.residualX *= k;
     s.residualZ *= k;
-    // The deadzone is what stops a slide dribbling forever. On a steep face the
-    // accelerator above refills it every frame, so it only bites once you are off.
     if (!steep) {
         if (Math.abs(s.residualX) < RESIDUAL_STOP) s.residualX = 0;
         if (Math.abs(s.residualZ) < RESIDUAL_STOP) s.residualZ = 0;
@@ -227,10 +198,6 @@ function approachAngle(from, to, k) {
     return from + d * k;
 }
 
-// The wall test samples the leading edge of the body rather than a box centred on
-// it. A centred box has its uphill corner buried in any slope steeper than
-// atan(STEP_HEIGHT / HALF_WIDTH), which reads as a wall and pins the player to the
-// face they are standing on; the leading edge only ever meets what is in front.
 function moveHorizontal(s, stepX, stepZ, world) {
     if (!world) {
         s.x += stepX;

@@ -51,8 +51,6 @@ export default function useLive({
         if (changed) setPlayingIds([...map.keys()]);
     };
 
-    // Which map a token should be minted for. Only hosting knows it; a join by code
-    // does not, and the reconnect path reads it again on every attempt.
     const scope = useRef({ map: null, team: null });
     const client = useRef(null);
     if (!client.current) {

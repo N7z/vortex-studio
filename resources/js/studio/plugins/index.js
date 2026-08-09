@@ -36,9 +36,6 @@ const BUNDLED = [
 
 const STORE_KEY = 'studio_user_plugins';
 
-// print() from a plugin script goes to the status line. A call that prints in a loop
-// would otherwise queue thousands of them, so each run gets a small budget and the
-// rest are console-only.
 const MAX_PRINTS = 24;
 let printSink = null;
 let printsLeft = 0;
@@ -54,7 +51,6 @@ const openPrints = (label) => {
 let factory;
 const getFactory = () => (factory ??= new LuaFactory());
 
-// wasmoon resumes a yielded thread with a bare setImmediate, which no browser has.
 if (typeof globalThis.setImmediate !== 'function') {
     globalThis.setImmediate = (fn, ...args) => setTimeout(fn, 0, ...args);
 }
@@ -86,9 +82,6 @@ export function stripId(part) {
     return rest;
 }
 
-// A result flagged Replace updates the part it came from instead of being added.
-// The flag is stripped here: validPart rejects any key outside PART_KEYS, so it
-// must never reach the map data.
 const toParts = (res) => {
     if (res == null || typeof res !== 'object') return [];
     const list = res.P !== undefined ? [res] : toArray(res);
@@ -134,13 +127,9 @@ export const toPatch = (res) => {
     return Object.keys(out).length ? out : null;
 };
 
-// The hook fires every STEP_CHUNK VM instructions; a call that burns more than
-// STEP_BUDGET of them is an endless loop, and without this it freezes the tab.
 const STEP_CHUNK = 1e6;
 export const STEP_BUDGET = 1000;
 
-// The hook has to be installed from inside the call: wasmoon runs each one on its
-// own Lua thread, and a hook belongs to the thread that set it.
 const GUARD_SRC = `
 do
     local steps = 0
@@ -235,9 +224,6 @@ async function startEngine(src) {
             },
             preview: async (part, values) =>
                 toParts(await luaPreview(JSON.stringify(part), JSON.stringify(values))),
-            // doString runs on a Lua thread, so a yield from progress() suspends the
-            // run and lets the page paint. lua.global.get gives a synchronous pcall
-            // that cannot yield at all.
             click: async (btnId, part, values) => {
                 await luaResetProgress();
                 lua.global.set('__click_id', btnId);
@@ -309,8 +295,6 @@ export async function compilePlugin(id, src, builtin = false) {
     }
 }
 
-// One shared engine reads every plugin's registration table at boot, so the list can
-// be shown without giving each plugin its own wasm memory before it is ever opened.
 let metaEngine;
 const readMeta = async (src) => {
     metaEngine ??= (async () => {
@@ -337,7 +321,6 @@ export function userPlugins() {
     }
 }
 
-// Lifted for an admin, who is trusted with maps of any size.
 let partLimit = 50_000;
 let voxelLimit = 400_000;
 let stepBudget = STEP_BUDGET;
@@ -395,8 +378,6 @@ export function deleteUserPlugin(id) {
     localStorage.setItem(STORE_KEY, JSON.stringify(userPlugins().filter((p) => p.id !== id)));
 }
 
-// The Model plugin shipped as `sculpt` for a few days. An edited copy is keyed by
-// that id, so it is carried over once rather than silently orphaned.
 function renameSculpt() {
     const list = userPlugins();
     const old = list.find((p) => p.id === 'sculpt');

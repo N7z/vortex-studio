@@ -13,7 +13,6 @@ import {
 const HELLO_TIMEOUT_MS = 15_000;
 const MAX_SELECTION_BROADCAST = 200;
 const RESYNC_WINDOW_MS = 60_000;
-// A burst this far past the per-second limit is a loop, not a fast editor.
 const FLOOD_FACTOR = 4;
 
 function overRate(ws) {
@@ -134,8 +133,6 @@ export function createLiveServer({ log = () => {} } = {}) {
         if (!groups) return refuse(ws, 'bad group data');
 
         const who = verifyIdentity(msg.identity);
-        // The room belongs to the account that opened it, so a stranger joining
-        // first cannot take ownership of somebody's map.
         const lights = cleanLights(msg.lights);
         if (!lights) return refuse(ws, 'bad light data');
 
@@ -148,16 +145,10 @@ export function createLiveServer({ log = () => {} } = {}) {
         welcome(ws, room, member, false);
     }
 
-    /**
-     * Join the team's room for this map, or start it. The token is the only proof
-     * of membership, so a map/team it does not name cannot be opened this way.
-     */
     function handleOpen(ws, msg) {
         const mapName = typeof msg.mapName === 'string' ? msg.mapName.slice(0, 64) : '';
         if (!/^[A-Za-z0-9_-]{1,64}$/.test(mapName)) return refuse(ws, 'bad map name');
 
-        // With no shared secret nothing can be verified, so the client is taken at
-        // its word. That is a dev-only mode; production sets LIVE_SECRET.
         const who = config.liveSecret
             ? verifyIdentity(msg.identity)
             : {
@@ -214,8 +205,6 @@ export function createLiveServer({ log = () => {} } = {}) {
 
         const who = verifyIdentity(msg.identity);
         if (room.isUserBanned(who)) return refuse(ws, 'the owner removed you from this session');
-        // A team room is reached by opening the map, never by passing its code on:
-        // otherwise the link in the address bar would show the map to anyone.
         if (room.teamId != null && config.liveSecret && !room.claimedRole(who)) {
             return refuse(ws, 'that session belongs to a team you are not in');
         }

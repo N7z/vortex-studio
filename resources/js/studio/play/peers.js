@@ -4,7 +4,6 @@ import { peerLabel } from './label';
 
 const SMOOTH = 18;
 
-// Above the head, from the middle-of-body position the wire carries.
 const LABEL_HEIGHT = 3.4;
 
 const shortestAngle = (from, to) => from + Math.atan2(Math.sin(to - from), Math.cos(to - from));
@@ -94,8 +93,6 @@ export function createPeers(scene, audio = null) {
                 shown.moving = target.moving;
                 shown.grounded = target.grounded;
                 shown.dead = target.dead;
-                // The wire carries a pose, not events, so the ones the sound wants are
-                // read back off the pose the same way the eye would read them.
                 shown.speed = dt > 0 ? Math.hypot(shown.x - beforeX, shown.z - beforeZ) / dt : 0;
                 shown.jumped = wasGrounded && !shown.grounded && shown.vy > 0;
                 shown.landed = !wasGrounded && shown.grounded;

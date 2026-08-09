@@ -1,8 +1,3 @@
-// Lock and hide. Editor-only: they are kept in this browser, keyed by map, and
-// never reach the saved document or the exported .json. When the engine carries
-// them per part, `has` reads `part.Lk`/`part.Hd` and `apply` returns a patchOp
-// instead of a store write; nothing outside this module touches either.
-
 export const KINDS = ['lock', 'hide'];
 
 const KEY = 'studio_flags';

@@ -28,7 +28,6 @@ it('puts a deleted map in the trash and back', function () {
     $this->actingAs($a)->getJson('/api/maps/m')->assertOk();
 });
 
-/** The name is free the moment the map is trashed, so restoring must not collide. */
 it('renames a restored map when its name was taken meanwhile', function () {
     $a = User::factory()->create();
     $this->actingAs($a)->putJson('/api/maps/m', ['parts' => [XPART]])->assertOk();
@@ -54,7 +53,6 @@ it('shows nobody else the trash', function () {
     $this->actingAs($b)->deleteJson("/api/trash/$id")->assertStatus(404);
 });
 
-/** Deleting a team map is the owner's alone, so putting one back is too. */
 it('keeps a team editor out of the team trash', function () {
     $a = User::factory()->create();
     $b = User::factory()->create();

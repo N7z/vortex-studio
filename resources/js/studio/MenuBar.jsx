@@ -4,6 +4,7 @@ import { loadStats } from './api';
 import useFullscreen, { canFullscreen } from './useFullscreen';
 import { MODES, PRESETS, SCALES, SHADOW_RES, presetName } from './graphics';
 import { THEMES, setTheme, useTheme } from './theme';
+import { APP_VERSION } from './version';
 
 const SEP = { sep: true };
 
@@ -22,8 +23,6 @@ const STAT_LABELS = [
     ['parts', 'Parts across saved maps'],
 ];
 
-// One menu title plus its dropdown. `open` is owned by MenuBar so that hovering
-// another title while a menu is open switches to it, the way a real menubar does.
 function Menu({ title, items, open, onOpen, onHover, onClose }) {
     return (
         <div className="menu">
@@ -56,7 +55,6 @@ function Menu({ title, items, open, onOpen, onHover, onClose }) {
     );
 }
 
-// Sticky and zero height, so it stays pinned while a long popup scrolls under it.
 const ClosePop = ({ onClose }) => (
     <div className="help-close-bar">
         <button className="help-close" title="Close" onClick={onClose}>×</button>
@@ -74,14 +72,14 @@ export default function MenuBar({
     teamOpen, onToggleTeam,
     chatOpen, onToggleChat, canChat,
     statsOpen, onToggleStats,
-    plugins, activePluginId, onTogglePlugin, onNewPlugin, canPlugins, mobile,
+    plugins, activePluginId, onTogglePlugin, onNewPlugin, mobile,
     account, onTeams,
     onHide, onShowAll, onLock, onUnlockAll, hiddenCount = 0, lockedCount = 0,
 }) {
     const [openMenu, setOpenMenu] = useState(null);
     const theme = useTheme();
     const robloxRef = useRef(null);
-    const [pop, setPop] = useState(null); // null | 'gfx' | 'stats' | 'help'
+    const [pop, setPop] = useState(null); // null | 'gfx' | 'stats' | 'help' | 'about'
     const [stats, setStats] = useState(null);
     const [full, toggleFull] = useFullscreen();
 
@@ -156,7 +154,7 @@ export default function MenuBar({
             checked: (graphics.mode ?? 'lit') === value,
             onClick: () => onGraphics({ mode: value }),
         }))],
-        ...(mobile || !canPlugins ? [] : [['Plugins', [
+        ...(mobile ? [] : [['Plugins', [
             ...plugins.map((p) => ({
                 label: p.name,
                 checked: activePluginId === p.id,
@@ -169,6 +167,8 @@ export default function MenuBar({
         ['Help', [
             { label: 'Shortcuts', onClick: () => setPop('help') },
             { label: 'Server stats', onClick: showStats },
+            SEP,
+            { label: 'About', onClick: () => setPop('about') },
         ]],
     ];
 
@@ -359,6 +359,21 @@ export default function MenuBar({
                             <li>Every save also keeps a copy in this browser, listed under <b>On this device</b> on the start screen</li>
                             <li>Use <b>Download</b> to keep a .json copy, and upload it back anytime</li>
                         </ul>
+                    </div>
+                </>
+            )}
+
+            {pop === 'about' && (
+                <>
+                    <div className="help-backdrop" onClick={() => setPop(null)} />
+                    <div className="help-pop about-pop">
+                        <ClosePop onClose={() => setPop(null)} />
+                        <h3>Paulin Studio</h3>
+                        <p className="about-version">Version {APP_VERSION}</p>
+                        <p>
+                            An independent fan-made map editor that runs in your browser. Not
+                            affiliated with <a href="https://playvortex.io" target="_blank" rel="noreferrer">playvortex.io</a>.
+                        </p>
                     </div>
                 </>
             )}

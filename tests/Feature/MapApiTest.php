@@ -88,7 +88,6 @@ it('enforces the map quota per token', function () {
     }
 
     asToken()->putJson('/api/maps/one-too-many', [PART])->assertStatus(403);
-    // overwriting an existing map is still allowed at the limit
     asToken()->putJson('/api/maps/first', [PART])->assertOk();
 });
 
@@ -120,8 +119,6 @@ it('counts parts in stats without reading the map data', function () {
     $this->getJson('/api/stats')->assertOk()->assertJson(['parts' => 3, 'maps' => 1]);
 });
 
-// ValidateCsrfToken always passes under tests, so the write routes being covered
-// can only be asserted through the exemption list.
 it('exempts nothing from CSRF', function () {
     expect(app(ValidateCsrfToken::class)->getExcludedPaths())->toBe([]);
 });
@@ -262,7 +259,6 @@ it('lets an admin save past the part and byte caps', function () {
     $this->actingAs($boss)->putJson('/api/maps/huge', ['parts' => $parts])->assertOk();
     expect(DB::table('maps')->where('name', 'huge')->value('parts'))->toBe(70000);
 
-    // The same body from an ordinary account is still refused.
     $this->actingAs(User::factory()->create())
         ->putJson('/api/maps/huge', ['parts' => $parts])->assertStatus(400);
 });
@@ -282,7 +278,6 @@ it('stores and serves a map thumbnail', function () {
     $listed = asToken()->getJson('/api/maps')->json('mine.0.thumb');
     expect($listed)->toContain("thumbs/$key.webp");
 
-    // The app can always serve it, whatever the disk exposes.
     $this->get("/api/thumbs/$key.webp")->assertOk()->assertHeader('content-type', 'image/webp');
 });
 
@@ -314,7 +309,6 @@ it('gives every thumbnail an unguessable name and drops the old one', function (
     Storage::disk()->assertMissing("thumbs/$first.webp");
     Storage::disk()->assertExists("thumbs/$second.webp");
 
-    // The id is never part of the name, so a map is not enumerable.
     $id = DB::table('maps')->where('name', 'shot')->value('id');
     $this->get("/api/thumbs/$id.webp")->assertNotFound();
 });
@@ -381,7 +375,6 @@ it('leaves stored lights and project id alone when a save omits them', function 
         'parts' => [FULL_PART], 'groups' => [], 'lights' => [LIGHT], 'project_id' => PROJECT_ID,
     ])->assertOk();
 
-    // The bare-array shape an older tab still sends must not wipe either of them.
     asToken()->putJson('/api/maps/keep', [FULL_PART])->assertOk();
 
     asToken()->getJson('/api/maps/keep')->assertOk()

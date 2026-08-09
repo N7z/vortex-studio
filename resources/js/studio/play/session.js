@@ -11,7 +11,6 @@ const BACK_KEYS = ['KeyS', 'ArrowDown'];
 const RIGHT_KEYS = ['KeyD'];
 const LEFT_KEYS = ['KeyA'];
 
-// How long the player lies dead before being put back at a spawn.
 const DEATH_HOLD = 1.1;
 
 export function createSession({ scene, camera, canvas, parts, onExit, onDeath, onMoveParts }) {
@@ -43,15 +42,11 @@ export function createSession({ scene, camera, canvas, parts, onExit, onDeath, o
         fov: camera.fov,
     };
 
-    // Audio cannot start until the page has seen a gesture, so every entry point that
-    // counts as one nudges it.
     const wake = () => audio.resume();
 
     const onKeyDown = (e) => {
         if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable) return;
         if (e.code === 'Escape') {
-            // Escape is the browser's own way out of pointer lock; leaving the play
-            // test as well would make one key do two things at once.
             if (document.pointerLockElement === canvas) return;
             onExit?.();
             return;
@@ -66,8 +61,6 @@ export function createSession({ scene, camera, canvas, parts, onExit, onDeath, o
     const onKeyUp = (e) => keys.delete(e.code);
     const onBlur = () => keys.clear();
 
-    // Free look while the pointer is locked, and a hold-to-look fallback for when it
-    // is refused or the user has left it.
     let dragging = null;
     let lastX = 0;
     let lastY = 0;
@@ -77,8 +70,6 @@ export function createSession({ scene, camera, canvas, parts, onExit, onDeath, o
         wake();
         if (locked()) return;
         if (e.pointerType === 'mouse' && e.button === 0) {
-            // Rejected when the browser is still cooling down from the last exit;
-            // the hold-to-look fallback covers that until the next click.
             try { canvas.requestPointerLock?.()?.catch?.(() => {}); } catch { /* unsupported */ }
             return;
         }
@@ -141,8 +132,6 @@ export function createSession({ scene, camera, canvas, parts, onExit, onDeath, o
         scene.add(c.object);
     });
 
-    // Rapier is WebAssembly, so it lands a moment after the map does. Until then the
-    // loose parts are simply missing from the world rather than the map being unplayable.
     if (parts.some(isLoose)) {
         createRigid(parts).then((r) => {
             if (disposed) {
@@ -177,9 +166,6 @@ export function createSession({ scene, camera, canvas, parts, onExit, onDeath, o
             partsNow = next;
             fixed = buildWorld(next, true);
             world = fixed;
-            // An edit lands while the play test is running, so the bodies are rebuilt
-            // from the edited document and whatever they had fallen into is lost. That
-            // is the same thing the desktop Studio does with a live edit.
             const had = rigid;
             rigid = null;
             had?.dispose();
@@ -195,15 +181,8 @@ export function createSession({ scene, camera, canvas, parts, onExit, onDeath, o
         update(dt) {
             elapsed += dt;
 
-            // The bodies move first, so the controller reads the surface a part is at
-            // this frame rather than where it was last one, and the overlay is only
-            // rebuilt while something is actually awake.
             if (rigid) {
                 rigid.setPlayer(state);
-                // Once everything has settled Rapier sleeps it, and the overlay stops
-                // being rebuilt: a map whose loose parts have come to rest costs the
-                // same as one with none. `world === fixed` covers the first step, when
-                // the loose set has not been folded in yet.
                 if (rigid.step(dt) && (rigid.awake || world === fixed)) {
                     world = combineWorlds(fixed, buildWorld(rigid.parts));
                     onMoveParts?.(rigid.moved(movedParts));
@@ -212,16 +191,14 @@ export function createSession({ scene, camera, canvas, parts, onExit, onDeath, o
 
             if (state.dead) {
                 deadFor += dt;
-                // The body is held where it fell out rather than stepped further; the
-                // camera keeps looking at it while the screen fades.
                 if (deadFor >= DEATH_HOLD) respawn();
             } else {
-                move.step(state, view, {
+                view.turn(axis(['ArrowLeft'], ['ArrowRight']), dt);
+                move.step(state, {
                     forward: clamp1(axis(FORWARD_KEYS, BACK_KEYS) + touch.forward),
                     strafe: clamp1(axis(RIGHT_KEYS, LEFT_KEYS) + touch.strafe),
                     jump: keys.has('Space') || touch.jump,
                     yaw: view.yaw,
-                    arrow: axis(["ArrowLeft"], ["ArrowRight"]),
                     shift_lock
                 }, dt, world);
 
@@ -232,9 +209,6 @@ export function createSession({ scene, camera, canvas, parts, onExit, onDeath, o
                 }
             }
 
-            // A dead body is held still rather than stepped, so its last frame is
-            // whatever killed it: left to play, a fall out of the world screams on
-            // through the respawn.
             if (state.dead) body.silence();
             else body.step(dt, state);
             view.update(dt, state, world);
@@ -242,7 +216,6 @@ export function createSession({ scene, camera, canvas, parts, onExit, onDeath, o
             if (character) {
                 placeCharacter(character, state);
                 character.update(dt, state, elapsed);
-                // In first person the head would fill the screen.
                 character.object.visible = !view.firstPerson && !state.dead;
             }
             peers.step(dt);

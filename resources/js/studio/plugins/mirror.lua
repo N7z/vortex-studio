@@ -66,8 +66,6 @@ local function flip(part, values)
     local py = tonumber(values.py) or 0
     local pz = tonumber(values.pz) or 0
 
-    -- "Around the selection" needs the bounds of everything selected, which a
-    -- plugin cannot see: it is called one part at a time. The app hands them over.
     if values.origin ~= false and Selection ~= nil then
         px, py, pz = Selection.center[1], Selection.center[2], Selection.center[3]
     end

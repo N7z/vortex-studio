@@ -6,7 +6,6 @@ use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
-/** A ban applied mid-session ends it on the next request, not at the next login. */
 class BlockBanned
 {
     public function handle(Request $request, Closure $next)

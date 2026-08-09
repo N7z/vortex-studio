@@ -2,9 +2,6 @@ import crypto from 'node:crypto';
 
 import { config } from './config.js';
 
-// Laravel signs "<b64url name>.<expiry>" with the secret both processes share.
-// Anything that does not verify is not an error: the member just stays anonymous.
-
 const MAX_NAME = 32;
 
 const equal = (a, b) => {
@@ -18,11 +15,6 @@ const clean = (name) => (typeof name === 'string'
     ? name.replace(/\s+/g, ' ').trim().slice(0, MAX_NAME)
     : '');
 
-/**
- * Returns { userId, name, mapName, teamId, role } or null. A payload that is not
- * JSON is a v1 token and proves the display name only, so an older tab keeps
- * working through a deploy instead of being locked out.
- */
 export function verifyIdentity(token, secret = config.liveSecret, now = Date.now()) {
     if (typeof token !== 'string' || !secret) return null;
 
@@ -69,7 +61,6 @@ export function verifyIdentity(token, secret = config.liveSecret, now = Date.now
     };
 }
 
-/** Kept for callers that only want the display name. */
 export function verifyName(token, secret = config.liveSecret, now = Date.now()) {
     return verifyIdentity(token, secret, now)?.name ?? null;
 }

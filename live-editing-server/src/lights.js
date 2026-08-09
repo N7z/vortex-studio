@@ -1,12 +1,5 @@
-// Lights are map data, like groups: a short list that travels with the document
-// rather than a per-part stream, so they are replaced whole instead of patched by
-// ops. Shared with the editor the same way ops.js is.
-
 export const MAX_LIGHTS = 32;
 
-// The document calls this illuminance and the desktop Studio writes it in lux. This
-// is the value a light it creates itself carries, read off the project in
-// VortexStuff's maps/studio-minimal-project.json.
 export const DEFAULT_ILLUMINANCE = 10000;
 
 export const MAX_ILLUMINANCE = 200000;
@@ -30,7 +23,6 @@ export function validLight(l) {
     return true;
 }
 
-/** The list as stored, or null when it is not one. Ids must be unique within it. */
 export function cleanLights(lights) {
     if (lights === undefined || lights === null) return [];
     if (!Array.isArray(lights) || lights.length > MAX_LIGHTS) return null;

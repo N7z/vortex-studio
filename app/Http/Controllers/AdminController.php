@@ -25,9 +25,6 @@ class AdminController extends Controller
 
     public function overview()
     {
-        // Only plain arrays are cached: a serialized Collection can come back as an
-        // incomplete class and then encodes as a JSON object, which the charts read
-        // as "not a list" and refuse to render.
         return ['me' => Auth::id()] + Cached::remember('admin_overview', 60, fn () => [
             'totals' => Stats::totals(),
             'history' => DB::table('daily_stats')
@@ -63,7 +60,7 @@ class AdminController extends Controller
             ->orderByDesc('users.updated_at')
             ->paginate(self::PER_PAGE, [
                 'users.id', 'users.name', 'users.email', 'users.created_at',
-                'users.is_admin', 'users.can_plugins', 'users.banned_at',
+                'users.is_admin', 'users.banned_at',
                 DB::raw('(select count(*) from maps where maps.user_id = users.id) as maps'),
             ]);
     }
@@ -72,7 +69,7 @@ class AdminController extends Controller
     {
         $q = trim((string) $request->query('q', ''));
 
-        // Never select `data`: a map is up to 2 MB and there is no bound on rows.
+        // never select `data`: a map is up to 2 MB and there is no bound on rows.
         return DB::table('maps')
             ->leftJoin('users', 'users.id', '=', 'maps.user_id')
             ->when($q !== '', fn ($b) => $b->where('maps.name', 'like', "%$q%"))
@@ -84,7 +81,6 @@ class AdminController extends Controller
             ]);
     }
 
-    /** Read-only view of somebody else's map, for the studio's `?view=` mode. */
     public function map(int $id)
     {
         $row = DB::table('maps')->where('id', $id)->first(['name', 'data', 'groups', 'lights']);
@@ -166,7 +162,6 @@ class AdminController extends Controller
     {
         $data = $request->validate([
             'banned' => ['sometimes', 'boolean'],
-            'plugins' => ['sometimes', 'boolean'],
         ]);
         abort_if($data === [], 422, 'Nothing to change.');
 
@@ -176,14 +171,8 @@ class AdminController extends Controller
             Audit::log($data['banned'] ? 'admin.user_ban' : 'admin.user_unban', $user->id, ['name' => $user->name]);
         }
 
-        if (array_key_exists('plugins', $data)) {
-            $user->forceFill(['can_plugins' => $data['plugins']])->save();
-            Audit::log($data['plugins'] ? 'admin.plugins_grant' : 'admin.plugins_revoke', $user->id, ['name' => $user->name]);
-        }
-
         return response()->json([
             'banned_at' => $user->banned_at,
-            'can_plugins' => (bool) $user->can_plugins,
         ]);
     }
 
@@ -202,7 +191,6 @@ class AdminController extends Controller
         return response()->json(['deleted' => true]);
     }
 
-    /** Banning or deleting yourself would lock the only admin out of the panel. */
     private function refuseSelf(User $user): void
     {
         abort_if($user->id === Auth::id(), 422, 'You cannot do that to your own account.');

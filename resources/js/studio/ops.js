@@ -33,8 +33,6 @@ export function fillPart(part, source) {
 
 export function repairParts(parts) {
     let fixed = 0;
-    // Minting an id is not a repair the user made or needs warning about, so it is
-    // counted apart: it must not mark a freshly opened map as unsaved work.
     let minted = 0;
     const seen = new Set();
     const out = parts.map((p) => {
@@ -42,7 +40,6 @@ export function repairParts(parts) {
         for (const k of PART_KEYS) if (k in p) clean[k] = p[k];
         let bad = Object.keys(p).some((k) => k !== '_id' && !PART_KEYS.includes(k));
 
-        // Legacy maps carry no id, and a duplicate would make a set op write twice.
         const hadId = validId(clean._id) && !seen.has(clean._id);
         if (!hadId) {
             clean._id = newPartId();
@@ -94,8 +91,6 @@ export function repairParts(parts) {
 const ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';
 const ID_LEN = 10;
 
-// Ids persist and are shared between collaborators, so they cannot come from a
-// per-tab counter: two tabs would mint the same id and an add op would overwrite.
 export function newPartId() {
     const bytes = new Uint8Array(ID_LEN);
     globalThis.crypto.getRandomValues(bytes);

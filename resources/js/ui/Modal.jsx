@@ -16,10 +16,6 @@ export default function Modal({
         return () => window.removeEventListener('keydown', onKey);
     }, []);
 
-    // Once, on open. A caller's onClose is a fresh function on every render, so
-    // depending on it re-focused the dialog on each keystroke. And a selector list
-    // matches in document order, so asking for `input, button` handed back the close
-    // button in the header rather than the field in the body.
     useEffect(() => {
         const box = card.current;
         if (!box) return;

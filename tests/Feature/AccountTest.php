@@ -57,7 +57,6 @@ it('issues a live token only to a signed-in user with a secret configured', func
     expect($claim['v'])->toBe(2)
         ->and($claim['n'])->toBe('zpaulin')
         ->and($claim['u'])->toBe($user->id)
-        // No map was named, so the token proves the name and claims no rights.
         ->and($claim['m'])->toBeNull()
         ->and($claim['r'])->toBeNull();
     expect((int) $exp)->toBeGreaterThan(time());
@@ -88,9 +87,7 @@ it('claims the team role on a team map, so the room knows its owner', function (
     expect($claim($a, "map=shared&team=$team")['r'])->toBe('owner')
         ->and($claim($c, "map=shared&team=$team")['r'])->toBe('editor')
         ->and($claim($b, "map=shared&team=$team")['r'])->toBe('viewer')
-        // A personal map is always the caller's own.
         ->and($claim($a, 'map=solo')['r'])->toBe('editor')
-        // A team you are not in resolves to nothing at all, not to a claim.
         ->and($claim(User::factory()->create(), "map=shared&team=$team")['m'])->toBeNull();
 });
 
@@ -142,7 +139,6 @@ it('keeps an account s maps past the anonymous TTL', function () {
 
     MapController::prune();
 
-    // Expiring is a move to the trash, so a token lost on the last day is recoverable.
     expect(DB::table('maps')->whereNull('deleted_at')->pluck('name')->all())->toBe(['owned'])
         ->and(DB::table('maps')->whereNotNull('deleted_at')->pluck('name')->all())->toBe(['stale']);
 });
@@ -165,7 +161,6 @@ it('follows the account rather than the cookie once signed in', function () {
     $this->actingAs($user)->putJson('/api/maps/mine', [APART])->assertOk();
     expect(DB::table('maps')->where('name', 'mine')->value('user_id'))->toBe($user->id);
 
-    // Signed out, the same browser sees its own anonymous maps, not the account's.
     Auth::logout();
     asToken()->getJson('/api/maps/mine')->assertStatus(404);
 });
