@@ -4,6 +4,7 @@ import { loadStats } from './api';
 import useFullscreen, { canFullscreen } from './useFullscreen';
 import { MODES, PRESETS, SCALES, SHADOW_RES, presetName } from './graphics';
 import { THEMES, setTheme, useTheme } from './theme';
+import { APP_VERSION } from './version';
 
 const SEP = { sep: true };
 
@@ -78,7 +79,7 @@ export default function MenuBar({
     const [openMenu, setOpenMenu] = useState(null);
     const theme = useTheme();
     const robloxRef = useRef(null);
-    const [pop, setPop] = useState(null); // null | 'gfx' | 'stats' | 'help'
+    const [pop, setPop] = useState(null); // null | 'gfx' | 'stats' | 'help' | 'about'
     const [stats, setStats] = useState(null);
     const [full, toggleFull] = useFullscreen();
 
@@ -166,6 +167,8 @@ export default function MenuBar({
         ['Help', [
             { label: 'Shortcuts', onClick: () => setPop('help') },
             { label: 'Server stats', onClick: showStats },
+            SEP,
+            { label: 'About', onClick: () => setPop('about') },
         ]],
     ];
 
@@ -356,6 +359,21 @@ export default function MenuBar({
                             <li>Every save also keeps a copy in this browser, listed under <b>On this device</b> on the start screen</li>
                             <li>Use <b>Download</b> to keep a .json copy, and upload it back anytime</li>
                         </ul>
+                    </div>
+                </>
+            )}
+
+            {pop === 'about' && (
+                <>
+                    <div className="help-backdrop" onClick={() => setPop(null)} />
+                    <div className="help-pop about-pop">
+                        <ClosePop onClose={() => setPop(null)} />
+                        <h3>Paulin Studio</h3>
+                        <p className="about-version">Version {APP_VERSION}</p>
+                        <p>
+                            An independent fan-made map editor that runs in your browser. Not
+                            affiliated with <a href="https://playvortex.io" target="_blank" rel="noreferrer">playvortex.io</a>.
+                        </p>
                     </div>
                 </>
             )}

@@ -160,6 +160,14 @@ a.tool-btn { text-decoration: none; }
 }
 .help-close:hover { color: var(--ink); }
 
+.about-pop { width: 300px; text-align: center; }
+.about-pop .about-version {
+    margin: 2px 0 10px;
+    color: var(--dim);
+    font-variant-numeric: tabular-nums;
+}
+.about-pop a { color: var(--dim); }
+
 .help-pop::-webkit-scrollbar { width: 8px; }
 .help-pop::-webkit-scrollbar-track { background: transparent; }
 .help-pop::-webkit-scrollbar-thumb { background: var(--line-mid); border-radius: 4px; }
@@ -956,6 +964,12 @@ a.tool-btn { text-decoration: none; }
     text-decoration: none;
 }
 .start-credit a:hover { color: var(--muted); text-decoration: underline; }
+.start-version {
+    margin-left: 10px;
+    padding-left: 10px;
+    border-left: 1px solid var(--line-soft);
+    color: var(--dim);
+}
 .studio.mobile .start-credit {
     position: static;
     flex: none;
