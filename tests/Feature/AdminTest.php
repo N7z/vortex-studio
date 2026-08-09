@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\DB;
 
 uses(RefreshDatabase::class);
 
+const PART = ['T' => 'Part', 'P' => [0, 0, 0], 'S' => [1, 1, 1], 'R' => [0, 0, 0]];
+
 function admin(): User
 {
     return User::where('email', 'boss@example.com')->first()
