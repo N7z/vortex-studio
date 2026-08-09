@@ -2,6 +2,7 @@ import { LuaFactory } from 'wasmoon';
 import fs from 'fs';
 const dir = 'resources/js/studio/plugins';
 const prelude = fs.readFileSync(`${dir}/prelude.lua`, 'utf8');
+let failed = false;
 for (const f of fs.readdirSync(dir).filter((n) => n.endsWith('.lua') && n !== 'prelude.lua')) {
     const lua = await new LuaFactory().createEngine();
     try {
@@ -9,6 +10,10 @@ for (const f of fs.readdirSync(dir).filter((n) => n.endsWith('.lua') && n !== 'p
         await lua.doString(fs.readFileSync(`${dir}/${f}`, 'utf8'));
         const p = lua.global.get('plugin');
         console.log(f.padEnd(16), 'ok', p.name, 'v' + p.version);
-    } catch (e) { console.log(f.padEnd(16), 'FAIL', e.message); }
+    } catch (e) {
+        console.log(f.padEnd(16), 'FAIL', e.message);
+        failed = true;
+    }
     lua.global.close();
 }
+if (failed) process.exitCode = 1;
