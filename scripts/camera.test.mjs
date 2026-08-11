@@ -5,7 +5,7 @@ import { createCamera, KEYBOARD_TURN_SPEED } from '../resources/js/studio/play/c
 
 const turnForOneSecond = (fps) => {
     const view = createCamera({});
-    for (let frame = 0; frame < fps; frame++) view.turn(1, 1 / fps);
+    for (let frame = 0; frame < fps; frame++) view.turn(1, 0, 1 / fps);
     return view.yaw;
 };
 

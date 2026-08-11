@@ -61,7 +61,7 @@ const remember = (stack, entry) => {
 };
 
 const NEW_PART = {
-    Tr: 0, P: [0, 4, 0], S: [4, 2, 4], R: [0, 0, 0],
+    Tr: 0, P: [0, 4, 0], S: [4, 1, 2], R: [0, 0, 0],
     T: 'Part', Shape: 'Block', C: 'a3a2a5',
 };
 
@@ -1615,8 +1615,10 @@ export default function App() {
                             onFlag={setFlag}
                             onClearFlags={clearFlag}
                             lights={lights}
+                            onAddPart={canEdit && mapName ? addPart : null}
                             onAddLight={canEdit && mapName ? addLight : null}
                             onRemoveLight={canEdit ? removeLight : null}
+                            NEW_PART={NEW_PART}
                         />
                     )}
                     {(!mobile || drawerTab === 'properties') && !selectedLight && selectedIds.length > 1 && (
