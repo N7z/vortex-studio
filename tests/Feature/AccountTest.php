@@ -3,6 +3,7 @@
 use App\Http\Controllers\MapController;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 uses(RefreshDatabase::class);
@@ -42,6 +43,18 @@ it('refuses a wrong password without saying which field was wrong', function () 
     $this->postJson('/account/login', ['email' => 'p@example.com', 'password' => 'nope'])->assertStatus(422);
     $this->postJson('/account/login', ['email' => 'nobody@example.com', 'password' => 'nope'])->assertStatus(422);
     $this->postJson('/account/login', ['email' => 'p@example.com', 'password' => 'correct horse'])->assertOk();
+});
+
+it('issues a remember cookie so a sign-in outlives the session', function () {
+    $this->postJson('/account/register', account())
+        ->assertOk()->assertCookie(Auth::guard('web')->getRecallerName());
+
+    $this->postJson('/account/logout');
+
+    $this->postJson('/account/login', ['email' => account()['email'], 'password' => account()['password'], 'remember' => true])
+        ->assertOk()->assertCookie(Auth::guard('web')->getRecallerName());
+
+    expect(User::where('email', account()['email'])->value('remember_token'))->not->toBeNull();
 });
 
 it('issues a live token only to a signed-in user with a secret configured', function () {

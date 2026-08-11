@@ -22,6 +22,10 @@ return [
         'key' => env('RESEND_API_KEY'),
     ],
 
+    'github' => [
+        'repo' => env('GITHUB_REPO', 'N7z/vortex-studio'),
+    ],
+
     // Shared with live-editing-server, which has no other way to know who a member is.
     'live' => [
         'secret' => env('LIVE_SECRET'),

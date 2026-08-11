@@ -25,7 +25,7 @@ export const liveToken = (map = null, team = null) => {
         .then((d) => d.token ?? null).catch(() => null);
 };
 export const register = (fields) => account('/register', fields);
-export const login = (fields) => account('/login', fields);
+export const login = (fields) => account('/login', { ...fields, remember: true });
 export const logout = () => account('/logout', {});
 
 export async function listMaps() {
@@ -222,4 +222,16 @@ export async function loadStats() {
     const r = await fetch('/api/stats');
     if (!r.ok) throw new Error('failed to load stats');
     return r.json();
+}
+
+export async function loadAbout() {
+    const r = await fetch('/api/about');
+    if (!r.ok) throw new Error('failed to load about');
+    return r.json();
+}
+
+export async function loadContributors() {
+    const r = await fetch('/api/about/contributors');
+    if (!r.ok) throw new Error('failed to load contributors');
+    return (await r.json()).contributors ?? [];
 }

@@ -85,7 +85,7 @@ class AccountController extends Controller
             'password' => $data['password'],
         ]);
 
-        return $this->signIn($request, $user);
+        return $this->signIn($request, $user, true);
     }
 
     public function login(Request $request)
