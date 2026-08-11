@@ -1,6 +1,10 @@
 // vite fills this in from package.json, so a test importing this file has nothing
 export const APP_VERSION = typeof __APP_VERSION__ === 'undefined' ? 'dev' : __APP_VERSION__;
 
+const NO_BUILD = { commit: '', commitAt: null, subject: '', contributors: [], builtAt: null };
+
+export const BUILD_INFO = typeof __BUILD_INFO__ === 'undefined' ? NO_BUILD : __BUILD_INFO__;
+
 const POLL_MS = 5 * 60_000;
 const MIN_GAP_MS = 60_000;
 

@@ -223,3 +223,15 @@ export async function loadStats() {
     if (!r.ok) throw new Error('failed to load stats');
     return r.json();
 }
+
+export async function loadAbout() {
+    const r = await fetch('/api/about');
+    if (!r.ok) throw new Error('failed to load about');
+    return r.json();
+}
+
+export async function loadContributors() {
+    const r = await fetch('/api/about/contributors');
+    if (!r.ok) throw new Error('failed to load contributors');
+    return (await r.json()).contributors ?? [];
+}

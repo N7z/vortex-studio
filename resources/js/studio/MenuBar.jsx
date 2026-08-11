@@ -1,10 +1,10 @@
 import { Maximize, Minimize } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
+import AboutWindow from './AboutWindow';
 import { loadStats } from './api';
 import useFullscreen, { canFullscreen } from './useFullscreen';
 import { MODES, PRESETS, SCALES, SHADOW_RES, presetName } from './graphics';
 import { THEMES, setTheme, useTheme } from './theme';
-import { APP_VERSION } from './version';
 
 const SEP = { sep: true };
 
@@ -363,20 +363,7 @@ export default function MenuBar({
                 </>
             )}
 
-            {pop === 'about' && (
-                <>
-                    <div className="help-backdrop" onClick={() => setPop(null)} />
-                    <div className="help-pop about-pop">
-                        <ClosePop onClose={() => setPop(null)} />
-                        <h3>Paulin Studio</h3>
-                        <p className="about-version">Version {APP_VERSION}</p>
-                        <p>
-                            An independent fan-made map editor that runs in your browser. Not
-                            affiliated with <a href="https://playvortex.io" target="_blank" rel="noreferrer">playvortex.io</a>.
-                        </p>
-                    </div>
-                </>
-            )}
+            {pop === 'about' && <AboutWindow onClose={() => setPop(null)} />}
         </div>
     );
 }

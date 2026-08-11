@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AboutController;
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\ClothingController;
@@ -20,6 +21,8 @@ Route::prefix('account')->group(function () {
     Route::post('/logout', [AccountController::class, 'logout']);
 });
 Route::get('/api/stats', [MapController::class, 'stats'])->middleware('throttle:30,1');
+Route::get('/api/about', [AboutController::class, 'info'])->middleware('throttle:30,1');
+Route::get('/api/about/contributors', [AboutController::class, 'contributors'])->middleware('throttle:30,1');
 Route::get('/api/thumbs/{key}.webp', [MapController::class, 'thumb'])->where('key', '[a-f0-9]{32}');
 
 Route::middleware('throttle:60,1')->group(function () {
