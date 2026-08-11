@@ -22,23 +22,27 @@ export function createCamera(camera) {
     let pitch = 0.22;
     let distance = CAM_DISTANCE;
     let shown = CAM_DISTANCE;
+    let freecam = false;
 
     const focus = new THREE.Vector3();
     const eye = new THREE.Vector3();
     const dir = new THREE.Vector3();
 
-    return {
+    const api = {
         get yaw() { return yaw; },
         get pitch() { return pitch; },
         get distance() { return shown; },
         get firstPerson() { return shown < FIRST_PERSON; },
+        get freecam() { return freecam },
 
         look(dx, dy) {
             yaw -= dx * LOOK_SPEED;
             pitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, pitch + dy * LOOK_SPEED));
         },
-        turn(direction, dt) {
+        turn(direction, alignment_direction, dt) {
             yaw += direction * KEYBOARD_TURN_SPEED * dt;
+            yaw += alignment_direction * -Math.PI/4;
+            if (alignment_direction) yaw = Math.round(yaw / (Math.PI / 4)) * (Math.PI / 4);
         },
         zoom(delta) {
             distance = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, distance + delta * ZOOM_STEP));
@@ -49,9 +53,42 @@ export function createCamera(camera) {
             distance = CAM_DISTANCE;
             shown = CAM_DISTANCE;
         },
+        set_freecam() {
+            freecam = !freecam;
+        },
 
-        update(dt, state, world) {
+	    freecam_update(input, dt) {
+		    const speed = input.shift ? 120 : 40;
+
+		    const cp = -Math.cos(-pitch);
+		    const sp = -Math.sin(pitch);
+		    const sin = Math.sin(yaw);
+		    const cos = Math.cos(yaw);
+
+		    const forwarddir = new THREE.Vector3(sin*cp, sp, cos*cp);
+		    const rightdir = new THREE.Vector3(cos, 0, -sin);
+
+            camera.position.addScaledVector(forwarddir, input.forward * speed * dt);
+		    camera.position.addScaledVector(rightdir, input.strafe * speed * dt);
+		    camera.position.y -= input.up * speed * dt;
+
+		    camera.lookAt(
+			    camera.position.x + forwarddir.x,
+			    camera.position.y + forwarddir.y,
+			    camera.position.z + forwarddir.z
+		    );
+	    },
+
+        update(dt, state, input, world) {
+            if (freecam) return this.freecam_update(input, dt);
             focus.set(state.x, state.y + EYE, state.z);
+
+            if (input.shift_lock) {
+                const sin = Math.sin(yaw);
+                const cos = Math.cos(yaw);
+                focus.x += cos * Math.min(1, distance/3);
+                focus.z += -sin * Math.min(1, distance/3);
+            }
 
             const cp = Math.cos(pitch);
             dir.set(Math.sin(yaw) * cp, Math.sin(pitch), Math.cos(yaw) * cp);
@@ -79,4 +116,5 @@ export function createCamera(camera) {
             camera.lookAt(focus);
         },
     };
+    return api;
 }

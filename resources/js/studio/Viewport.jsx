@@ -1192,7 +1192,7 @@ export default function Viewport({
         const right = new THREE.Vector3();
         const step = new THREE.Vector3();
         const fly = (dt) => {
-            if (!flying) return;
+            if (!flying && !keys.has("Backquote")) return;
             camera.getWorldDirection(fwd);
             right.crossVectors(fwd, camera.up).normalize();
             step.set(0, 0, 0);
