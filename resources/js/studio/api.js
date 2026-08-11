@@ -25,7 +25,7 @@ export const liveToken = (map = null, team = null) => {
         .then((d) => d.token ?? null).catch(() => null);
 };
 export const register = (fields) => account('/register', fields);
-export const login = (fields) => account('/login', fields);
+export const login = (fields) => account('/login', { ...fields, remember: true });
 export const logout = () => account('/logout', {});
 
 export async function listMaps() {
