@@ -7,7 +7,7 @@ import {
 } from './materials';
 import {
     AMBIENT, DEFAULT_POINT_LIGHT, DEFAULT_SPOT_LIGHT, LIGHT_FACES, MAX_BRIGHTNESS,
-    MAX_ILLUMINANCE, MAX_INTENSITY, MAX_RANGE, pointLightOf, spotLightOf,
+    MAX_ILLUMINANCE, MAX_INTENSITY, MAX_RANGE, USEFUL_RANGE, pointLightOf, spotLightOf,
 } from './lighting';
 
 const COLOR_COMMIT = 150;
@@ -30,8 +30,9 @@ function Vec3({ value, onChange, readOnly }) {
 // A number that has a floor and a ceiling is easier to feel out by dragging than by typing, so it
 // gets both: the slider to sweep it and the box to land on an exact value.
 function Slider({
-    value, min, max, step, readOnly, onChange, log = false,
+    value, min, max, step, readOnly, onChange, log = false, sliderMax = null,
 }) {
+    const reach = sliderMax ?? max;
     return (
         <div className="prop-slider">
             {log ? (
@@ -48,9 +49,9 @@ function Slider({
             <input
                 type="range"
                 min={min}
-                max={max}
+                max={reach}
                 step={step}
-                value={value}
+                value={Math.min(value, reach)}
                 disabled={readOnly}
                 onChange={(e) => onChange(Number(e.target.value))}
             />
@@ -247,6 +248,7 @@ function PartLightProperties({
                             value={light.range}
                             min={0}
                             max={MAX_RANGE}
+                            sliderMax={USEFUL_RANGE}
                             step={1}
                             readOnly={readOnly}
                             onChange={(range) => set({ range })}

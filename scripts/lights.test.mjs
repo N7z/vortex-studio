@@ -3,7 +3,8 @@ import test from 'node:test';
 import * as THREE from 'three';
 
 import {
-    DEFAULT_LIGHTING, DEFAULT_POINT_LIGHT, DEFAULT_SPOT_LIGHT, FACE_DIRECTION, cleanLighting,
+    DEFAULT_LIGHTING, DEFAULT_POINT_LIGHT, DEFAULT_SPOT_LIGHT, FACE_DIRECTION, MAX_RANGE,
+    USEFUL_RANGE, cleanLighting, rangeToDistance,
 } from '../resources/js/studio/lighting.js';
 
 // The rule the renderer walks the scene by: an invisible object takes everything under it with it.
@@ -121,4 +122,21 @@ test('a light slider spends its track where the usable values are', async () => 
         assert.equal(logToValue(valueToLog(value, MAX), MAX), value, `round trip at ${pos}`);
         assert.equal(String(value).replace(/[0.]/g, '').length <= 3, true, `${value} is a round number`);
     }
+});
+
+test('a range of nothing reaches nothing, where the renderer would read it as no limit', () => {
+    // three.js: "When distance is zero, light will attenuate to infinite distance."
+    assert.equal(new THREE.PointLight(0xffffff, 1).distance, 0);
+
+    assert.ok(rangeToDistance(0) > 0, 'so zero never reaches the renderer as zero');
+    assert.ok(rangeToDistance(0) < 0.01, 'and what it does reach with is nothing at all');
+    assert.equal(rangeToDistance(40), 40, 'a real range is passed straight through');
+});
+
+test('the range track stops where ranges stop being useful', () => {
+    assert.ok(USEFUL_RANGE < MAX_RANGE, 'the box still goes further than the slider');
+    assert.ok(
+        DEFAULT_POINT_LIGHT.range < USEFUL_RANGE / 2,
+        'and the default sits well inside the track rather than against its floor',
+    );
 });

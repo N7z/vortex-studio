@@ -10,7 +10,7 @@ import {
     PLACEHOLDER, makeMaterialSets, makePartGeometry, makeTrussGeometry, partType,
 } from './parts3d';
 import {
-    DEFAULT_BRIGHTNESS, DEFAULT_ILLUMINANCE, DEFAULT_LIGHTING, FACE_DIRECTION,
+    DEFAULT_BRIGHTNESS, DEFAULT_ILLUMINANCE, DEFAULT_LIGHTING, FACE_DIRECTION, rangeToDistance,
 } from './lighting';
 import { MARK_KINDS, makeMarkTexture } from './facemarks';
 
@@ -219,7 +219,7 @@ export default function Viewport({
                 held.point.color.set(`#${wantPoint.color}`);
                 // The format quotes lumens, which is what power takes; intensity is per steradian.
                 held.point.power = wantPoint.intensity;
-                held.point.distance = wantPoint.range;
+                held.point.distance = rangeToDistance(wantPoint.range);
                 held.point.decay = 2;
                 held.point.castShadow = !!c?.shadows && wantPoint.shadow_maps_enabled === true;
             }
@@ -242,7 +242,7 @@ export default function Viewport({
                 held.spot.face = wantSpot.face;
                 held.spot.color.set(`#${wantSpot.color}`);
                 held.spot.power = wantSpot.intensity;
-                held.spot.distance = wantSpot.range;
+                held.spot.distance = rangeToDistance(wantSpot.range);
                 held.spot.angle = wantSpot.angle * DEG;
                 held.spot.penumbra = 0.25;
                 held.spot.decay = 2;

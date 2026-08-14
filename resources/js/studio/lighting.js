@@ -51,6 +51,14 @@ export const spotLightOf = (part) => (validSpotLight(part?.spot_light) ? part.sp
 
 export const hasPartLight = (part) => !!(part?.point_light || part?.spot_light);
 
+// Zero reach means a light that reaches nothing. The renderer reads a distance of zero as "no
+// limit", which is the opposite, so it never gets one.
+export const rangeToDistance = (range) => (range > 0 ? range : 0.0001);
+
+// Ranges past this are legal but nobody aims with them, so the slider stops here and the box
+// carries on to MAX_RANGE.
+export const USEFUL_RANGE = 200;
+
 // Which way a spot points, as a direction in the part's own space. A face is the side of the box
 // the light shines out of, so Bottom throws light at the floor under it.
 export const FACE_DIRECTION = {
