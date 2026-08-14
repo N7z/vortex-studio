@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { fromProject, isProject, toProject } from '../resources/js/studio/vortexProject.js';
@@ -7,22 +7,21 @@ import { newGroup } from '../resources/js/studio/groups.js';
 import { withNewId } from '../resources/js/studio/ops.js';
 import { DEFAULT_ILLUMINANCE } from '../resources/js/studio/lighting.js';
 
-const REFERENCE = new URL(
-    '../../VortexStuff/maps/studio-minimal-project.json', import.meta.url,
-).pathname;
-
-const have = existsSync(REFERENCE);
-const official = have ? JSON.parse(readFileSync(REFERENCE, 'utf8')) : null;
+// The two projects these tests are settled against, both saved by the Studio: the older one for the
+// import path a map written before the format changed still takes, the current one for parity.
+const official = JSON.parse(readFileSync(
+    new URL('./fixtures/studio-0-1-project.json', import.meta.url), 'utf8',
+));
 
 const round = (doc) => JSON.parse(JSON.stringify(
     doc, (k, v) => (typeof v === 'number' ? Math.round(v * 1e5) / 1e5 : v),
 ));
 
-test('a project the Studio wrote is recognised as one', { skip: !have }, () => {
+test('a project the Studio wrote is recognised as one', () => {
     assert.equal(isProject(official), true);
 });
 
-test('a project the Studio wrote survives import and export unchanged', { skip: !have }, () => {
+test('a project the Studio wrote survives import and export unchanged', () => {
     const read = fromProject(official);
     const parts = read.parts.map(withNewId);
     const groups = read.groups.map((g) => newGroup(g.name, g.slots.map((i) => parts[i]._id)));
@@ -45,7 +44,7 @@ test('a project the Studio wrote survives import and export unchanged', { skip: 
     assert.deepEqual(round(rest), round(officialRest));
 });
 
-test('a list of suns is folded into the one sun the rig now has', { skip: !have }, () => {
+test('a list of suns is folded into the one sun the rig now has', () => {
     const read = fromProject(official);
 
     assert.equal(read.lighting.sun_illuminance, official.lights[0].illuminance);
@@ -60,7 +59,7 @@ test('a list of suns is folded into the one sun the rig now has', { skip: !have 
     assert.equal(out.lights, undefined, 'the list is gone');
 });
 
-test('a group is an index into groups, and ungrouped is null', { skip: !have }, () => {
+test('a group is an index into groups, and ungrouped is null', () => {
     const read = fromProject(official);
     const parts = read.parts.map(withNewId);
     const groups = read.groups.map((g) => newGroup(g.name, g.slots.map((i) => parts[i]._id)));
@@ -77,11 +76,11 @@ test('a group is an index into groups, and ungrouped is null', { skip: !have }, 
     assert.equal(out.parts[2].group, 0);
 });
 
-test('the light default matches what the Studio writes', { skip: !have }, () => {
+test('the light default matches what the Studio writes', () => {
     assert.equal(official.lights[0].illuminance, DEFAULT_ILLUMINANCE);
 });
 
-test('the slab exports as a Baseplate and keeps its faces', { skip: !have }, () => {
+test('the slab exports as a Baseplate and keeps its faces', () => {
     const slab = fromProject(official).parts[0];
     assert.equal(slab.Bp, true);
     assert.deepEqual(slab.Tx, { Top: 'Studs', Bottom: 'Inlets' });
@@ -198,14 +197,13 @@ test('a part with no light carries no light keys', () => {
     assert.equal('point_light' in fromProject({ parts: [out] }).parts[0], false);
 });
 
-const CURRENT = new URL(
-    '../../VortexStuff/maps/studio-0-2-project.json', import.meta.url,
-).pathname;
+// A project the Studio saved, kept here so this is a test of the format and not of what happens to
+// be on one machine.
+const current = JSON.parse(readFileSync(
+    new URL('./fixtures/studio-0-2-project.json', import.meta.url), 'utf8',
+));
 
-const haveCurrent = existsSync(CURRENT);
-const current = haveCurrent ? JSON.parse(readFileSync(CURRENT, 'utf8')) : null;
-
-test('a project written by the Studio as it is now round trips exactly', { skip: !haveCurrent }, () => {
+test('a project written by the Studio as it is now round trips exactly', () => {
     const read = fromProject(current);
     const parts = read.parts.map(withNewId);
     const groups = read.groups.map((g) => newGroup(g.name, g.slots.map((i) => parts[i]._id)));
@@ -213,7 +211,7 @@ test('a project written by the Studio as it is now round trips exactly', { skip:
     assert.deepEqual(round(toProject(parts, groups, read.projectId, read.lighting)), round(current));
 });
 
-test('a part keeps the name it was given, and one that says nothing is left off', { skip: !haveCurrent }, () => {
+test('a part keeps the name it was given, and one that says nothing is left off', () => {
     const read = fromProject(current);
     const named = read.parts.find((p) => p.N);
 
