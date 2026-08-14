@@ -8,7 +8,7 @@ import { keymap } from '@codemirror/view';
 import { Prec } from '@codemirror/state';
 import { TrashIcon, RotateIcon, HelpIcon } from './icons';
 import { ICON_NAMES } from './pluginIcons';
-import { useTheme } from './theme';
+import { isLight, useTheme } from './theme';
 
 export const TEMPLATE = `plugin = {
     name = "My Plugin",
@@ -143,7 +143,7 @@ export default function ScriptTab({ tab, visible, onChange, onSave, onDelete, on
         if (handlers.current.error !== null) setError(null);
     }, []);
 
-    const cmTheme = useTheme() === 'classic' ? 'light' : oneDark;
+    const cmTheme = isLight(useTheme()) ? 'light' : oneDark;
 
     const editor = useMemo(() => (
         <CodeMirror
