@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import NumberInput from './NumberInput';
+import { LOG_STEPS, logToValue, valueToLog } from './scale';
 import {
     FACES, MATERIALS, TEXTURES,
     canCollide, castsShadow, isAnchored, isBaseplate, materialOf, texturesOf,
@@ -29,10 +30,21 @@ function Vec3({ value, onChange, readOnly }) {
 // A number that has a floor and a ceiling is easier to feel out by dragging than by typing, so it
 // gets both: the slider to sweep it and the box to land on an exact value.
 function Slider({
-    value, min, max, step, readOnly, onChange,
+    value, min, max, step, readOnly, onChange, log = false,
 }) {
     return (
         <div className="prop-slider">
+            {log ? (
+                <input
+                    type="range"
+                    min={0}
+                    max={LOG_STEPS}
+                    step={1}
+                    value={valueToLog(value, max)}
+                    disabled={readOnly}
+                    onChange={(e) => onChange(logToValue(Number(e.target.value), max))}
+                />
+            ) : (
             <input
                 type="range"
                 min={min}
@@ -42,6 +54,7 @@ function Slider({
                 disabled={readOnly}
                 onChange={(e) => onChange(Number(e.target.value))}
             />
+            )}
             <NumberInput
                 value={value}
                 readOnly={readOnly}
@@ -127,6 +140,7 @@ function AmbientProperties({ lighting, onChange, readOnly }) {
                     <div className="prop-row">
                         <label>Brightness</label>
                         <Slider
+                            log
                             value={lighting.brightness}
                             min={0}
                             max={MAX_BRIGHTNESS}
@@ -170,6 +184,7 @@ function SunProperties({ lighting, onChange, readOnly }) {
                     <div className="prop-row">
                         <label>Illuminance</label>
                         <Slider
+                            log
                             value={lighting.sun_illuminance}
                             min={0}
                             max={MAX_ILLUMINANCE}
@@ -216,6 +231,7 @@ function PartLightProperties({
                     <div className="prop-row">
                         <label>Intensity</label>
                         <Slider
+                            log
                             value={light.intensity}
                             min={0}
                             max={MAX_INTENSITY}

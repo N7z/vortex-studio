@@ -97,3 +97,28 @@ test('the rig defaults are the ones a map gets when it carries none', () => {
     assert.equal(cleanLighting({ nope: 1 }), null, 'a property the rig does not have is refused');
     assert.equal(DEFAULT_SPOT_LIGHT.face, 'Bottom');
 });
+
+test('a light slider spends its track where the usable values are', async () => {
+    const { LOG_STEPS, logToValue, valueToLog } = await import('../resources/js/studio/scale.js');
+    const MAX = 10_000_000;
+
+    // The ends are exact, and zero stays reachable.
+    assert.equal(logToValue(0, MAX), 0);
+    assert.equal(valueToLog(0, MAX), 0);
+    assert.equal(Math.round(logToValue(LOG_STEPS, MAX)), MAX);
+
+    // The default lamp sits in the middle of the track rather than in the first pixel.
+    const at = valueToLog(DEFAULT_POINT_LIGHT.intensity, MAX) / LOG_STEPS;
+    assert.ok(at > 0.25 && at < 0.6, `the default lands at ${(at * 100).toFixed(0)}% of the track`);
+    assert.ok(
+        valueToLog(DEFAULT_POINT_LIGHT.intensity, MAX) / LOG_STEPS > 100 / MAX * 1000,
+        'far off the floor a straight track would have left it on',
+    );
+
+    // Dragging and reading back lands on the same value, and the numbers stay round.
+    for (const pos of [50, 200, 450, 700, 950]) {
+        const value = logToValue(pos, MAX);
+        assert.equal(logToValue(valueToLog(value, MAX), MAX), value, `round trip at ${pos}`);
+        assert.equal(String(value).replace(/[0.]/g, '').length <= 3, true, `${value} is a round number`);
+    }
+});
