@@ -141,7 +141,6 @@ html[data-theme='classic'] .update-primary,
 html[data-theme='classic'] .update-later,
 html[data-theme='classic'] .chat-send button,
 html[data-theme='classic'] .arch-image > button,
-html[data-theme='classic'] .panel.arrange button,
 html[data-theme='classic'] .scope-pick,
 html[data-theme='classic'] .card-dots,
 html[data-theme='classic'] .map-move,
@@ -162,7 +161,6 @@ html[data-theme='classic'] .update-primary:hover:not(:disabled),
 html[data-theme='classic'] .update-later:hover:not(:disabled),
 html[data-theme='classic'] .chat-send button:hover:not(:disabled),
 html[data-theme='classic'] .arch-image > button:hover,
-html[data-theme='classic'] .panel.arrange button:hover:not(:disabled),
 html[data-theme='classic'] .card-dots:hover,
 html[data-theme='classic'] .map-move:hover,
 html[data-theme='classic'] .card-move:hover,
@@ -175,16 +173,14 @@ html[data-theme='classic'] .btn:active:not(:disabled),
 html[data-theme='classic'] .team-primary:active,
 html[data-theme='classic'] .account-go:active,
 html[data-theme='classic'] .arch-stamp:active,
-html[data-theme='classic'] .update-primary:active,
-html[data-theme='classic'] .panel.arrange button:active:not(:disabled) {
+html[data-theme='classic'] .update-primary:active {
     background: linear-gradient(180deg, #ddd8c4 0%, #e8e4d4 60%, #f2efe4 100%);
     box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.25);
 }
 html[data-theme='classic'] .btn:disabled,
 html[data-theme='classic'] .team-primary:disabled,
 html[data-theme='classic'] .account-go:disabled,
-html[data-theme='classic'] .arch-stamp:disabled,
-html[data-theme='classic'] .panel.arrange button:disabled {
+html[data-theme='classic'] .arch-stamp:disabled {
     background: #ece9d8;
     border-color: #aca899;
     color: #aca899;
@@ -320,7 +316,7 @@ html[data-theme='classic'] .tab.active {
 /* ---------- panels ---------- */
 
 html[data-theme='classic'] .sidebar { border-left: 1px solid #aca899; background: #ece9d8; }
-html[data-theme='classic'] .panel.explorer, html[data-theme='classic'] .panel.arrange { border-bottom: 2px solid #aca899; }
+html[data-theme='classic'] .panel.explorer { border-bottom: 2px solid #aca899; }
 
 /* Explorer's task-pane header: pale blue gradient, dark blue title. */
 html[data-theme='classic'] .panel-title {

@@ -8,7 +8,6 @@ import StartScreen from './StartScreen';
 import Teams from './Teams';
 import Explorer from './Explorer';
 import Properties from './Properties';
-import Arrange from './Arrange';
 import Viewport from './Viewport';
 import PluginPanel from './PluginPanel';
 import TabBar from './TabBar';
@@ -1722,14 +1721,6 @@ export default function App() {
                             onAddPart={canEdit && mapName ? addPart : null}
                             onAddUnder={canEdit ? addUnderPart : null}
                             NEW_PART={NEW_PART}
-                        />
-                    )}
-                    {(!mobile || drawerTab === 'properties') && !selectedLight && selectedIds.length > 1 && (
-                        <Arrange
-                            selected={selectedParts}
-                            parts={visibleParts}
-                            onTransform={transformMany}
-                            readOnly={!canEdit}
                         />
                     )}
                     {(!mobile || drawerTab === 'properties') && (

@@ -424,41 +424,6 @@ input[type='range']:disabled::-moz-range-thumb { background: var(--disabled); cu
     .tree-item .flag { opacity: 1; padding: 0 5px; }
 }
 
-/* ---------- arrange ---------- */
-
-.panel.arrange { flex: none; border-bottom: 4px solid var(--sunken); }
-.panel.arrange .panel-body { overflow: visible; padding: 8px 10px; }
-.arrange-grid { display: flex; flex-direction: column; gap: 4px; }
-.arrange-row, .arrange-gap { display: flex; align-items: center; gap: 4px; }
-.arrange-axis { width: 12px; flex: none; color: var(--ink-label); font-size: 12px; }
-.panel.arrange button {
-    flex: 1;
-    min-width: 0;
-    padding: 4px 2px;
-    border: 1px solid var(--line);
-    border-radius: 3px;
-    background: var(--raised);
-    color: var(--ink-2);
-    font: inherit;
-    font-size: 11px;
-    cursor: pointer;
-}
-.panel.arrange button:hover:not(:disabled) { border-color: var(--accent); color: var(--ink-white); }
-.panel.arrange button:disabled { color: var(--disabled); cursor: default; }
-.arrange-gap { margin-top: 8px; }
-.arrange-gap > span { width: 26px; flex: none; color: var(--ink-label); font-size: 11px; }
-.arrange-gap .num {
-    width: 44px;
-    flex: none;
-    background: var(--field);
-    border: 1px solid var(--line);
-    color: var(--ink);
-    padding: 3px 5px;
-    border-radius: 3px;
-    font-size: 12px;
-}
-.arrange-drop { width: 100%; margin-top: 8px; }
-
 /* ---------- properties ---------- */
 
 .props { padding: 4px 10px; display: flex; flex-direction: column; gap: 8px; }
