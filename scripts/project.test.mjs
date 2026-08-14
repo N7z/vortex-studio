@@ -7,10 +7,10 @@ import { newGroup } from '../resources/js/studio/groups.js';
 import { withNewId } from '../resources/js/studio/ops.js';
 import { DEFAULT_ILLUMINANCE } from '../resources/js/studio/lighting.js';
 
-// The two projects these tests are settled against, both saved by the Studio: the older one for the
-// import path a map written before the format changed still takes, the current one for parity.
+// A document in the shape the format had before the lighting rig became one object, written here to
+// exercise the path a map saved back then still takes on the way in.
 const official = JSON.parse(readFileSync(
-    new URL('./fixtures/studio-0-1-project.json', import.meta.url), 'utf8',
+    new URL('./fixtures/legacy-project.json', import.meta.url), 'utf8',
 ));
 
 const round = (doc) => JSON.parse(JSON.stringify(
@@ -21,7 +21,7 @@ test('a project the Studio wrote is recognised as one', () => {
     assert.equal(isProject(official), true);
 });
 
-test('a project the Studio wrote survives import and export unchanged', () => {
+test('a document in the older shape survives import and export unchanged', () => {
     const read = fromProject(official);
     const parts = read.parts.map(withNewId);
     const groups = read.groups.map((g) => newGroup(g.name, g.slots.map((i) => parts[i]._id)));
@@ -76,8 +76,12 @@ test('a group is an index into groups, and ungrouped is null', () => {
     assert.equal(out.parts[2].group, 0);
 });
 
-test('the light default matches what the Studio writes', () => {
-    assert.equal(official.lights[0].illuminance, DEFAULT_ILLUMINANCE);
+test('the rig comes from the file, not from our defaults', () => {
+    const read = fromProject(current);
+
+    assert.equal(read.lighting.sun_illuminance, 8000, 'what that file says');
+    assert.notEqual(read.lighting.sun_illuminance, DEFAULT_ILLUMINANCE, 'and not what we would pick');
+    assert.equal(read.lighting.brightness, 2000);
 });
 
 test('the slab exports as a Baseplate and keeps its faces', () => {
@@ -197,8 +201,8 @@ test('a part with no light carries no light keys', () => {
     assert.equal('point_light' in fromProject({ parts: [out] }).parts[0], false);
 });
 
-// A project the Studio saved, kept here so this is a test of the format and not of what happens to
-// be on one machine.
+// A project the Studio saved, kept here so this is a test of the format itself and not of what
+// happens to be on one machine.
 const current = JSON.parse(readFileSync(
     new URL('./fixtures/studio-0-2-project.json', import.meta.url), 'utf8',
 ));
