@@ -87,3 +87,25 @@ jobs:
       - run: npm ci
 
       - run: npm test
+
+  mcp-server:
+    name: MCP server tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mcp-server/package-lock.json
+
+      # The MCP tests run a real live server, so they need its dependencies too.
+      - run: npm ci
+        working-directory: live-editing-server
+
+      - run: npm ci
+        working-directory: mcp-server
+
+      - run: npm test
+        working-directory: mcp-server
