@@ -20,8 +20,7 @@ export const DEFAULT_LIGHTING = {
     sun_color: 'ffffff',
     sun_illuminance: DEFAULT_ILLUMINANCE,
     sun_shadow_maps_enabled: true,
-    // The sun needs a direction to cast from and the format it mirrors carries none, so this is
-    // ours: the same euler angles, in degrees, that a part uses.
+    // The sun needs a direction to cast from: the same euler angles, in degrees, a part uses.
     sun_rotation: [-69.44, 25.09, 17.53],
 };
 
