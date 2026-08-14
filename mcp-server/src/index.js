@@ -30,6 +30,12 @@ and delete_folder, so never delete and rebuild geometry just to tidy the groupin
 The front, side and top views each flatten one axis, so a slope only reads as a slope in a view that
 does not flatten the axis it runs along. Check a pitched roof from the side, not the front.
 
+Light comes in two shapes. set_lighting sets the rig the whole map sits in: an ambient fill with no
+direction, and one sun with a colour, an illuminance in lux and a rotation saying where it comes
+from. attach_light puts a point or a spot light on a part, which is how a lamp, a torch or a shaft
+through a window is made: the light belongs to the part and moves with it, a spot aims out of one of
+the part's six faces, and shadows from these are expensive so they stay off unless you ask.
+
 connect_live attaches to a live editing room so the user watches you build in real time. Without it
 you work on an offline copy that save_map writes back.`;
 

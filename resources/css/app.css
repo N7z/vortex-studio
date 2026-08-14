@@ -487,6 +487,21 @@ input[type='range']:disabled::-moz-range-thumb { background: var(--disabled); cu
 .prop-slider { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
 .prop-slider input[type='range'] { flex: 1; min-width: 40px; }
 .prop-slider .num, .prop-slider input[type='number'] { flex: none; width: 54px; }
+.prop-note { color: var(--dim); font-size: 11px; line-height: 1.4; }
+.prop-add { display: flex; gap: 6px; }
+.prop-add button, .prop-remove {
+    flex: 1;
+    background: var(--field);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    color: var(--ink);
+    font-size: 12px;
+    padding: 3px 6px;
+    cursor: pointer;
+}
+.prop-add button:hover:not(:disabled), .prop-remove:hover { border-color: var(--accent); color: var(--ink-white); }
+.prop-add button:disabled { color: var(--disabled); cursor: default; }
+.prop-remove { width: 100%; margin-top: 2px; }
 .prop-row input[type="number"], .prop-row .num, .arch-axes input[type="number"], .arch-axes .num {
     appearance: textfield;
     -moz-appearance: textfield;

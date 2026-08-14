@@ -3,7 +3,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { WorkspaceIcon, LightingIcon, cubeIcon, FolderIcon, ChevronIcon } from './icons';
 import { groupIndex, groupParts, groupTree } from './groups';
 import { EMPTY, isHidden, isLocked } from './flags';
-import { AMBIENT, SUN } from './lighting';
+import { AMBIENT, SUN, partLightRef, pointLightOf, spotLightOf } from './lighting';
 
 const ICON_COLOR = {
     Part: '#b9b9c0',
@@ -80,13 +80,22 @@ export default function Explorer({
         const held = (g) => (buckets.get(g.id) ?? []).length
             + childrenOf(g.id).reduce((n, c) => n + held(c), 0);
 
+        // A light on a part is shown as its child, the way the part carries it.
+        const pushPart = (row, depth) => {
+            out.push({ k: 'part', row, depth });
+            const point = pointLightOf(row.p);
+            const spot = spotLightOf(row.p);
+            if (point) out.push({ k: 'partlight', row, kind: 'point', depth: depth + 1 });
+            if (spot) out.push({ k: 'partlight', row, kind: 'spot', depth: depth + 1 });
+        };
+
         const walk = (list, depth) => {
             for (const g of list) {
                 if (q && !held(g)) continue;
                 out.push({ k: 'group', g, depth });
                 if (!(open[g.id] ?? (g.ids.length <= AUTO_OPEN_MAX))) continue;
                 walk(childrenOf(g.id), depth + 1);
-                for (const row of buckets.get(g.id) ?? []) out.push({ k: 'part', row, depth: depth + 1 });
+                for (const row of buckets.get(g.id) ?? []) pushPart(row, depth + 1);
             }
         };
 
@@ -94,7 +103,7 @@ export default function Explorer({
         if (!q) out.push({ k: 'ws', depth: 0 });
         if (wsOpen) {
             walk(roots, 1);
-            for (const row of loose) out.push({ k: 'part', row, depth: 1 });
+            for (const row of loose) pushPart(row, 1);
         }
 
         const shown = RIG.filter((r) => !q || r.label.toLowerCase().includes(q));
@@ -247,6 +256,22 @@ export default function Explorer({
                         <div style={{ height: first * ROW_H }} />
                         {slice.map((it) => {
                             if (it.k === 'part') return partRow(it.row, it.depth);
+                            if (it.k === 'partlight') {
+                                const ref = partLightRef(it.row.p._id, it.kind);
+
+                                return (
+                                    <div
+                                        key={ref}
+                                        {...rowProps(it.depth)}
+                                        className={`tree-item child ${selected.has(ref) ? 'selected' : ''}`}
+                                        onClick={() => setSelectedId(ref, false, null, true)}
+                                    >
+                                        <Twist />
+                                        <span className="icon"><LightingIcon /></span>
+                                        {it.kind === 'point' ? 'PointLight' : 'SpotLight'}
+                                    </div>
+                                );
+                            }
                             if (it.k === 'group') return groupRow(it.g, it.depth);
                             if (it.k === 'ws') {
                                         // I  anyone will replace this with "Add a part" with "Add a instance" and menu of instances because i dont know react :D

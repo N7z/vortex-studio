@@ -4,8 +4,9 @@ import { MapDoc, MapError, newId } from './doc.js';
 import { LiveSession, joinHello } from './session.js';
 import { Studio, StudioError } from './studio.js';
 import {
-    FIELD_INFO, LIMITS, MATERIALS, MATERIAL_INFO, MAX_JUMP_HEIGHT, PALETTES, PART_TYPES,
-    PART_TYPE_INFO, PLAY, PROPS, PROP_IDS, TEXTURES, buildProp, propSummary,
+    DEFAULT_POINT_LIGHT, DEFAULT_SPOT_LIGHT, FIELD_INFO, LIMITS, MATERIALS, MATERIAL_INFO,
+    MAX_JUMP_HEIGHT, PALETTES, PART_TYPES, PART_TYPE_INFO, PLAY, PROPS, PROP_IDS, TEXTURES,
+    buildProp, propSummary,
 } from './catalog.js';
 import {
     buildCorridor, buildRoof, buildRoom, buildStairs, buildTerrain, carveAll, carvePlan, junctionBoxes,
@@ -18,6 +19,9 @@ import {
     boundsOf, boxOfRegion, partBounds, partsInRegion, regionBounds, round, roundVec,
 } from './geom.js';
 import { renderMap, VIEWS } from './render.js';
+import {
+    FACES as LIGHT_FACES, validPointLight, validSpotLight,
+} from '../../live-editing-server/src/lights.js';
 
 const hexColor = z.string().regex(/^#?[0-9a-fA-F]{6}$/, 'a 6 digit hex colour such as 8a5a2b');
 const material = z.enum(MATERIALS);
@@ -1012,6 +1016,65 @@ export function register(server, ctx) {
             ctx.doc.setLighting('set lighting', { ...ctx.doc.lighting, ...patch });
 
             return ok(describeResult(ctx, { lighting: ctx.doc.lighting }));
+        },
+    );
+
+    edit(
+        'attach_light',
+        'Put a light on a part, or take it off. A point light throws light in every direction from '
+        + 'the middle of the part; a spot light throws a cone out of one of its faces. The light '
+        + 'belongs to the part, so moving or turning the part moves the light with it, and a part '
+        + 'carries at most one of each. Use this for a lamp, a torch or a shaft of light through a '
+        + 'window; use set_lighting for the light the whole map sits in.',
+        {
+            ids: z.array(z.string()).min(1).max(500).describe('the parts to light'),
+            kind: z.enum(['point', 'spot']).describe('point throws light everywhere, spot throws a cone'),
+            remove: z.boolean().default(false).describe('true takes that light off the parts instead'),
+            color: hexColor.optional(),
+            intensity: z.number().min(0).max(LIMITS.maxIntensity).optional()
+                .describe('lumens; a room lamp is around 60000'),
+            range: z.number().min(0).max(LIMITS.maxRange).optional()
+                .describe('how far the light reaches, in world units'),
+            shadow_maps_enabled: z.boolean().optional()
+                .describe('shadows from a light on a part are expensive; leave them off unless it is the point'),
+            angle: z.number().min(1).max(89).optional()
+                .describe('spot only: half the cone, in degrees'),
+            face: z.enum(LIGHT_FACES).optional()
+                .describe('spot only: the face of the part the cone comes out of, e.g. Bottom for a ceiling lamp'),
+        },
+        async ({
+            ids, kind, remove, ...fields
+        }) => {
+            const key = kind === 'spot' ? 'spot_light' : 'point_light';
+            const parts = ids.map((id) => ctx.doc.require(id));
+
+            if (remove) {
+                const result = ctx.doc.setFields(
+                    `remove ${kind} light`,
+                    parts.map((p) => ({ id: p._id, unset: [key] })),
+                );
+
+                return ok(describeResult(ctx, { changed: result.changed, removed: key }));
+            }
+
+            const base = kind === 'spot' ? DEFAULT_SPOT_LIGHT : DEFAULT_POINT_LIGHT;
+            const given = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined));
+            if (kind !== 'spot' && (given.angle !== undefined || given.face !== undefined)) {
+                throw new MapError('angle and face belong to a spot light; a point light has no cone');
+            }
+            const updates = parts.map((p) => {
+                const light = { ...base, ...(p[key] ?? {}), ...given };
+                if (light.color) light.color = light.color.replace(/^#/, '').toLowerCase();
+                const ok2 = kind === 'spot' ? validSpotLight(light) : validPointLight(light);
+                if (!ok2) throw new MapError(`that is not a usable ${kind} light: ${JSON.stringify(light)}`);
+
+                return { id: p._id, fields: { [key]: light } };
+            });
+            const result = ctx.doc.setFields(`add ${kind} light`, updates);
+
+            return ok(describeResult(ctx, {
+                changed: result.changed, light: key, settings: updates[0].fields[key],
+            }));
         },
     );
 

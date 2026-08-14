@@ -199,3 +199,45 @@ test('a folder holding only folders survives its parts leaving', async () => {
     assert.ok(casca, 'Casca has no parts of its own now, but it still holds Miolo');
     assert.equal(casca.parts, 0);
 });
+
+test('a light can be put on a part and taken off again', async () => {
+    const lamp = await ok('place_parts', { parts: [slab(80)] });
+
+    const lit = await ok('attach_light', {
+        ids: lamp.ids, kind: 'point', intensity: 40000, range: 25,
+    });
+    assert.equal(lit.changed, 1);
+    assert.equal(lit.settings.intensity, 40000);
+    assert.equal(lit.settings.range, 25);
+    assert.equal(lit.settings.shadow_maps_enabled, false, 'shadows stay off unless asked for');
+
+    const spot = await ok('attach_light', {
+        ids: lamp.ids, kind: 'spot', face: 'Bottom', angle: 20,
+    });
+    assert.equal(spot.settings.face, 'Bottom');
+    assert.equal(spot.settings.angle, 20);
+
+    const found = await ok('find_parts', { near: [0, 80, 0], radius: 2 });
+    assert.equal(found.parts[0].id, lamp.ids[0]);
+
+    const gone = await ok('attach_light', { ids: lamp.ids, kind: 'point', remove: true });
+    assert.equal(gone.removed, 'point_light');
+
+    const cone = await call('attach_light', { ids: lamp.ids, kind: 'point', angle: 30 });
+    assert.equal(cone.isError, true);
+    assert.match(cone.data.error, /point light has no cone/);
+});
+
+test('set_lighting changes the rig the whole map sits in', async () => {
+    const rig = await ok('set_lighting', { brightness: 150, sun_illuminance: 4000, ambient_color: 'ffddaa' });
+
+    assert.equal(rig.lighting.brightness, 150);
+    assert.equal(rig.lighting.sun_illuminance, 4000);
+    assert.equal(rig.lighting.ambient_color, 'ffddaa');
+    assert.equal(rig.lighting.sun_color, 'ffffff', 'what was not asked for is left alone');
+
+    // Out of range is caught by the schema, so it never reaches the handler.
+    const bad = await client.callTool({ name: 'set_lighting', arguments: { brightness: 99999 } });
+    assert.equal(bad.isError, true);
+    assert.match(bad.content.find((c) => c.type === 'text').text, /brightness/);
+});

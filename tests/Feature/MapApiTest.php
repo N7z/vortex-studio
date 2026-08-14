@@ -356,6 +356,41 @@ it('refuses a part property it does not know', function (array $bad) {
     'textures as the document list, not our map' => [['Tx' => [['face' => 'Top', 'kind' => 'Studs']]]],
 ]);
 
+it('takes a part that carries a light, and refuses one it cannot store', function () {
+    $lamp = array_merge(PART, [
+        'point_light' => [
+            'color' => 'ffe9c4', 'intensity' => 60000, 'range' => 40, 'shadow_maps_enabled' => false,
+        ],
+        'spot_light' => [
+            'color' => 'ffffff', 'intensity' => 12000, 'range' => 25,
+            'shadow_maps_enabled' => true, 'angle' => 30, 'face' => 'Bottom',
+        ],
+    ]);
+
+    asToken()->putJson('/api/maps/lamps', ['parts' => [$lamp], 'groups' => []])->assertOk();
+    asToken()->getJson('/api/maps/lamps')->assertOk()->assertJson(['parts' => [$lamp]]);
+
+    $bad = fn (array $light) => asToken()
+        ->putJson('/api/maps/bad', ['parts' => [array_merge(PART, ['point_light' => $light])], 'groups' => []])
+        ->assertStatus(400);
+
+    $bad(['color' => 'white', 'intensity' => 1, 'range' => 1, 'shadow_maps_enabled' => false]);
+    $bad(['color' => 'ffffff', 'intensity' => -1, 'range' => 1, 'shadow_maps_enabled' => false]);
+    $bad(['color' => 'ffffff', 'intensity' => 1, 'range' => 1]);
+    $bad([
+        'color' => 'ffffff', 'intensity' => 1, 'range' => 1, 'shadow_maps_enabled' => false, 'angle' => 30,
+    ]);
+});
+
+it('refuses a spot light that points at no face of the part', function () {
+    asToken()->putJson('/api/maps/bad', ['parts' => [array_merge(PART, [
+        'spot_light' => [
+            'color' => 'ffffff', 'intensity' => 1, 'range' => 1,
+            'shadow_maps_enabled' => false, 'angle' => 30, 'face' => 'Sideways',
+        ],
+    ])], 'groups' => []])->assertStatus(400);
+});
+
 it('refuses a lighting rig it cannot store', function (array $bad) {
     asToken()->putJson('/api/maps/bad', ['parts' => [], 'groups' => [], 'lighting' => array_merge(LIGHTING, $bad)])
         ->assertStatus(400);

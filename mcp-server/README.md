@@ -23,7 +23,8 @@ So the tools are built around what you actually do in a 3D block editor:
 * **Dressing** - `place_prop` and `scatter_props` over a prop library that carries the metadata the
   model needs: what the prop is for, whether it blocks movement, whether it is decorative, which
   settings it suits. `paint_region` restyles what is already there, `set_lighting` handles the
-  ambient fill and the sun.
+  ambient fill and the sun, and `attach_light` puts a point or spot light on a part so a lamp
+  lights the room it stands in.
 * **Precision** - `place_parts`, `modify_parts`, `move_parts`, `delete_parts` and `find_parts` for
   the corrections the semantic tools cannot express.
 * **Organisation** - `group_parts`, `rename_folder` and `delete_folder`. Folders nest, so a building

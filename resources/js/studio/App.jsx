@@ -28,7 +28,7 @@ import {
 import { writeBackup } from './backup';
 import {
     ENGINE_MAX_BYTES,
-    addOp, applyOp, fillPart, invertOp, patchOp, removeOp, repairParts, stripIds,
+    addOp, applyOp, fillPart, invertOp, patchOp, removeOp, repairParts, stripIds, unsetOp,
     transformOp, withNewId,
 } from './ops';
 import { DeleteIcon, DuplicateIcon } from './icons';
@@ -43,7 +43,8 @@ import { predict, record } from './estimate';
 import { convertRoblox, importSummary } from './roblox';
 import { fromProject, isProject, newProjectId, toProject } from './vortexProject';
 import {
-    AMBIENT, DEFAULT_LIGHTING, SUN, isLightRef, repairLighting,
+    AMBIENT, DEFAULT_LIGHTING, DEFAULT_POINT_LIGHT, DEFAULT_SPOT_LIGHT, SUN, isLightRef,
+    partLightOf, partLightRef, repairLighting,
 } from './lighting';
 import useDialogs from '../ui/useDialogs';
 import Busy from '../ui/Busy';
@@ -328,6 +329,26 @@ export default function App() {
 
         return isLightRef(last) ? last : null;
     }, [selectedIds]);
+
+    // A light on a part, on the other hand, is edited through the part that carries it.
+    const selectedPartLight = useMemo(() => {
+        const last = selectedIds.length ? selectedIds[selectedIds.length - 1] : null;
+
+        return partLightOf(last);
+    }, [selectedIds]);
+    const partLightHost = useMemo(() => (
+        selectedPartLight ? parts.find((p) => p._id === selectedPartLight.partId) ?? null : null
+    ), [parts, selectedPartLight]);
+
+    const addPartLight = useCallback((kind) => {
+        if (!canEditRef.current) return;
+        const target = selectedIds.find((id) => partsRef.current.some((p) => p._id === id));
+        if (!target) return;
+        const key = kind === 'spot' ? 'spot_light' : 'point_light';
+        const value = kind === 'spot' ? DEFAULT_SPOT_LIGHT : DEFAULT_POINT_LIGHT;
+        edit(patchOp([target], { [key]: { ...value } }));
+        setSelectedIds([partLightRef(target, kind)]);
+    }, [selectedIds]);
     const pluginTarget = selected;
     const selectionInfo = useMemo(() => {
         if (!selectedParts.length) return null;
@@ -358,7 +379,7 @@ export default function App() {
     const activeModels = activePlugin ? pluginModels[activePlugin.id] ?? null : null;
 
     const select = useCallback((id, additive, normal, solo) => {
-        if (isLightRef(id)) {
+        if (isLightRef(id) || partLightOf(id)) {
             setSelectedIds([id]);
             setFaces({});
 
@@ -368,7 +389,7 @@ export default function App() {
         const group = id != null && !solo ? groupIndex(groupsRef.current).get(id) : null;
         const ids = group ? flagStore.selectable(flagsRef.current, group.ids) : null;
         setSelectedIds((all) => {
-            const cur = all.filter((x) => !isLightRef(x));
+            const cur = all.filter((x) => !isLightRef(x) && !partLightOf(x));
             if (id == null) return additive ? cur : [];
             if (ids?.length) {
                 if (!additive) return [...ids];
@@ -393,10 +414,12 @@ export default function App() {
     const setSelectedId = select;
 
     const selectMany = useCallback((ids, additive) => {
-        const free = flagStore.selectable(flagsRef.current, ids.filter((id) => !isLightRef(id)));
+        const free = flagStore.selectable(
+            flagsRef.current, ids.filter((id) => !isLightRef(id) && !partLightOf(id)),
+        );
         setSelectedIds((cur) => {
             if (!additive) return [...free];
-            const kept = cur.filter((x) => !isLightRef(x));
+            const kept = cur.filter((x) => !isLightRef(x) && !partLightOf(x));
             const seen = new Set(kept);
             return [...kept, ...free.filter((id) => !seen.has(id))];
         });
@@ -1161,6 +1184,19 @@ export default function App() {
     );
 
     const updateSelected = (patch) => {
+        const lit = partLightOf(selectedIds[selectedIds.length - 1]);
+        if (lit) {
+            const gone = Object.entries(patch).filter(([, v]) => v === null).map(([k]) => k);
+            if (gone.length) {
+                edit(unsetOp([lit.partId], gone));
+                setSelectedIds([lit.partId]);
+
+                return;
+            }
+            edit(patchOp([lit.partId], patch));
+
+            return;
+        }
         if (!selectedIds.length) return;
         edit(patchOp(selectedIds, patch));
     };
@@ -1627,10 +1663,12 @@ export default function App() {
                     )}
                     {(!mobile || drawerTab === 'properties') && (
                         <Properties
-                            part={selected}
                             count={selectedIds.length}
                             onChange={updateSelected}
                             readOnly={!canEdit}
+                            part={partLightHost ?? selected}
+                            partLight={selectedPartLight?.kind ?? null}
+                            onAddPartLight={addPartLight}
                             light={selectedLight}
                             lighting={lighting}
                             onLightChange={patchLighting}

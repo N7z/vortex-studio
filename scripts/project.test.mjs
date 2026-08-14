@@ -28,10 +28,17 @@ test('a project the Studio wrote survives import and export unchanged', { skip: 
     const groups = read.groups.map((g) => newGroup(g.name, g.slots.map((i) => parts[i]._id)));
     const out = toProject(parts, groups, read.projectId, read.lighting);
 
-    // The reference file predates the rig becoming one object, so it still carries a list of suns.
-    // Everything else has to come back byte for byte.
+    // The reference file predates both the rig becoming one object and a part being able to hold a
+    // light, so it carries a list of suns and no light keys on its parts. Everything else has to
+    // come back byte for byte.
     const { lighting, ...rest } = out;
     const { lights, ...officialRest } = official;
+    rest.parts = rest.parts.map(({ point_light, spot_light, ...p }) => {
+        assert.equal(point_light, null);
+        assert.equal(spot_light, null);
+
+        return p;
+    });
     assert.deepEqual(round(rest), round(officialRest));
 });
 
@@ -150,4 +157,41 @@ test('a parent index pointing nowhere is dropped, not obeyed', () => {
     doc.groups[0].parent_group = 7;
 
     assert.equal(fromProject(doc).groups[0].parentAt, null);
+});
+
+test('a light on a part survives export and import, cone and all', () => {
+    const lamp = {
+        _id: 'p1',
+        T: 'Part',
+        P: [0, 10, 0],
+        S: [2, 2, 2],
+        R: [0, 0, 0],
+        point_light: {
+            color: 'ffe9c4', intensity: 60000, range: 40, shadow_maps_enabled: false,
+        },
+        spot_light: {
+            color: 'ffffff', intensity: 12000, range: 25, shadow_maps_enabled: true, angle: 30, face: 'Bottom',
+        },
+    };
+
+    const doc = toProject([lamp], [], '0'.repeat(32), null);
+    const [out] = doc.parts;
+    assert.equal(out.point_light.range, 40);
+    assert.equal(out.point_light.shadow_maps_enabled, false);
+    assert.ok(Math.abs(out.spot_light.angle - (30 * Math.PI) / 180) < 1e-4, 'the cone goes out in radians');
+    assert.equal(out.spot_light.face, 'Bottom');
+
+    const back = fromProject(doc).parts[0];
+    assert.deepEqual(back.point_light, lamp.point_light);
+    assert.deepEqual(back.spot_light, lamp.spot_light);
+});
+
+test('a part with no light carries no light keys', () => {
+    const [out] = toProject(
+        [{ _id: 'p1', T: 'Part', P: [0, 0, 0], S: [1, 1, 1], R: [0, 0, 0] }], [], '0'.repeat(32), null,
+    ).parts;
+
+    assert.equal(out.point_light, null);
+    assert.equal(out.spot_light, null);
+    assert.equal('point_light' in fromProject({ parts: [out] }).parts[0], false);
 });

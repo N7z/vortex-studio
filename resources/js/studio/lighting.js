@@ -18,6 +18,16 @@ export const SUN = 'light:sun';
 
 export const isLightRef = (id) => id === AMBIENT || id === SUN;
 
+// A light on a part is selected through the part that holds it: "light:point:<part id>".
+export const partLightRef = (partId, kind) => `light:${kind}:${partId}`;
+
+export const partLightOf = (ref) => {
+    if (typeof ref !== 'string') return null;
+    const m = /^light:(point|spot):(.+)$/.exec(ref);
+
+    return m ? { kind: m[1], partId: m[2] } : null;
+};
+
 export const repairLighting = (lighting) => cleanLighting(lighting) ?? { ...DEFAULT_LIGHTING };
 
 export const DEFAULT_POINT_LIGHT = {

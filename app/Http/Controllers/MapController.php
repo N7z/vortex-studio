@@ -36,7 +36,7 @@ class MapController extends Controller
 
     private const PART_KEYS = [
         '_id', 'T', 'P', 'S', 'R', 'C', 'Tr', 'Shape', 'Sh', 'ItemId',
-        'M', 'Cs', 'An', 'Cc', 'Bp', 'Tx',
+        'M', 'Cs', 'An', 'Cc', 'Bp', 'Tx', 'point_light', 'spot_light',
     ];
 
     private const MATERIALS = ['Plastic', 'Wood', 'Metal', 'Grass', 'Ice', 'Paint'];
@@ -53,6 +53,14 @@ class MapController extends Controller
     ];
 
     private const MAX_BRIGHTNESS = 4_000;
+
+    private const POINT_LIGHT_KEYS = ['color', 'intensity', 'range', 'shadow_maps_enabled'];
+
+    private const SPOT_LIGHT_KEYS = [...self::POINT_LIGHT_KEYS, 'angle', 'face'];
+
+    private const MAX_INTENSITY = 10_000_000;
+
+    private const MAX_RANGE = 2_000;
 
     private const MAX_ILLUMINANCE = 200_000;
 
@@ -746,9 +754,48 @@ class MapController extends Controller
             if (array_key_exists('Tx', $p) && ! $this->validTextures($p['Tx'])) {
                 return false;
             }
+            foreach ([['point_light', false], ['spot_light', true]] as [$k, $spot]) {
+                $light = $p[$k] ?? null;
+                if ($light !== null && ! $this->validPartLight($light, $spot)) {
+                    return false;
+                }
+            }
         }
 
         return true;
+    }
+
+    /** A light carried by the part it shines from. A spot adds a cone and the face it points out of. */
+    private function validPartLight(mixed $light, bool $spot): bool
+    {
+        if (! is_array($light) || array_is_list($light)) {
+            return false;
+        }
+        $allowed = $spot ? self::SPOT_LIGHT_KEYS : self::POINT_LIGHT_KEYS;
+        if (array_diff_key($light, array_flip($allowed))) {
+            return false;
+        }
+        if (! is_string($light['color'] ?? null) || ! preg_match('/^[0-9a-fA-F]{6}$/', $light['color'])) {
+            return false;
+        }
+        foreach ([['intensity', self::MAX_INTENSITY], ['range', self::MAX_RANGE]] as [$k, $max]) {
+            $v = $light[$k] ?? null;
+            if (! is_int($v) && ! is_float($v) || $v < 0 || $v > $max) {
+                return false;
+            }
+        }
+        if (! is_bool($light['shadow_maps_enabled'] ?? null)) {
+            return false;
+        }
+        if (! $spot) {
+            return true;
+        }
+        $angle = $light['angle'] ?? null;
+        if (! is_int($angle) && ! is_float($angle) || $angle < 1 || $angle > 89) {
+            return false;
+        }
+
+        return in_array($light['face'] ?? null, self::FACES, true);
     }
 
     private function validTextures(mixed $tx): bool

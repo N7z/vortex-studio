@@ -4,7 +4,10 @@ import {
     FACES, MATERIALS, TEXTURES,
     canCollide, castsShadow, isAnchored, isBaseplate, materialOf, texturesOf,
 } from './materials';
-import { AMBIENT, MAX_BRIGHTNESS, MAX_ILLUMINANCE } from './lighting';
+import {
+    AMBIENT, DEFAULT_POINT_LIGHT, DEFAULT_SPOT_LIGHT, LIGHT_FACES, MAX_BRIGHTNESS,
+    MAX_ILLUMINANCE, MAX_INTENSITY, MAX_RANGE, pointLightOf, spotLightOf,
+} from './lighting';
 
 const COLOR_COMMIT = 150;
 
@@ -187,11 +190,114 @@ function SunProperties({ lighting, onChange, readOnly }) {
     );
 }
 
+function PartLightProperties({
+    part, kind, onChange, readOnly, onRemove,
+}) {
+    const spot = kind === 'spot';
+    const light = spot ? spotLightOf(part) : pointLightOf(part);
+    if (!light) return null;
+    const key = spot ? 'spot_light' : 'point_light';
+    const set = (patch) => onChange({ [key]: { ...light, ...patch } });
+
+    return (
+        <div className="panel properties">
+            <div className="panel-title">
+                Properties: {spot ? 'SpotLight' : 'PointLight'}
+                {readOnly && <span className="props-ro">read only</span>}
+            </div>
+            <div className="panel-body">
+                <div className="props">
+                    <ColorRow
+                        id={`${key}:${part._id}`}
+                        value={light.color}
+                        readOnly={readOnly}
+                        onCommit={(color) => set({ color })}
+                    />
+                    <div className="prop-row">
+                        <label>Intensity</label>
+                        <Slider
+                            value={light.intensity}
+                            min={0}
+                            max={MAX_INTENSITY}
+                            step={1000}
+                            readOnly={readOnly}
+                            onChange={(intensity) => set({ intensity })}
+                        />
+                    </div>
+                    <div className="prop-row">
+                        <label>Range</label>
+                        <Slider
+                            value={light.range}
+                            min={0}
+                            max={MAX_RANGE}
+                            step={1}
+                            readOnly={readOnly}
+                            onChange={(range) => set({ range })}
+                        />
+                    </div>
+                    {spot && (
+                        <>
+                            <div className="prop-row">
+                                <label>Angle</label>
+                                <Slider
+                                    value={light.angle}
+                                    min={1}
+                                    max={89}
+                                    step={1}
+                                    readOnly={readOnly}
+                                    onChange={(angle) => set({ angle })}
+                                />
+                            </div>
+                            <div className="prop-row">
+                                <label>Face</label>
+                                <select
+                                    value={light.face}
+                                    disabled={readOnly}
+                                    onChange={(e) => set({ face: e.target.value })}
+                                >
+                                    {LIGHT_FACES.map((f) => <option key={f}>{f}</option>)}
+                                </select>
+                            </div>
+                        </>
+                    )}
+                    <Toggle
+                        label="Shadows"
+                        checked={light.shadow_maps_enabled === true}
+                        readOnly={readOnly}
+                        onChange={(shadow_maps_enabled) => set({ shadow_maps_enabled })}
+                    />
+                    <div className="prop-note">
+                        It shines from the part that holds it, so moving the part moves the light.
+                    </div>
+                    {!readOnly && (
+                        <button className="prop-remove" onClick={() => onRemove(key)}>
+                            Remove this light
+                        </button>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export default function Properties({
     part, count = 0, onChange, readOnly = false, light = null, lighting = null, onLightChange = null,
+    partLight = null, onAddPartLight = null,
 }) {
     const id = part?._id ?? null;
     const [draft, setColorDraft] = useColorDraft(id, (hex) => onChange({ C: hex }));
+
+    if (partLight && part) {
+        return (
+            <PartLightProperties
+                part={part}
+                kind={partLight}
+                onChange={onChange}
+                readOnly={readOnly}
+                onRemove={(key) => onChange({ [key]: null })}
+            />
+        );
+    }
 
     if (light && lighting) {
         const Panel = light === AMBIENT ? AmbientProperties : SunProperties;
@@ -335,6 +441,26 @@ export default function Properties({
                             </select>
                         </div>
                     ))}
+
+                    {onAddPartLight && !readOnly && count === 1 && (
+                        <>
+                            <div className="prop-head">Lights</div>
+                            <div className="prop-add">
+                                <button
+                                    disabled={!!pointLightOf(part)}
+                                    onClick={() => onAddPartLight('point')}
+                                >
+                                    PointLight
+                                </button>
+                                <button
+                                    disabled={!!spotLightOf(part)}
+                                    onClick={() => onAddPartLight('spot')}
+                                >
+                                    SpotLight
+                                </button>
+                            </div>
+                        </>
+                    )}
 
                     {'ItemId' in part && (
                         <div className="prop-row">

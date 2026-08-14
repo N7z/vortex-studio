@@ -9,7 +9,9 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 import {
     PLACEHOLDER, makeMaterialSets, makePartGeometry, makeTrussGeometry, partType,
 } from './parts3d';
-import { DEFAULT_BRIGHTNESS, DEFAULT_ILLUMINANCE, DEFAULT_LIGHTING } from './lighting';
+import {
+    DEFAULT_BRIGHTNESS, DEFAULT_ILLUMINANCE, DEFAULT_LIGHTING, FACE_DIRECTION,
+} from './lighting';
 import { MARK_KINDS, makeMarkTexture } from './facemarks';
 
 const TOOL_MODE = { move: 'translate', rotate: 'rotate', scale: 'scale' };
@@ -166,6 +168,81 @@ export default function Viewport({
         sun.shadow.bias = -0.0005;
         scene.add(sun);
         scene.add(sun.target);
+
+        // A part can carry a point light and a spot light. They hang off the part's own mesh, so
+        // moving or turning the part takes its light with it, and the spot aims down a face.
+        const partLights = new Map();
+
+        const dropPartLights = (id) => {
+            const held = partLights.get(id);
+            if (!held) return;
+            for (const light of [held.point, held.spot]) {
+                if (!light) continue;
+                light.shadow?.map?.dispose();
+                light.removeFromParent();
+                light.dispose();
+            }
+            held.target?.removeFromParent();
+            partLights.delete(id);
+        };
+
+        const syncPartLights = (part, mesh) => {
+            const c = ctx.current;
+            const wantPoint = part.point_light ?? null;
+            const wantSpot = part.spot_light ?? null;
+            if (!wantPoint && !wantSpot) {
+                dropPartLights(part._id);
+
+                return;
+            }
+            let held = partLights.get(part._id);
+            if (!held) {
+                held = { point: null, spot: null, target: null };
+                partLights.set(part._id, held);
+            }
+
+            if (wantPoint && !held.point) {
+                held.point = new THREE.PointLight(0xffffff, 1);
+                mesh.add(held.point);
+            } else if (!wantPoint && held.point) {
+                held.point.removeFromParent();
+                held.point.dispose();
+                held.point = null;
+            }
+            if (held.point) {
+                held.point.color.set(`#${wantPoint.color}`);
+                // The format quotes lumens, which is what power takes; intensity is per steradian.
+                held.point.power = wantPoint.intensity;
+                held.point.distance = wantPoint.range;
+                held.point.decay = 2;
+                held.point.castShadow = !!c?.shadows && wantPoint.shadow_maps_enabled === true;
+            }
+
+            if (wantSpot && !held.spot) {
+                held.spot = new THREE.SpotLight(0xffffff, 1);
+                held.target = new THREE.Object3D();
+                mesh.add(held.spot);
+                mesh.add(held.target);
+                held.spot.target = held.target;
+            } else if (!wantSpot && held.spot) {
+                held.spot.removeFromParent();
+                held.spot.dispose();
+                held.target?.removeFromParent();
+                held.spot = null;
+                held.target = null;
+            }
+            if (held.spot) {
+                const dir = FACE_DIRECTION[wantSpot.face] ?? FACE_DIRECTION.Bottom;
+                held.target.position.set(dir[0], dir[1], dir[2]);
+                held.spot.color.set(`#${wantSpot.color}`);
+                held.spot.power = wantSpot.intensity;
+                held.spot.distance = wantSpot.range;
+                held.spot.angle = wantSpot.angle * DEG;
+                held.spot.penumbra = 0.25;
+                held.spot.decay = 2;
+                held.spot.castShadow = !!c?.shadows && wantSpot.shadow_maps_enabled === true;
+            }
+        };
 
         const syncLighting = (rig) => {
             const c = ctx.current;
@@ -1400,6 +1477,8 @@ export default function Viewport({
             scene, camera, renderer, orbit, gizmo, tex, pivot, spawnPoint,
             grid, applyScale, syncBatches, setBatchShadows, invalidate, reshadow,
             syncLighting,
+            syncPartLights,
+            dropPartLights,
             sun,
             lighting: null,
             isDragging: () => drag !== null,
@@ -1541,6 +1620,7 @@ export default function Viewport({
             scene.remove(grid);
             grid.geometry.dispose();
             grid.material.dispose();
+            for (const id of [...partLights.keys()]) dropPartLights(id);
             sun.shadow.map?.dispose();
             sun.dispose();
             scene.remove(sun);
@@ -1704,6 +1784,8 @@ export default function Viewport({
 
             const geometry = partType(part) === 'Truss' ? c.trussGeometry : c.geometry;
             if (mesh.geometry !== geometry) mesh.geometry = geometry;
+
+            c.syncPartLights(part, mesh);
         };
 
         const publish = () => {
@@ -1719,6 +1801,7 @@ export default function Viewport({
             for (const [id, mesh] of c.meshes) {
                 if (!alive.has(id)) {
                     if (c.gizmo.object === mesh) c.gizmo.detach();
+                    c.dropPartLights(id);
                     mesh.removeFromParent();
                     c.sets.release(mesh.userData.set);
                     mesh.userData.set = null;

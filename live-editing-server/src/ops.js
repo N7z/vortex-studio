@@ -1,6 +1,8 @@
+import { validPointLight, validSpotLight } from './lights.js';
+
 export const PART_KEYS = [
     '_id', 'T', 'P', 'S', 'R', 'C', 'Tr', 'Shape', 'Sh', 'ItemId',
-    'M', 'Cs', 'An', 'Cc', 'Bp', 'Tx',
+    'M', 'Cs', 'An', 'Cc', 'Bp', 'Tx', 'point_light', 'spot_light',
 ];
 
 const VEC_KEYS = ['P', 'S', 'R'];
@@ -137,6 +139,10 @@ export function validPart(p) {
         if (k in p && typeof p[k] !== 'boolean') return false;
     }
     if ('Tx' in p && !validFaceTextures(p.Tx)) return false;
+    // A light sits on the part rather than beside it, so it travels with the part and there is at
+    // most one of each kind.
+    if (p.point_light != null && !validPointLight(p.point_light)) return false;
+    if (p.spot_light != null && !validSpotLight(p.spot_light)) return false;
 
     return true;
 }

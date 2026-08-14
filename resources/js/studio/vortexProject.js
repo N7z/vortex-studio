@@ -6,8 +6,9 @@ import {
     canCollide, castsShadow, isAnchored, isBaseplate, materialOf, texturesOf,
 } from './materials';
 import {
-    DEFAULT_BRIGHTNESS, DEFAULT_ILLUMINANCE, DEFAULT_LIGHTING, MAX_BRIGHTNESS, MAX_ILLUMINANCE,
-    cleanLighting, lightingFromSuns,
+    DEFAULT_BRIGHTNESS, DEFAULT_ILLUMINANCE, DEFAULT_LIGHTING, LIGHT_FACES, MAX_BRIGHTNESS,
+    MAX_ILLUMINANCE, MAX_INTENSITY, MAX_RANGE, cleanLighting, lightingFromSuns, pointLightOf,
+    spotLightOf, validPointLight, validSpotLight,
 } from './lighting';
 import { newPartId } from './ops';
 
@@ -91,7 +92,38 @@ function partToProject(part, group) {
         baseplate,
         truss: kind === 'Truss',
         textures: FACES.filter((f) => textures[f]).map((f) => ({ face: f, kind: textures[f] })),
+        point_light: partLightTo(pointLightOf(part), false),
+        spot_light: partLightTo(spotLightOf(part), true),
     };
+}
+
+// The cone is quoted in degrees in this map and in radians in the document, and it is the half
+// angle in both.
+const partLightTo = (light, spot) => (light ? {
+    color: colorTo(light.color),
+    intensity: num(light.intensity),
+    range: num(light.range),
+    shadow_maps_enabled: light.shadow_maps_enabled === true,
+    ...(spot ? { angle: light.angle * DEG, face: light.face } : {}),
+} : null);
+
+function partLightFrom(raw, spot) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const base = {
+        color: colorFrom(raw.color, 'ffffff'),
+        intensity: Math.min(Math.max(num(raw.intensity), 0), MAX_INTENSITY),
+        range: Math.min(Math.max(num(raw.range), 0), MAX_RANGE),
+        shadow_maps_enabled: raw.shadow_maps_enabled === true,
+    };
+    if (!spot) return validPointLight(base) ? base : null;
+
+    const cone = {
+        ...base,
+        angle: Math.min(Math.max(Math.round((num(raw.angle, 0.6) / DEG) * 100) / 100, 1), 89),
+        face: LIGHT_FACES.includes(raw.face) ? raw.face : 'Bottom',
+    };
+
+    return validSpotLight(cone) ? cone : null;
 }
 
 const colorTo = (hex) => {
@@ -185,6 +217,10 @@ function partFromProject(part) {
     if (part.baseplate === true) out.Bp = true;
     const textures = texturesFrom(part.textures);
     if (textures) out.Tx = textures;
+    const point = partLightFrom(part.point_light, false);
+    if (point) out.point_light = point;
+    const spot = partLightFrom(part.spot_light, true);
+    if (spot) out.spot_light = spot;
 
     return out;
 }
