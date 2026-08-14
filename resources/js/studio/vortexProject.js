@@ -5,7 +5,11 @@ import {
     DEFAULT_MATERIAL, FACES, MATERIALS, TEXTURES,
     canCollide, castsShadow, isAnchored, isBaseplate, materialOf, texturesOf,
 } from './materials';
-import { DEFAULT_ILLUMINANCE, MAX_ILLUMINANCE, MAX_LIGHTS } from './lighting';
+import {
+    DEFAULT_BRIGHTNESS, DEFAULT_ILLUMINANCE, DEFAULT_LIGHTING, LIGHT_FACES, MAX_BRIGHTNESS,
+    MAX_ILLUMINANCE, MAX_INTENSITY, MAX_RANGE, cleanLighting, lightingFromSuns, pointLightOf,
+    spotLightOf, validPointLight, validSpotLight,
+} from './lighting';
 import { newPartId } from './ops';
 
 const DEG = Math.PI / 180;
@@ -72,7 +76,7 @@ function partToProject(part, group) {
     const baseplate = isBaseplate(part);
 
     return {
-        name: baseplate && kind === 'Part' ? 'Baseplate' : kind,
+        name: part.N || (baseplate && kind === 'Part' ? 'Baseplate' : kind),
         position: { x: num(x), y: num(y), z: num(z) },
         rotation: quatFrom(part.R ?? [0, 0, 0]),
         scale: { x: num(sx, 1), y: num(sy, 1), z: num(sz, 1) },
@@ -86,22 +90,70 @@ function partToProject(part, group) {
         can_collide: canCollide(part),
         spawn_location: kind === 'SpawnLocation',
         baseplate,
+        // Carried so a document written here still loads where every field has to be present.
+        custom_appearance: false,
         truss: kind === 'Truss',
         textures: FACES.filter((f) => textures[f]).map((f) => ({ face: f, kind: textures[f] })),
+        point_light: partLightTo(pointLightOf(part), false),
+        spot_light: partLightTo(spotLightOf(part), true),
     };
 }
 
-function lightToProject(light) {
-    const [x, y, z] = light.P;
-    const [r, g, b] = rgbOf(light.C);
+// The cone is quoted in degrees in this map and in radians in the document, and it is the half
+// angle in both.
+const partLightTo = (light, spot) => (light ? {
+    color: colorTo(light.color),
+    intensity: num(light.intensity),
+    range: num(light.range),
+    shadow_maps_enabled: light.shadow_maps_enabled === true,
+    ...(spot ? { angle: light.angle * DEG, face: light.face } : {}),
+} : null);
+
+function partLightFrom(raw, spot) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const base = {
+        color: colorFrom(raw.color, 'ffffff'),
+        intensity: Math.min(Math.max(num(raw.intensity), 0), MAX_INTENSITY),
+        range: Math.min(Math.max(num(raw.range), 0), MAX_RANGE),
+        shadow_maps_enabled: raw.shadow_maps_enabled === true,
+    };
+    if (!spot) return validPointLight(base) ? base : null;
+
+    const cone = {
+        ...base,
+        angle: Math.min(Math.max(Math.round((num(raw.angle, 0.6) / DEG) * 100) / 100, 1), 89),
+        face: LIGHT_FACES.includes(raw.face) ? raw.face : 'Bottom',
+    };
+
+    return validSpotLight(cone) ? cone : null;
+}
+
+const colorTo = (hex) => {
+    const [r, g, b] = rgbOf(hex);
+
+    return { r: round(r), g: round(g), b: round(b), a: 1 };
+};
+
+const colorFrom = (raw, fallback) => {
+    const c = raw && typeof raw === 'object' ? raw : null;
+    if (!c) return fallback;
+    const rgb = [num(c.r, 1), num(c.g, 1), num(c.b, 1)];
+    const scaled = rgb.every((n) => n >= 0 && n <= 1) ? rgb : rgb.map((n) => n / 255);
+
+    return scaled.map(byte).join('');
+};
+
+function lightingToProject(lighting) {
+    const lit = cleanLighting(lighting) ?? { ...DEFAULT_LIGHTING };
 
     return {
-        name: light.N,
-        position: { x: num(x), y: num(y), z: num(z) },
-        rotation: quatFrom(light.R),
-        color: { r: round(r), g: round(g), b: round(b), a: 1 },
-        illuminance: num(light.I, DEFAULT_ILLUMINANCE),
-        shadows_enabled: light.Sd !== false,
+        ambient_color: colorTo(lit.ambient_color),
+        brightness: num(lit.brightness, DEFAULT_BRIGHTNESS),
+        sun_color: colorTo(lit.sun_color),
+        sun_illuminance: num(lit.sun_illuminance, DEFAULT_ILLUMINANCE),
+        sun_shadow_maps_enabled: lit.sun_shadow_maps_enabled !== false,
+        // Where the sun comes from is ours and has no field here, and a document with a field the
+        // format does not know is refused whole, so it stays out and lives in the map instead.
     };
 }
 
@@ -112,15 +164,19 @@ export function newProjectId() {
     return [...bytes].map((n) => n.toString(16).padStart(2, '0')).join('');
 }
 
-export function toProject(parts, groups = [], projectId = newProjectId(), lights = []) {
+export function toProject(parts, groups = [], projectId = newProjectId(), lighting = null) {
     const owner = new Map();
+    const slotOf = new Map(groups.map((g, at) => [g.id, at]));
     groups.forEach((g, at) => g.ids.forEach((id) => owner.set(id, at)));
 
     return {
         project_id: projectId,
         parts: parts.map((p) => partToProject(p, owner.get(p._id) ?? null)),
-        lights: lights.map(lightToProject),
-        groups: groups.map((g) => ({ name: g.name, parent_group: null })),
+        lighting: lightingToProject(lighting),
+        groups: groups.map((g) => ({
+            name: g.name,
+            parent_group: (g.parent ? slotOf.get(g.parent) : undefined) ?? null,
+        })),
     };
 }
 
@@ -164,26 +220,41 @@ function partFromProject(part) {
     if (part.baseplate === true) out.Bp = true;
     const textures = texturesFrom(part.textures);
     if (textures) out.Tx = textures;
+    // A name that says no more than the type does is left off rather than stored.
+    const name = typeof part.name === 'string' ? part.name.trim().slice(0, 64) : '';
+    const plain = ['Part', 'SpawnLocation', 'ShirtPad', 'Truss', 'Baseplate'];
+    if (name && !plain.includes(name)) out.N = name;
+    const point = partLightFrom(part.point_light, false);
+    if (point) out.point_light = point;
+    const spot = partLightFrom(part.spot_light, true);
+    if (spot) out.spot_light = spot;
 
     return out;
 }
 
-function lightFromProject(light) {
-    const c = light.color && typeof light.color === 'object' ? light.color : {};
-    const rgb = [num(c.r, 1), num(c.g, 1), num(c.b, 1)];
-    const unit = rgb.every((n) => n >= 0 && n <= 1);
-    const scaled = unit ? rgb : rgb.map((n) => n / 255);
-    const name = typeof light.name === 'string' && light.name ? light.name.slice(0, 64) : 'Light';
+// A rig from a file that predates it being one object arrives as a list of suns instead.
+function lightingFromProject(doc) {
+    if (Array.isArray(doc.lights)) {
+        return lightingFromSuns(doc.lights.map((l) => ({
+            C: colorFrom(l?.color, DEFAULT_LIGHTING.sun_color),
+            I: Math.min(Math.max(num(l?.illuminance, DEFAULT_ILLUMINANCE), 0), MAX_ILLUMINANCE),
+            Sd: l?.shadows_enabled !== false,
+            R: eulerOf(l?.rotation),
+        })));
+    }
 
-    return {
-        _id: newPartId(),
-        N: name,
-        P: vec3Of(light.position).map(round),
-        R: eulerOf(light.rotation),
-        C: scaled.map(byte).join(''),
-        I: Math.min(Math.max(num(light.illuminance, DEFAULT_ILLUMINANCE), 0), MAX_ILLUMINANCE),
-        Sd: light.shadows_enabled !== false,
-    };
+    const raw = doc.lighting && typeof doc.lighting === 'object' ? doc.lighting : {};
+
+    return cleanLighting({
+        ambient_color: colorFrom(raw.ambient_color, DEFAULT_LIGHTING.ambient_color),
+        brightness: Math.min(Math.max(num(raw.brightness, DEFAULT_BRIGHTNESS), 0), MAX_BRIGHTNESS),
+        sun_color: colorFrom(raw.sun_color, DEFAULT_LIGHTING.sun_color),
+        sun_illuminance: Math.min(
+            Math.max(num(raw.sun_illuminance, DEFAULT_ILLUMINANCE), 0), MAX_ILLUMINANCE,
+        ),
+        sun_shadow_maps_enabled: raw.sun_shadow_maps_enabled !== false,
+        sun_rotation: raw.sun_rotation ? eulerOf(raw.sun_rotation) : DEFAULT_LIGHTING.sun_rotation,
+    }) ?? { ...DEFAULT_LIGHTING };
 }
 
 export function fromProject(doc, limit = Infinity) {
@@ -214,21 +285,38 @@ export function fromProject(doc, limit = Infinity) {
         parts.push(partFromProject(raw));
     }
 
+    // A group is kept when it holds parts or when it holds another kept group, so a folder that
+    // only exists to hold folders survives the trip.
     const listed = Array.isArray(doc.groups) ? doc.groups : [];
-    const groups = [...slotsByGroup.entries()]
-        .sort((a, b) => a[0] - b[0])
-        .map(([at, slots]) => ({ name: listed[at]?.name ?? `Group ${at + 1}`, slots }))
-        .filter((g) => g.slots.length);
+    const parentAt = (at) => {
+        const raw = listed[at]?.parent_group;
 
-    const lights = (Array.isArray(doc.lights) ? doc.lights : [])
-        .filter((l) => l && typeof l === 'object' && !Array.isArray(l))
-        .slice(0, MAX_LIGHTS)
-        .map(lightFromProject);
+        return Number.isInteger(raw) && raw >= 0 && raw < listed.length && raw !== at ? raw : null;
+    };
+    const keep = new Set(slotsByGroup.keys());
+    for (let pass = 0; pass < listed.length; pass += 1) {
+        const before = keep.size;
+        for (const at of [...keep]) {
+            const up = parentAt(at);
+            if (up !== null) keep.add(up);
+        }
+        if (keep.size === before) break;
+    }
+    const groups = [...keep]
+        .sort((a, b) => a - b)
+        .map((at) => ({
+            at,
+            name: listed[at]?.name ?? `Group ${at + 1}`,
+            slots: slotsByGroup.get(at) ?? [],
+            parentAt: parentAt(at),
+        }));
+
+    const lighting = lightingFromProject(doc);
 
     return {
         parts,
         groups,
-        lights,
+        lighting,
         projectId: /^[a-f0-9]{32}$/i.test(doc.project_id ?? '') ? String(doc.project_id).toLowerCase() : null,
         dropped,
         reshaped: 0,

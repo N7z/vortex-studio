@@ -481,6 +481,44 @@ test('the folders the host brings reach a joiner', async () => {
     other.ws.close();
 });
 
+test('a folder inside a folder reaches a joiner and survives losing its own parts', async () => {
+    const groups = [
+        { id: 'g-out', name: 'Building', ids: [] },
+        { id: 'g-in', name: 'Walls', ids: ['a', 'b'], parent: 'g-out' },
+    ];
+    const { c: owner, welcome: hi } = await host([part('a'), part('b')], groups);
+    const { c: other, welcome } = await guest(hi.code);
+
+    assert.deepEqual(welcome.groups, groups, 'the empty outer folder is kept, it holds the inner one');
+
+    // Emptying the inner folder must not strand it: the parts go, the nesting stays put.
+    owner.send({ t: 'op', op: { t: 'remove', ids: ['a', 'b'] } });
+    await other.next('op');
+
+    const { c: late, welcome: after } = await guest(hi.code);
+    assert.deepEqual(after.groups, [], 'nothing is left holding anything');
+
+    owner.ws.close();
+    other.ws.close();
+    late.ws.close();
+});
+
+test('a folder cannot be put inside itself', async () => {
+    const { c: owner, welcome: hi } = await host([part('a')]);
+    const { c: other } = await guest(hi.code);
+
+    owner.send({ t: 'gop', op: { t: 'group', id: 'g-1', name: 'Walls', ids: ['a'] } });
+    await other.next('gop');
+    owner.send({ t: 'gop', op: { t: 'reparent', id: 'g-1', parent: 'g-1' } });
+
+    const { c: late, welcome } = await guest(hi.code);
+    assert.equal(welcome.groups[0].parent, undefined);
+
+    owner.ws.close();
+    other.ws.close();
+    late.ws.close();
+});
+
 test('a folder change is relayed to the others but not echoed back', async () => {
     const { c: owner, welcome: hi } = await host([part('a'), part('b')]);
     const { c: other } = await guest(hi.code);
@@ -1072,6 +1110,62 @@ test('an empty chat message says nothing and history reaches a joiner', async ()
 
     const { c: late, welcome } = await guest(hi.code);
     assert.deepEqual(welcome.chat.map((m) => m.text), [said.message.text]);
+
+    owner.ws.close();
+    late.ws.close();
+});
+
+test('the lighting rig reaches a joiner and a change is relayed', async () => {
+    const { c: owner, welcome: hi } = await host([part('a')]);
+
+    assert.equal(hi.lighting.sun_illuminance, 10000);
+    assert.equal(hi.lighting.brightness, 2000);
+
+    const { c: other } = await guest(hi.code);
+    owner.send({ t: 'lighting', lighting: { ...hi.lighting, brightness: 200, ambient_color: 'ff8800' } });
+
+    const seen = await other.next('lighting');
+    assert.equal(seen.lighting.brightness, 200);
+    assert.equal(seen.lighting.ambient_color, 'ff8800');
+
+    const { c: late, welcome } = await guest(hi.code);
+    assert.equal(welcome.lighting.brightness, 200);
+
+    owner.ws.close();
+    other.ws.close();
+    late.ws.close();
+});
+
+test('a host still carrying a list of suns has it folded into the one sun', async () => {
+    const c = new Client();
+    await c.open;
+    c.send({
+        t: 'create',
+        mapName: 'legacy',
+        parts: [part('a')],
+        lights: [
+            { _id: 'l1', N: 'Sun', P: [0, 0, 0], R: [-40, 10, 0], C: 'ffdd88', I: 4200, Sd: false },
+            { _id: 'l2', N: 'Second', P: [0, 0, 0], R: [0, 0, 0], C: 'ffffff', I: 900, Sd: true },
+        ],
+    });
+    const hi = await c.next('welcome');
+
+    assert.equal(hi.lighting.sun_color, 'ffdd88');
+    assert.equal(hi.lighting.sun_illuminance, 4200);
+    assert.equal(hi.lighting.sun_shadow_maps_enabled, false);
+    assert.deepEqual(hi.lighting.sun_rotation, [-40, 10, 0]);
+
+    c.ws.close();
+});
+
+test('lighting that is out of range is refused', async () => {
+    const { c: owner, welcome: hi } = await host([part('a')]);
+
+    owner.send({ t: 'lighting', lighting: { brightness: -1 } });
+    assert.match((await owner.next('error')).message, /light/);
+
+    const { c: late, welcome } = await guest(hi.code);
+    assert.equal(welcome.lighting.brightness, 2000);
 
     owner.ws.close();
     late.ws.close();

@@ -1,9 +1,11 @@
 import { Eye, EyeOff, Lock, LockOpen } from 'lucide-react';
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { WorkspaceIcon, LightingIcon, cubeIcon, FolderIcon, ChevronIcon } from './icons';
-import { groupIndex } from './groups';
+import { groupIndex, groupParts, groupTree } from './groups';
 import { EMPTY, isHidden, isLocked } from './flags';
-import { lightRef } from './lighting';
+import {
+    AMBIENT, SUN, isLightRef, partLightRef, pointLightOf, spotLightOf,
+} from './lighting';
 
 const ICON_COLOR = {
     Part: '#b9b9c0',
@@ -16,26 +18,62 @@ const AUTO_OPEN_MAX = 25;
 const ROW_H = 20;
 const OVERSCAN = 8;
 
-const NO_LIGHTS = [];
+const UNDER_PART = [
+    { kind: 'point', label: 'PointLight', held: (p) => !!pointLightOf(p) },
+    { kind: 'spot', label: 'SpotLight', held: (p) => !!spotLightOf(p) },
+];
+
+const RIG = [
+    { ref: AMBIENT, label: 'Ambient', key: 'ambient' },
+    { ref: SUN, label: 'Sun', key: 'sun' },
+];
+
+// Every row reserves the same twist slot whether or not it has one, so the icons
+// down a column line up and a guide can be drawn at a fixed offset from the indent.
+const rowProps = (depth) => ({
+    style: { '--indent': `${6 + depth * 14}px` },
+    ...(depth ? { 'data-nested': '' } : {}),
+});
+
+const Twist = ({ open, onToggle }) => (onToggle ? (
+    <button
+        className={`twist ${open ? 'open' : ''}`}
+        title={open ? 'Collapse' : 'Expand'}
+        onClick={(e) => { e.stopPropagation(); onToggle(); }}
+    >
+        <ChevronIcon />
+    </button>
+) : <span className="twist-gap" />);
 
 export default function Explorer({
     parts, selectedIds, setSelectedId, selectMany, groups = [], onUngroup, onRenameGroup, mapName,
-    flags = EMPTY, onFlag, onClearFlags, lights = NO_LIGHTS, onAddPart, onAddLight, onRemoveLight,
-    NEW_PART
+    flags = EMPTY, onFlag, onClearFlags, onAddPart, onAddUnder, onReparent, onFilePartsUnder,
+    onRenamePart, NEW_PART
 }) {
     const listRef = useRef(null);
     const [query, setQuery] = useState('');
     const [open, setOpen] = useState({});
     const [renaming, setRenaming] = useState(null);
+    // The floating menu: what is in it and where it hangs. Used by the + button and by right-click.
+    const [menu, setMenu] = useState(null);
+    const [dragging, setDragging] = useState(null);
+    const [dragOver, setDragOver] = useState(null);
     const [view, setView] = useState({ top: 0, h: 400 });
     const primary = selectedIds.length ? selectedIds[selectedIds.length - 1] : null;
 
     const q = query.trim().toLowerCase();
+    // Groups past a certain size start closed; the two roots start open.
     const isOpen = (g) => open[g.id] ?? (g.ids.length <= AUTO_OPEN_MAX);
+    const rootOpen = (key) => open[key] ?? true;
+    const toggle = (key, next) => setOpen((o) => ({ ...o, [key]: next }));
     const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
 
     const { items, matched } = useMemo(() => {
-        const match = ({ p, i }) => !q || p.T.toLowerCase().includes(q) || `#${i}`.includes(q) || String(i) === q;
+        const match = ({ p, i }) => !q
+            || (p.N ?? p.T).toLowerCase().includes(q)
+            || p.T.toLowerCase().includes(q)
+            || `#${i}`.includes(q)
+            || String(i) === q;
         const rows = parts.map((p, i) => ({ p, i })).filter(match);
 
         const byPart = groupIndex(groups);
@@ -47,26 +85,51 @@ export default function Explorer({
             else loose.push(row);
         }
 
-        const out = [];
-        if (!q) out.push({ k: 'ws' });
-        for (const g of groups) {
-            const rowsIn = buckets.get(g.id) ?? [];
-            if (q && !rowsIn.length) continue;
-            out.push({ k: 'group', g });
-            if (open[g.id] ?? (g.ids.length <= AUTO_OPEN_MAX)) {
-                for (const row of rowsIn) out.push({ k: 'part', row, nested: true });
-            }
-        }
-        for (const row of loose) out.push({ k: 'part', row });
+        // A search flattens the tree: what matched has to be reachable, whatever is collapsed.
+        const wsOpen = q || (open.ws ?? true);
+        const lightsOpen = q || (open.lighting ?? true);
 
-        const shown = lights.filter((l) => !q || l.N.toLowerCase().includes(q));
-        if (!q || shown.length) out.push({ k: 'lighting' });
-        if (!q || shown.length) {
-            for (const l of shown) out.push({ k: 'lightrow', light: l });
+        const { roots, childrenOf } = groupTree(groups);
+
+        // A group holds parts and other groups, so the tree is walked rather than listed. Under a
+        // search, a group earns its row when anything below it matched.
+        const held = (g) => (buckets.get(g.id) ?? []).length
+            + childrenOf(g.id).reduce((n, c) => n + held(c), 0);
+
+        // A light on a part is shown as its child, the way the part carries it.
+        const pushPart = (row, depth) => {
+            out.push({ k: 'part', row, depth });
+            const point = pointLightOf(row.p);
+            const spot = spotLightOf(row.p);
+            if (point) out.push({ k: 'partlight', row, kind: 'point', depth: depth + 1 });
+            if (spot) out.push({ k: 'partlight', row, kind: 'spot', depth: depth + 1 });
+        };
+
+        const walk = (list, depth) => {
+            for (const g of list) {
+                if (q && !held(g)) continue;
+                out.push({ k: 'group', g, depth });
+                if (!(open[g.id] ?? (g.ids.length <= AUTO_OPEN_MAX))) continue;
+                walk(childrenOf(g.id), depth + 1);
+                for (const row of buckets.get(g.id) ?? []) pushPart(row, depth + 1);
+            }
+        };
+
+        const out = [];
+        if (!q) out.push({ k: 'ws', depth: 0 });
+        if (wsOpen) {
+            walk(roots, 1);
+            for (const row of loose) pushPart(row, 1);
+        }
+
+        const shown = RIG.filter((r) => !q || r.label.toLowerCase().includes(q));
+        if (shown.length) out.push({ k: 'lighting', depth: 0 });
+        if (lightsOpen) {
+            for (const r of shown) out.push({ k: 'lightrow', rig: r, depth: 1 });
         }
 
         return { items: out, matched: rows.length + shown.length };
-    }, [parts, groups, lights, q, open]);
+    }, [parts, groups, q, open]);
 
     const first = Math.max(0, Math.floor(view.top / ROW_H) - OVERSCAN);
     const last = Math.min(items.length, Math.ceil((view.top + view.h) / ROW_H) + OVERSCAN);
@@ -89,6 +152,31 @@ export default function Explorer({
         return () => ro.disconnect();
     }, []);
 
+    // F2 renames what is selected: the part, or the folder when a whole folder is what is selected.
+    const renamable = useMemo(() => {
+        if (!selectedIds.length) return null;
+        const byPart = groupIndex(groups);
+        const homes = new Set(selectedIds.map((id) => byPart.get(id)?.id));
+        const home = homes.size === 1 && !homes.has(undefined) ? [...homes][0] : null;
+        const whole = home && groupParts(groups, home).every((id) => selectedIds.includes(id));
+        if (whole) return home;
+
+        return selectedIds.length === 1 && !isLightRef(selectedIds[0]) ? selectedIds[0] : null;
+    }, [groups, selectedIds]);
+
+    useEffect(() => {
+        if (!onRenameGroup && !onRenamePart) return undefined;
+        const onKey = (e) => {
+            if (e.key !== 'F2' || !renamable) return;
+            if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+            e.preventDefault();
+            setRenaming(renamable);
+        };
+        window.addEventListener('keydown', onKey);
+
+        return () => window.removeEventListener('keydown', onKey);
+    }, [renamable, onRenameGroup, onRenamePart]);
+
     useEffect(() => {
         const el = listRef.current;
         if (!el || primary == null) return;
@@ -98,6 +186,65 @@ export default function Explorer({
         if (y < el.scrollTop) el.scrollTop = y;
         else if (y + ROW_H > el.scrollTop + el.clientHeight) el.scrollTop = y + ROW_H - el.clientHeight;
     }, [primary]);
+
+    const openMenu = (e, items) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const live = items.filter(Boolean);
+        if (!live.length) return;
+        setMenu({ x: e.clientX, y: e.clientY, items: live });
+    };
+
+    const addItems = (p) => (onAddUnder ? UNDER_PART.map((it) => ({
+        label: it.label,
+        disabled: it.held(p),
+        pick: () => onAddUnder(p._id, it.kind),
+    })) : []);
+
+    const partMenu = (p) => [
+        ...(onRenamePart ? [{ label: 'Rename', pick: () => setRenaming(p._id) }, { sep: true }] : []),
+        ...addItems(p),
+        ...(onAddUnder ? [{ sep: true }] : []),
+        {
+            label: isHidden(flags, p) ? 'Show' : 'Hide',
+            pick: () => onFlag?.('hide', [p._id], !isHidden(flags, p)),
+        },
+        {
+            label: isLocked(flags, p) ? 'Unlock' : 'Lock',
+            pick: () => onFlag?.('lock', [p._id], !isLocked(flags, p)),
+        },
+    ];
+
+    const groupMenu = (g) => [
+        { label: 'Rename', pick: () => setRenaming(g.id) },
+        { label: 'Select contents', pick: () => selectMany?.(groupParts(groups, g.id), false) },
+        { sep: true },
+        { label: 'Move to top level', disabled: !g.parent, pick: () => onReparent?.(g.id, null) },
+        { label: 'Ungroup', pick: () => onUngroup?.(g.id) },
+    ];
+
+    // Dragging a folder onto another puts it inside it; dragging parts onto one files them there.
+    const dropOn = (target) => {
+        const held = dragging;
+        setDragging(null);
+        if (!held) return;
+        if (held.kind === 'group') onReparent?.(held.id, target);
+        else onFilePartsUnder?.(held.ids, target);
+    };
+
+    const dropProps = (target, accepts) => ({
+        onDragOver: (e) => {
+            if (!dragging || !accepts(dragging)) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+        },
+        onDrop: (e) => {
+            if (!dragging || !accepts(dragging)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            dropOn(target);
+        },
+    });
 
     const toggles = (ids, hidden, locked) => (
         <span className="tree-flags">
@@ -118,33 +265,86 @@ export default function Explorer({
         </span>
     );
 
-    const partRow = ({ p }, nested) => {
+    const partRow = ({ p }, depth) => {
         const hidden = isHidden(flags, p);
         const locked = isLocked(flags, p);
+        const canAdd = onAddUnder && UNDER_PART.some((it) => !it.held(p));
 
         return (
             <div
                 key={p._id}
-                className={`tree-item child ${nested ? 'nested' : ''} ${selected.has(p._id) ? 'selected' : ''}`
+                {...rowProps(depth)}
+                className={`tree-item child ${selected.has(p._id) ? 'selected' : ''}`
                     + `${hidden ? ' is-hidden' : ''}${locked ? ' is-locked' : ''}`}
                 onClick={(e) => setSelectedId(p._id, e.ctrlKey || e.metaKey, null, true)}
+                onContextMenu={(e) => openMenu(e, partMenu(p))}
+                draggable={!!onFilePartsUnder}
+                onDragStart={() => setDragging({
+                    kind: 'parts',
+                    ids: selected.has(p._id) ? selectedIds.filter((id) => !isLightRef(id)) : [p._id],
+                })}
+                onDragEnd={() => setDragging(null)}
             >
+                <Twist />
                 <span className="icon">{cubeIcon(ICON_COLOR[p.T] ?? '#b9b9c0')}</span>
-                {p.T}
+                {renaming === p._id ? (
+                    <input
+                        className="group-name"
+                        autoFocus
+                        defaultValue={p.N ?? p.T}
+                        onClick={(e) => e.stopPropagation()}
+                        onBlur={(e) => {
+                            const v = e.target.value.trim().slice(0, 64);
+                            if (v && v !== (p.N ?? p.T)) onRenamePart?.(p._id, v);
+                            setRenaming(null);
+                        }}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') e.target.blur();
+                            if (e.key === 'Escape') setRenaming(null);
+                        }}
+                    />
+                ) : (
+                    <span
+                        className="label"
+                        onDoubleClick={(e) => { e.stopPropagation(); if (onRenamePart) setRenaming(p._id); }}
+                    >
+                        {p.N ?? p.T}
+                    </span>
+                )}
+                {canAdd && (
+                    <button
+                        className="add"
+                        title="Add something under this part"
+                        onClick={(e) => openMenu(e, addItems(p))}
+                    >
+                        +
+                    </button>
+                )}
                 {toggles([p._id], hidden, locked)}
             </div>
         );
     };
 
-    const groupRow = (g) => (
-        <div key={g.id} className={`tree-item group ${g.ids.some((id) => selected.has(id)) ? 'selected' : ''}`}>
-            <button
-                className={`twist ${isOpen(g) ? 'open' : ''}`}
-                onClick={() => setOpen((o) => ({ ...o, [g.id]: !isOpen(g) }))}
-                title={isOpen(g) ? 'Collapse' : 'Expand'}
-            >
-                <ChevronIcon />
-            </button>
+    const groupRow = (g, depth) => {
+        const held = groupParts(groups, g.id);
+        // The folder reads as selected only when everything in it is, not when one child is.
+        const whole = held.length > 0 && held.every((id) => selected.has(id));
+
+        return (
+        <div
+            key={g.id}
+            {...rowProps(depth)}
+            className={`tree-item group ${whole ? 'selected' : ''}`
+                + `${dragging && dragOver === g.id ? ' drop-into' : ''}`}
+            onContextMenu={(e) => openMenu(e, groupMenu(g))}
+            draggable={!!onReparent}
+            onDragStart={(e) => { e.stopPropagation(); setDragging({ kind: 'group', id: g.id }); }}
+            onDragEnd={() => { setDragging(null); setDragOver(null); }}
+            onDragEnter={() => dragging && setDragOver(g.id)}
+            onDragLeave={() => setDragOver((cur) => (cur === g.id ? null : cur))}
+            {...dropProps(g.id, (held2) => held2.kind !== 'group' || held2.id !== g.id)}
+        >
+            <Twist open={isOpen(g)} onToggle={() => toggle(g.id, !isOpen(g))} />
             <span className="icon"><FolderIcon /></span>
             {renaming === g.id ? (
                 <input
@@ -164,21 +364,48 @@ export default function Explorer({
             ) : (
                 <span
                     className="label"
-                    onClick={(e) => selectMany?.(g.ids, e.ctrlKey || e.metaKey)}
+                    onClick={(e) => selectMany?.(held, e.ctrlKey || e.metaKey)}
                     onDoubleClick={() => setRenaming(g.id)}
-                    title={`${g.name}: click to select all ${g.ids.length}, double-click to rename`}
+                    title={`${g.name}: click to select all ${held.length}, double-click to rename`}
                 >
                     {g.name}
                 </span>
             )}
-            <span className="count">{g.ids.length}</span>
-            {toggles(g.ids, g.ids.every((id) => isHidden(flags, id)), g.ids.every((id) => isLocked(flags, id)))}
-            <button className="clear" onClick={() => onUngroup?.(g.id)} title="Ungroup (the parts stay)">×</button>
+            <span className="count">{held.length}</span>
+            {toggles(held, held.every((id) => isHidden(flags, id)), held.every((id) => isLocked(flags, id)))}
+            <button
+                className="clear"
+                onClick={() => onUngroup?.(g.id)}
+                title="Ungroup (what is inside stays, one level up)"
+            >
+                ×
+            </button>
         </div>
-    );
+        );
+    };
 
     return (
         <div className="panel explorer">
+            {menu && (
+                <>
+                    <div className="tree-add-backdrop" onClick={() => setMenu(null)} onContextMenu={(e) => { e.preventDefault(); setMenu(null); }} />
+                    <div className="menu-drop tree-add-menu" style={{ left: menu.x, top: menu.y }}>
+                        {menu.items.map((it, i) => (it.sep ? (
+                            <div className="menu-sep" key={`s${i}`} />
+                        ) : (
+                            <button
+                                key={it.label}
+                                className="menu-item"
+                                disabled={!!it.disabled}
+                                onClick={() => { setMenu(null); it.pick(); }}
+                            >
+                                <span className="menu-tick" />
+                                <span className="menu-label">{it.label}</span>
+                            </button>
+                        )))}
+                    </div>
+                </>
+            )}
             <div className="panel-title">Explorer</div>
             <div className="explorer-search">
                 <input
@@ -198,12 +425,37 @@ export default function Explorer({
                     <>
                         <div style={{ height: first * ROW_H }} />
                         {slice.map((it) => {
-                            if (it.k === 'part') return partRow(it.row, it.nested);
-                            if (it.k === 'group') return groupRow(it.g);
+                            if (it.k === 'part') return partRow(it.row, it.depth);
+                            if (it.k === 'partlight') {
+                                const ref = partLightRef(it.row.p._id, it.kind);
+
+                                return (
+                                    <div
+                                        key={ref}
+                                        {...rowProps(it.depth)}
+                                        className={`tree-item child ${selected.has(ref) ? 'selected' : ''}`}
+                                        onClick={(e) => setSelectedId(ref, e.ctrlKey || e.metaKey, null, true)}
+                                    >
+                                        <Twist />
+                                        <span className="icon"><LightingIcon /></span>
+                                        {it.kind === 'point' ? 'PointLight' : 'SpotLight'}
+                                    </div>
+                                );
+                            }
+                            if (it.k === 'group') return groupRow(it.g, it.depth);
                             if (it.k === 'ws') {
                                         // I  anyone will replace this with "Add a part" with "Add a instance" and menu of instances because i dont know react :D
                                 return (
-                                    <div className="tree-item" key="ws" onClick={() => setSelectedId(null)}>
+                                    <div
+                                        className={`tree-item${dragging && dragOver === 'ws' ? ' drop-into' : ''}`}
+                                        key="ws"
+                                        {...rowProps(0)}
+                                        onClick={() => setSelectedId(null)}
+                                        onDragEnter={() => dragging && setDragOver('ws')}
+                                        onDragLeave={() => setDragOver((cur) => (cur === 'ws' ? null : cur))}
+                                        {...dropProps(null, () => true)}
+                                    >
+                                        <Twist open={rootOpen('ws')} onToggle={() => toggle('ws', !rootOpen('ws'))} />
                                         <span className="icon"><WorkspaceIcon /></span>
                                         Workspace{mapName ? `: ${mapName}` : ''}
 
@@ -240,43 +492,28 @@ export default function Explorer({
                                 );
                             }
                             if (it.k === 'lightrow') {
-                                const ref = lightRef(it.light._id);
-
                                 return (
                                     <div
-                                        key={ref}
-                                        className={`tree-item child ${selected.has(ref) ? 'selected' : ''}`}
-                                        onClick={(e) => setSelectedId(ref, e.ctrlKey || e.metaKey, null, true)}
+                                        key={it.rig.ref}
+                                        {...rowProps(it.depth)}
+                                        className={`tree-item child ${selected.has(it.rig.ref) ? 'selected' : ''}`}
+                                        onClick={() => setSelectedId(it.rig.ref, false, null, true)}
                                     >
+                                        <Twist />
                                         <span className="icon"><LightingIcon /></span>
-                                        {it.light.N}
-                                        {onRemoveLight && (
-                                            <button
-                                                className="clear"
-                                                title="Delete this light"
-                                                onClick={(e) => { e.stopPropagation(); onRemoveLight(it.light._id); }}
-                                            >
-                                                ×
-                                            </button>
-                                        )}
+                                        {it.rig.label}
                                     </div>
                                 );
                             }
 
                             return (
-                                <div className="tree-item" key="light">
+                                <div className="tree-item" key="light" {...rowProps(0)}>
+                                    <Twist
+                                        open={rootOpen('lighting')}
+                                        onToggle={() => toggle('lighting', !rootOpen('lighting'))}
+                                    />
                                     <span className="icon"><LightingIcon /></span>
                                     Lighting
-                                    <span className="count">{lights.length}</span>
-                                    {onAddLight && (
-                                        <button
-                                            className="add"
-                                            title="Add a light"
-                                            onClick={(e) => { e.stopPropagation(); onAddLight(); }}
-                                        >
-                                            +
-                                        </button>
-                                    )}
                                 </div>
                             );
                         })}

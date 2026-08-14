@@ -76,6 +76,35 @@ it('issues a live token only to a signed-in user with a secret configured', func
     expect($sig)->toBe(hash_hmac('sha256', "$payload.$exp", 'shared-with-laravel'));
 });
 
+it('marks an agent token so the room shows it as a separate member', function () {
+    config(['services.live.secret' => 'shared-with-laravel']);
+    $user = User::create(['name' => 'Paulo', 'email' => 'p@example.com', 'password' => 'correct horse']);
+
+    $claim = fn ($q) => json_decode(base64_decode(strtr(
+        explode('.', $this->actingAs($user)->getJson("/account/live-token?$q")->json('token'))[0],
+        '-_',
+        '+/',
+    )), true);
+
+    expect($claim('map=solo')['n'])->toBe('Paulo')
+        ->and($claim('map=solo&agent=1')['n'])->toBe('Paulo (MCP)')
+        ->and($claim('map=solo&agent=1')['u'])->toBe($user->id)
+        ->and($claim('map=solo&agent=1')['r'])->toBe('editor');
+});
+
+it('keeps an agent name inside the length the live server accepts', function () {
+    config(['services.live.secret' => 'shared-with-laravel']);
+    $user = User::create([
+        'name' => str_repeat('a', 32), 'email' => 'long@example.com', 'password' => 'correct horse',
+    ]);
+
+    $name = json_decode(base64_decode(strtr(explode('.', $this->actingAs($user)
+        ->getJson('/account/live-token?map=solo&agent=1')->json('token'))[0], '-_', '+/')), true)['n'];
+
+    expect(strlen($name))->toBeLessThanOrEqual(32)
+        ->and($name)->toEndWith(' (MCP)');
+});
+
 it('claims the team role on a team map, so the room knows its owner', function () {
     config(['services.live.secret' => 'shared-with-laravel']);
     $a = User::factory()->create();

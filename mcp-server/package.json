@@ -1,0 +1,20 @@
+{
+    "name": "vortex-studio-mcp",
+    "version": "1.0.0",
+    "private": true,
+    "description": "MCP server that lets an LLM build and refine Vortex Studio maps, live",
+    "type": "module",
+    "main": "src/index.js",
+    "bin": { "vortex-studio-mcp": "src/index.js" },
+    "scripts": {
+        "start": "node src/index.js",
+        "test": "node --test test/*.test.js"
+    },
+    "engines": { "node": ">=20" },
+    "dependencies": {
+        "@modelcontextprotocol/sdk": "^1.30.0",
+        "ws": "^8.18.0",
+        "zod": "^3.25.0"
+    },
+    "license": "AGPL-3.0-or-later"
+}

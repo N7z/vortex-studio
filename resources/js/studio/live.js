@@ -86,16 +86,16 @@ export class LiveClient {
         this.lastPlay = 'off';
     }
 
-    create(mapName, parts, groups = [], lights = []) {
+    create(mapName, parts, groups = [], lighting = null) {
         this.intent = {
-            t: 'create', mapName, parts, groups, lights,
+            t: 'create', mapName, parts, groups, lighting,
         };
         this.connect();
     }
 
-    openTeam(mapName, parts, groups = [], teamId = null, lights = []) {
+    openTeam(mapName, parts, groups = [], teamId = null, lighting = null) {
         this.intent = {
-            t: 'open', mapName, parts, groups, teamId, lights,
+            t: 'open', mapName, parts, groups, teamId, lighting,
         };
         this.connect();
     }
@@ -226,8 +226,8 @@ export class LiveClient {
                 return this.handlers.onSnapshot?.(msg);
             case 'groups':
                 return this.handlers.onGroups?.(msg);
-            case 'lights':
-                return this.handlers.onLights?.(msg);
+            case 'lighting':
+                return this.handlers.onLighting?.(msg);
             case 'gop':
                 return this.handlers.onGroupOp?.(msg);
             case 'selection':
@@ -275,8 +275,8 @@ export class LiveClient {
         return this.send({ t: 'groups', groups });
     }
 
-    sendLights(lights) {
-        return this.send({ t: 'lights', lights });
+    sendLighting(lighting) {
+        return this.send({ t: 'lighting', lighting });
     }
 
     sendGroupOp(op) {

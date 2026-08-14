@@ -7,7 +7,19 @@ export const DEFAULTS = {
     studs: true,
     grid: true,
     mode: 'lit',
+    tonemap: 'filmic',
+    exposure: 1,
 };
+
+// How the renderer maps the lighting it computes onto what a screen can show. Without one, bright
+// surfaces clip to flat white and colour goes with them; filmic rolls the highlights off instead.
+export const TONEMAPS = [
+    ['filmic', 'Filmic'],
+    ['neutral', 'Neutral'],
+    ['none', 'None'],
+];
+
+export const EXPOSURE = { min: 0.4, max: 2, step: 0.05 };
 
 export const MODES = [
     ['lit', 'Lit'],
@@ -37,6 +49,10 @@ export const SHADOW_RES = [
 
 const pick = (v, allowed, fallback) => (allowed.some(([a]) => a === v) ? v : fallback);
 
+const clamp = (v, fallback) => (typeof v === 'number' && Number.isFinite(v)
+    ? Math.min(EXPOSURE.max, Math.max(EXPOSURE.min, v))
+    : fallback);
+
 export function loadGraphics() {
     let stored = {};
     try {
@@ -58,6 +74,8 @@ export function loadGraphics() {
             : (legacyStuds === null ? base.studs : legacyStuds !== '0'),
         grid: typeof stored.grid === 'boolean' ? stored.grid : base.grid,
         mode: pick(stored.mode, MODES, base.mode),
+        tonemap: pick(stored.tonemap, TONEMAPS, base.tonemap ?? DEFAULTS.tonemap),
+        exposure: clamp(stored.exposure, base.exposure ?? DEFAULTS.exposure),
     };
 }
 

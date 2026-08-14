@@ -206,12 +206,14 @@ it('rejects too many groups', function () {
     $this->putJson('/api/maps/m', ['parts' => [IPART], 'groups' => $groups])->assertStatus(400);
 });
 
-it('rejects a group with an empty id list and an unknown key', function () {
+it('takes a group with an empty id list, which is a folder holding only folders', function () {
     $this->putJson('/api/maps/m', [
         'parts' => [IPART],
         'groups' => [['id' => 'g1', 'name' => 'A', 'ids' => []]],
-    ])->assertStatus(400);
+    ])->assertOk();
+});
 
+it('rejects a group with a key it does not know', function () {
     $this->putJson('/api/maps/m', [
         'parts' => [IPART],
         'groups' => [['id' => 'g1', 'name' => 'A', 'ids' => ['p1'], 'evil' => 1]],
@@ -325,16 +327,22 @@ const LIGHT = [
     'C' => 'ffffff', 'I' => 10000, 'Sd' => true,
 ];
 
+const LIGHTING = [
+    'ambient_color' => 'cfe8ff', 'brightness' => 2000, 'sun_color' => 'ffffff',
+    'sun_illuminance' => 10000, 'sun_shadow_maps_enabled' => true,
+    'sun_rotation' => [-69.44, 25.09, 17.53],
+];
+
 const PROJECT_ID = 'c32819ed4aa4a42511cefa9d974e3ce3';
 
 it('round-trips every property the studio document carries', function () {
     asToken()->putJson('/api/maps/parity', [
-        'parts' => [FULL_PART], 'groups' => [], 'lights' => [LIGHT], 'project_id' => PROJECT_ID,
+        'parts' => [FULL_PART], 'groups' => [], 'lighting' => LIGHTING, 'project_id' => PROJECT_ID,
     ])->assertOk();
 
     asToken()->getJson('/api/maps/parity')->assertOk()->assertJson([
         'parts' => [FULL_PART],
-        'lights' => [LIGHT],
+        'lighting' => LIGHTING,
         'project_id' => PROJECT_ID,
     ]);
 });
@@ -350,17 +358,96 @@ it('refuses a part property it does not know', function (array $bad) {
     'textures as the document list, not our map' => [['Tx' => [['face' => 'Top', 'kind' => 'Studs']]]],
 ]);
 
-it('refuses a light it cannot store', function (array $bad) {
-    asToken()->putJson('/api/maps/bad', ['parts' => [], 'groups' => [], 'lights' => [array_merge(LIGHT, $bad)]])
-        ->assertStatus(400);
+it('saves a folder inside a folder, including one holding only folders', function () {
+    $parts = [array_merge(PART, ['_id' => 'aaa']), array_merge(PART, ['_id' => 'bbb'])];
+    $groups = [
+        ['id' => 'g-out', 'name' => 'Building', 'ids' => []],
+        ['id' => 'g-in', 'name' => 'Walls', 'ids' => ['aaa', 'bbb'], 'parent' => 'g-out'],
+    ];
+
+    asToken()->putJson('/api/maps/nested', ['parts' => $parts, 'groups' => $groups])->assertOk();
+    asToken()->getJson('/api/maps/nested')->assertOk()->assertJson(['groups' => $groups]);
+});
+
+it('refuses folder nesting that goes nowhere or round in circles', function (array $groups) {
+    asToken()->putJson('/api/maps/bad', [
+        'parts' => [array_merge(PART, ['_id' => 'aaa'])], 'groups' => $groups,
+    ])->assertStatus(400);
 })->with([
-    'no shadow flag' => [['Sd' => null]],
-    'illuminance past the ceiling' => [['I' => 1e9]],
-    'a colour that is not six hex digits' => [['C' => 'white']],
-    'an empty name' => [['N' => '']],
+    'a parent that does not exist' => [[
+        ['id' => 'g-1', 'name' => 'Walls', 'ids' => ['aaa'], 'parent' => 'g-nope'],
+    ]],
+    'a folder inside itself' => [[
+        ['id' => 'g-1', 'name' => 'Walls', 'ids' => ['aaa'], 'parent' => 'g-1'],
+    ]],
+    'two folders inside each other' => [[
+        ['id' => 'g-1', 'name' => 'A', 'ids' => ['aaa'], 'parent' => 'g-2'],
+        ['id' => 'g-2', 'name' => 'B', 'ids' => [], 'parent' => 'g-1'],
+    ]],
+    'two folders sharing an id' => [[
+        ['id' => 'g-1', 'name' => 'A', 'ids' => ['aaa']],
+        ['id' => 'g-1', 'name' => 'B', 'ids' => []],
+    ]],
+    'a parent that is not a string' => [[
+        ['id' => 'g-1', 'name' => 'A', 'ids' => ['aaa'], 'parent' => 7],
+    ]],
 ]);
 
-it('refuses two lights sharing an id', function () {
+it('takes a part that carries a light, and refuses one it cannot store', function () {
+    $lamp = array_merge(PART, [
+        'point_light' => [
+            'color' => 'ffe9c4', 'intensity' => 60000, 'range' => 40, 'shadow_maps_enabled' => false,
+        ],
+        'spot_light' => [
+            'color' => 'ffffff', 'intensity' => 12000, 'range' => 25,
+            'shadow_maps_enabled' => true, 'angle' => 30, 'face' => 'Bottom',
+        ],
+    ]);
+
+    asToken()->putJson('/api/maps/lamps', ['parts' => [$lamp], 'groups' => []])->assertOk();
+    asToken()->getJson('/api/maps/lamps')->assertOk()->assertJson(['parts' => [$lamp]]);
+
+    $bad = fn (array $light) => asToken()
+        ->putJson('/api/maps/bad', ['parts' => [array_merge(PART, ['point_light' => $light])], 'groups' => []])
+        ->assertStatus(400);
+
+    $bad(['color' => 'white', 'intensity' => 1, 'range' => 1, 'shadow_maps_enabled' => false]);
+    $bad(['color' => 'ffffff', 'intensity' => -1, 'range' => 1, 'shadow_maps_enabled' => false]);
+    $bad(['color' => 'ffffff', 'intensity' => 1, 'range' => 1]);
+    $bad([
+        'color' => 'ffffff', 'intensity' => 1, 'range' => 1, 'shadow_maps_enabled' => false, 'angle' => 30,
+    ]);
+});
+
+it('refuses a spot light that points at no face of the part', function () {
+    asToken()->putJson('/api/maps/bad', ['parts' => [array_merge(PART, [
+        'spot_light' => [
+            'color' => 'ffffff', 'intensity' => 1, 'range' => 1,
+            'shadow_maps_enabled' => false, 'angle' => 30, 'face' => 'Sideways',
+        ],
+    ])], 'groups' => []])->assertStatus(400);
+});
+
+it('refuses a lighting rig it cannot store', function (array $bad) {
+    asToken()->putJson('/api/maps/bad', ['parts' => [], 'groups' => [], 'lighting' => array_merge(LIGHTING, $bad)])
+        ->assertStatus(400);
+})->with([
+    'a shadow flag that is not a boolean' => [['sun_shadow_maps_enabled' => 'yes']],
+    'illuminance past the ceiling' => [['sun_illuminance' => 1e9]],
+    'brightness past the ceiling' => [['brightness' => 1e9]],
+    'a colour that is not six hex digits' => [['ambient_color' => 'white']],
+    'a sun rotation that is not three numbers' => [['sun_rotation' => [1, 2]]],
+    'a property the rig does not have' => [['sun_position' => [1, 2, 3]]],
+]);
+
+it('still takes the list of suns a map was saved with before the rig became one object', function () {
+    asToken()->putJson('/api/maps/legacy', ['parts' => [], 'groups' => [], 'lights' => [LIGHT]])
+        ->assertOk();
+
+    asToken()->getJson('/api/maps/legacy')->assertOk()->assertJson(['lighting' => [LIGHT]]);
+});
+
+it('refuses two of the old suns sharing an id', function () {
     asToken()->putJson('/api/maps/bad', ['parts' => [], 'groups' => [], 'lights' => [LIGHT, LIGHT]])
         ->assertStatus(400);
 });
@@ -370,19 +457,19 @@ it('refuses a project id that is not 32 hex characters', function () {
         ->assertStatus(400);
 });
 
-it('leaves stored lights and project id alone when a save omits them', function () {
+it('leaves the stored lighting and project id alone when a save omits them', function () {
     asToken()->putJson('/api/maps/keep', [
-        'parts' => [FULL_PART], 'groups' => [], 'lights' => [LIGHT], 'project_id' => PROJECT_ID,
+        'parts' => [FULL_PART], 'groups' => [], 'lighting' => LIGHTING, 'project_id' => PROJECT_ID,
     ])->assertOk();
 
     asToken()->putJson('/api/maps/keep', [FULL_PART])->assertOk();
 
     asToken()->getJson('/api/maps/keep')->assertOk()
-        ->assertJson(['lights' => [LIGHT], 'project_id' => PROJECT_ID]);
+        ->assertJson(['lighting' => LIGHTING, 'project_id' => PROJECT_ID]);
 });
 
 it('still takes a map with none of the new properties', function () {
     asToken()->putJson('/api/maps/old', [PART])->assertOk();
     asToken()->getJson('/api/maps/old')->assertOk()
-        ->assertJson(['parts' => [PART], 'lights' => [], 'project_id' => null]);
+        ->assertJson(['parts' => [PART], 'lighting' => null, 'project_id' => null]);
 });

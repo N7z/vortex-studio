@@ -1,9 +1,9 @@
 import { config } from './config.js';
 import { uniqueName } from './identity.js';
 import { MEMBER_COLORS, randomCode, randomId, randomName } from './names.js';
-import { applyGroupOp, validateGroupOp } from './groupops.js';
+import { applyGroupOp, pruneEmptyGroups, validateGroupOp } from './groupops.js';
 import { applyOp, validateOp } from './ops.js';
-import { cleanLights } from './lights.js';
+import { cleanLighting } from './lights.js';
 
 const rooms = new Map();
 
@@ -76,22 +76,28 @@ export function cleanGroups(input, known = null) {
         }
         total += ids.length;
         if (total > config.maxParts) return null;
+        if (g.parent !== undefined && g.parent !== null && typeof g.parent !== 'string') return null;
         const live = known ? ids.filter((id) => known.has(id)) : ids;
-        if (live.length) out.push({ id: g.id.slice(0, 64), name: g.name.slice(0, 64), ids: live });
+        out.push({
+            id: g.id.slice(0, 64),
+            name: g.name.slice(0, 64),
+            ids: live,
+            ...(g.parent ? { parent: String(g.parent).slice(0, 64) } : {}),
+        });
     }
 
-    return out;
+    return pruneEmptyGroups(out);
 }
 
 class Room {
-    constructor(code, mapName, parts, groups = [], ownerUserId = null, teamId = null, lights = []) {
+    constructor(code, mapName, parts, groups = [], ownerUserId = null, teamId = null, lighting = null) {
         this.code = code;
         this.mapName = mapName;
         this.ownerUserId = ownerUserId;
         this.teamId = teamId;
         this.parts = parts;
         this.groups = groups;
-        this.lights = lights;
+        this.lighting = cleanLighting(lighting) ?? cleanLighting(null);
         this.chat = [];
         this.pruneGroups();
         this.seq = 0;
@@ -343,9 +349,9 @@ class Room {
     pruneGroups() {
         if (!this.groups.length) return;
         const alive = new Set(this.parts.map((p) => p._id));
-        this.groups = this.groups
-            .map((g) => ({ ...g, ids: g.ids.filter((id) => alive.has(id)) }))
-            .filter((g) => g.ids.length);
+        this.groups = pruneEmptyGroups(
+            this.groups.map((g) => ({ ...g, ids: g.ids.filter((id) => alive.has(id)) })),
+        );
     }
 
     setViewFrom(member, view) {
@@ -380,13 +386,13 @@ class Room {
         return null;
     }
 
-    setLightsFrom(member, lights) {
+    setLightingFrom(member, lighting) {
         if (!this.canEdit(member)) return 'you are a spectator in this room';
-        const clean = cleanLights(lights);
+        const clean = cleanLighting(lighting);
         if (!clean) return 'bad light data';
 
-        this.lights = clean;
-        this.broadcast({ t: 'lights', lights: this.lights, from: member.id }, member.id);
+        this.lighting = clean;
+        this.broadcast({ t: 'lighting', lighting: this.lighting, from: member.id }, member.id);
 
         return null;
     }
@@ -422,14 +428,14 @@ class Room {
     }
 }
 
-export function createRoom(mapName, parts, groups = [], ownerUserId = null, teamId = null, lights = []) {
+export function createRoom(mapName, parts, groups = [], ownerUserId = null, teamId = null, lighting = null) {
     if (rooms.size >= config.maxRooms) return null;
     let code;
     do {
         code = randomCode();
     } while (rooms.has(code));
 
-    const room = new Room(code, mapName, parts, groups, ownerUserId, teamId, lights);
+    const room = new Room(code, mapName, parts, groups, ownerUserId, teamId, lighting);
     rooms.set(code, room);
 
     return room;

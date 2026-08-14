@@ -1,10 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import NumberInput from './NumberInput';
+import { LOG_STEPS, logToValue, valueToLog } from './scale';
 import {
     FACES, MATERIALS, TEXTURES,
     canCollide, castsShadow, isAnchored, isBaseplate, materialOf, texturesOf,
 } from './materials';
-import { MAX_ILLUMINANCE } from './lighting';
+import {
+    AMBIENT, DEFAULT_POINT_LIGHT, DEFAULT_SPOT_LIGHT, LIGHT_FACES, MAX_BRIGHTNESS,
+    MAX_ILLUMINANCE, MAX_INTENSITY, MAX_RANGE, USEFUL_RANGE, pointLightOf, spotLightOf,
+} from './lighting';
 
 const COLOR_COMMIT = 150;
 
@@ -19,6 +23,45 @@ function Vec3({ value, onChange, readOnly }) {
             {[0, 1, 2].map((i) => (
                 <NumberInput key={i} value={value[i]} onChange={set(i)} readOnly={readOnly} />
             ))}
+        </div>
+    );
+}
+
+// A number that has a floor and a ceiling is easier to feel out by dragging than by typing, so it
+// gets both: the slider to sweep it and the box to land on an exact value.
+function Slider({
+    value, min, max, step, readOnly, onChange, log = false, sliderMax = null,
+}) {
+    const reach = sliderMax ?? max;
+    return (
+        <div className="prop-slider">
+            {log ? (
+                <input
+                    type="range"
+                    min={0}
+                    max={LOG_STEPS}
+                    step={1}
+                    value={valueToLog(value, max)}
+                    disabled={readOnly}
+                    onChange={(e) => onChange(logToValue(Number(e.target.value), max))}
+                />
+            ) : (
+            <input
+                type="range"
+                min={min}
+                max={reach}
+                step={step}
+                value={Math.min(value, reach)}
+                disabled={readOnly}
+                onChange={(e) => onChange(Number(e.target.value))}
+            />
+            )}
+            <NumberInput
+                value={value}
+                readOnly={readOnly}
+                clamp={(v) => Math.min(max, Math.max(min, v))}
+                onChange={onChange}
+            />
         </div>
     );
 }
@@ -80,52 +123,82 @@ function ColorRow({ id, value, readOnly, onCommit }) {
     );
 }
 
-function LightProperties({ light, onChange, readOnly }) {
+function AmbientProperties({ lighting, onChange, readOnly }) {
     return (
         <div className="panel properties">
             <div className="panel-title">
-                Properties: {light.N}
+                Properties: Ambient
+                {readOnly && <span className="props-ro">read only</span>}
+            </div>
+            <div className="panel-body">
+                <div className="props">
+                    <ColorRow
+                        id="ambient"
+                        value={lighting.ambient_color}
+                        readOnly={readOnly}
+                        onCommit={(ambient_color) => onChange({ ambient_color })}
+                    />
+                    <div className="prop-row">
+                        <label>Brightness</label>
+                        <Slider
+                            log
+                            value={lighting.brightness}
+                            min={0}
+                            max={MAX_BRIGHTNESS}
+                            step={5}
+                            readOnly={readOnly}
+                            onChange={(brightness) => onChange({ brightness })}
+                        />
+                    </div>
+                    <div className="prop-note">
+                        Light with no direction, filling the shadows the sun leaves.
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function SunProperties({ lighting, onChange, readOnly }) {
+    return (
+        <div className="panel properties">
+            <div className="panel-title">
+                Properties: Sun
                 {readOnly && <span className="props-ro">read only</span>}
             </div>
             <div className="panel-body">
                 <div className="props">
                     <div className="prop-row">
-                        <label>Name</label>
-                        <input
-                            type="text"
-                            value={light.N}
+                        <label>Rotation</label>
+                        <Vec3
+                            value={lighting.sun_rotation}
                             readOnly={readOnly}
-                            onChange={(e) => onChange({ N: e.target.value.slice(0, 64) || 'Light' })}
+                            onChange={(sun_rotation) => onChange({ sun_rotation })}
                         />
                     </div>
-                    <div className="prop-row">
-                        <label>Position</label>
-                        <Vec3 value={light.P} readOnly={readOnly} onChange={(P) => onChange({ P })} />
-                    </div>
-                    <div className="prop-row">
-                        <label>Rotation</label>
-                        <Vec3 value={light.R} readOnly={readOnly} onChange={(R) => onChange({ R })} />
-                    </div>
                     <ColorRow
-                        id={light._id}
-                        value={light.C}
+                        id="sun"
+                        value={lighting.sun_color}
                         readOnly={readOnly}
-                        onCommit={(C) => onChange({ C })}
+                        onCommit={(sun_color) => onChange({ sun_color })}
                     />
                     <div className="prop-row">
                         <label>Illuminance</label>
-                        <NumberInput
-                            value={light.I}
+                        <Slider
+                            log
+                            value={lighting.sun_illuminance}
+                            min={0}
+                            max={MAX_ILLUMINANCE}
+                            step={100}
                             readOnly={readOnly}
-                            clamp={(v) => Math.min(MAX_ILLUMINANCE, Math.max(0, v))}
-                            onChange={(I) => onChange({ I })}
+                            onChange={(sun_illuminance) => onChange({ sun_illuminance })}
                         />
                     </div>
                     <Toggle
                         label="Shadows"
-                        checked={light.Sd !== false}
+                        checked={lighting.sun_shadow_maps_enabled !== false}
                         readOnly={readOnly}
-                        onChange={(Sd) => onChange({ Sd })}
+                        onChange={(sun_shadow_maps_enabled) => onChange({ sun_shadow_maps_enabled })}
                     />
                 </div>
             </div>
@@ -133,14 +206,123 @@ function LightProperties({ light, onChange, readOnly }) {
     );
 }
 
+function PartLightProperties({
+    part, kind, count = 1, onChange, readOnly, onRemove,
+}) {
+    const spot = kind === 'spot';
+    const light = spot ? spotLightOf(part) : pointLightOf(part);
+    if (!light) return null;
+    const key = spot ? 'spot_light' : 'point_light';
+    const set = (patch) => onChange({ [key]: { ...light, ...patch } });
+
+    return (
+        <div className="panel properties">
+            <div className="panel-title">
+                Properties: {spot ? 'SpotLight' : 'PointLight'}
+                {count > 1 && <span className="props-count">{count} selected</span>}
+                {readOnly && <span className="props-ro">read only</span>}
+            </div>
+            <div className="panel-body">
+                <div className="props">
+                    <ColorRow
+                        id={`${key}:${part._id}`}
+                        value={light.color}
+                        readOnly={readOnly}
+                        onCommit={(color) => set({ color })}
+                    />
+                    <div className="prop-row">
+                        <label>Intensity</label>
+                        <Slider
+                            log
+                            value={light.intensity}
+                            min={0}
+                            max={MAX_INTENSITY}
+                            step={1000}
+                            readOnly={readOnly}
+                            onChange={(intensity) => set({ intensity })}
+                        />
+                    </div>
+                    <div className="prop-row">
+                        <label>Range</label>
+                        <Slider
+                            value={light.range}
+                            min={0}
+                            max={MAX_RANGE}
+                            sliderMax={USEFUL_RANGE}
+                            step={1}
+                            readOnly={readOnly}
+                            onChange={(range) => set({ range })}
+                        />
+                    </div>
+                    {spot && (
+                        <>
+                            <div className="prop-row">
+                                <label>Angle</label>
+                                <Slider
+                                    value={light.angle}
+                                    min={1}
+                                    max={89}
+                                    step={1}
+                                    readOnly={readOnly}
+                                    onChange={(angle) => set({ angle })}
+                                />
+                            </div>
+                            <div className="prop-row">
+                                <label>Face</label>
+                                <select
+                                    value={light.face}
+                                    disabled={readOnly}
+                                    onChange={(e) => set({ face: e.target.value })}
+                                >
+                                    {LIGHT_FACES.map((f) => <option key={f}>{f}</option>)}
+                                </select>
+                            </div>
+                        </>
+                    )}
+                    <Toggle
+                        label="Shadows"
+                        checked={light.shadow_maps_enabled === true}
+                        readOnly={readOnly}
+                        onChange={(shadow_maps_enabled) => set({ shadow_maps_enabled })}
+                    />
+                    <div className="prop-note">
+                        It shines from the part that holds it, so moving the part moves the light.
+                    </div>
+                    {!readOnly && (
+                        <button className="prop-remove" onClick={() => onRemove(key)}>
+                            {count > 1 ? `Remove these ${count} lights` : 'Remove this light'}
+                        </button>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export default function Properties({
-    part, count = 0, onChange, readOnly = false, light = null, onLightChange = null,
+    part, count = 0, onChange, readOnly = false, light = null, lighting = null, onLightChange = null,
+    partLight = null,
 }) {
     const id = part?._id ?? null;
     const [draft, setColorDraft] = useColorDraft(id, (hex) => onChange({ C: hex }));
 
-    if (light) {
-        return <LightProperties light={light} onChange={onLightChange} readOnly={readOnly} />;
+    if (partLight && part) {
+        return (
+            <PartLightProperties
+                part={part}
+                kind={partLight}
+                count={count}
+                onChange={onChange}
+                readOnly={readOnly}
+                onRemove={(key) => onChange({ [key]: null })}
+            />
+        );
+    }
+
+    if (light && lighting) {
+        const Panel = light === AMBIENT ? AmbientProperties : SunProperties;
+
+        return <Panel lighting={lighting} onChange={onLightChange} readOnly={readOnly} />;
     }
 
     if (!part) {
@@ -212,11 +394,23 @@ export default function Properties({
                         />
                     </div>
                     <div className="prop-row">
-                        <label>Transparency</label>
-                        <NumberInput
-                            value={part.Tr ?? 0}
+                        <label>Name</label>
+                        <input
+                            type="text"
+                            value={part.N ?? ''}
+                            placeholder={part.T}
                             readOnly={readOnly}
-                            clamp={(v) => Math.min(1, Math.max(0, v))}
+                            onChange={(e) => onChange({ N: e.target.value.slice(0, 64) || null })}
+                        />
+                    </div>
+                    <div className="prop-row">
+                        <label>Transparency</label>
+                        <Slider
+                            value={part.Tr ?? 0}
+                            min={0}
+                            max={1}
+                            step={0.05}
+                            readOnly={readOnly}
                             onChange={(Tr) => onChange({ Tr })}
                         />
                     </div>

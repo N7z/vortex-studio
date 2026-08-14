@@ -230,6 +230,37 @@ a.tool-btn { text-decoration: none; }
     font-size: 11px;
 }
 .gfx-row select:disabled { color: var(--faint-2); }
+.gfx-slider { display: flex; align-items: center; gap: 8px; }
+.gfx-slider b { min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
+.gfx-slider input[type='range'] { width: 96px; }
+
+/* One slider look for the graphics popover and the properties panel. */
+input[type='range'] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: var(--sunken);
+    border-radius: 2px;
+    outline: none;
+}
+input[type='range']::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 11px; height: 11px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+}
+input[type='range']::-moz-range-thumb {
+    width: 11px; height: 11px;
+    border: none;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+}
+input[type='range']:disabled { opacity: 0.45; }
+input[type='range']:disabled::-webkit-slider-thumb { background: var(--disabled); cursor: default; }
+input[type='range']:disabled::-moz-range-thumb { background: var(--disabled); cursor: default; }
 .gfx-note { color: var(--dim); font-size: 11px; margin-top: 8px; }
 
 .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
@@ -322,9 +353,10 @@ a.tool-btn { text-decoration: none; }
 }
 .tree-item:hover { background: var(--hover-soft); }
 .tree-item.selected { background: var(--sel-bg); color: var(--ink-white); }
-.tree-item.child { padding-left: 26px; }
+/* Depth comes from --indent on the row, so a group nested in a group needs no new rule. */
+.tree-item { padding-left: var(--indent, 8px); }
 .tree-item .icon { width: 14px; height: 14px; flex: none; }
-.tree-item.group { padding-left: 6px; gap: 4px; cursor: default; }
+.tree-item.group { gap: 4px; cursor: default; }
 .tree-item.group .label { flex: 1; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
 .tree-item.group .count { color: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums; }
 .tree-item .clear {
@@ -340,27 +372,27 @@ a.tool-btn { text-decoration: none; }
     font-size: 12px; line-height: 1; padding: 0 4px; border-radius: 3px; height: 14px;
 }
 .tree-item .add:hover { color: var(--ink); border-color: var(--line-strong); }
+.tree-item.child .add { opacity: 0; transition: opacity 90ms linear; }
+.tree-item.child:hover .add, .tree-item.child.selected .add { opacity: 1; }
 .tree-item.group .group-name {
     flex: 1; min-width: 0; background: var(--field-alt); border: 1px solid var(--accent);
     color: var(--ink); border-radius: 3px; padding: 0 4px; font-size: 12px; height: 16px;
 }
 .tree-item.group .group-name:focus { outline: none; }
-.tree-item.child.nested { padding-left: 40px; }
-
 /* What a row hangs off, drawn per row so it survives the virtual list: each one
-   contributes its own segment and together they read as one line. 15px is the
-   centre of a top-level icon, 29px the centre of a folder's. */
-.tree-item.child::before, .tree-item.group::before, .tree-item.child.nested::after {
+   contributes its own segment and together they read as one line, straight down
+   the centre of the parent's twist, one indent step to the left. */
+.tree-item[data-nested]::before {
     content: '';
     position: absolute;
     top: 0;
     bottom: 0;
+    left: calc(var(--indent) - 8px);
     width: 1px;
     background: var(--line-faint);
     pointer-events: none;
 }
-.tree-item.child::before, .tree-item.group::before { left: 15px; }
-.tree-item.child.nested::after { left: 29px; }
+.twist-gap { width: 12px; height: 12px; flex: none; }
 .twist {
     background: none; border: none; color: var(--dim); cursor: pointer;
     padding: 0; width: 12px; height: 12px; flex: none; display: flex;
@@ -392,41 +424,6 @@ a.tool-btn { text-decoration: none; }
     .tree-item .flag { opacity: 1; padding: 0 5px; }
 }
 
-/* ---------- arrange ---------- */
-
-.panel.arrange { flex: none; border-bottom: 4px solid var(--sunken); }
-.panel.arrange .panel-body { overflow: visible; padding: 8px 10px; }
-.arrange-grid { display: flex; flex-direction: column; gap: 4px; }
-.arrange-row, .arrange-gap { display: flex; align-items: center; gap: 4px; }
-.arrange-axis { width: 12px; flex: none; color: var(--ink-label); font-size: 12px; }
-.panel.arrange button {
-    flex: 1;
-    min-width: 0;
-    padding: 4px 2px;
-    border: 1px solid var(--line);
-    border-radius: 3px;
-    background: var(--raised);
-    color: var(--ink-2);
-    font: inherit;
-    font-size: 11px;
-    cursor: pointer;
-}
-.panel.arrange button:hover:not(:disabled) { border-color: var(--accent); color: var(--ink-white); }
-.panel.arrange button:disabled { color: var(--disabled); cursor: default; }
-.arrange-gap { margin-top: 8px; }
-.arrange-gap > span { width: 26px; flex: none; color: var(--ink-label); font-size: 11px; }
-.arrange-gap .num {
-    width: 44px;
-    flex: none;
-    background: var(--field);
-    border: 1px solid var(--line);
-    color: var(--ink);
-    padding: 3px 5px;
-    border-radius: 3px;
-    font-size: 12px;
-}
-.arrange-drop { width: 100%; margin-top: 8px; }
-
 /* ---------- properties ---------- */
 
 .props { padding: 4px 10px; display: flex; flex-direction: column; gap: 8px; }
@@ -453,6 +450,22 @@ a.tool-btn { text-decoration: none; }
     font-size: 12px;
 }
 .prop-row input:focus, .prop-row select:focus { outline: none; border-color: var(--accent); }
+/* Slider first, box second: sweep for a feel, type for a value. */
+.prop-slider { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.prop-slider input[type='range'] { flex: 1; min-width: 40px; }
+.prop-slider .num, .prop-slider input[type='number'] { flex: none; width: 54px; }
+.prop-note { color: var(--dim); font-size: 11px; line-height: 1.4; }
+.prop-remove {
+    background: var(--field);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    color: var(--ink);
+    font-size: 12px;
+    padding: 3px 6px;
+    cursor: pointer;
+}
+.prop-remove:hover { border-color: var(--accent); color: var(--ink-white); }
+.prop-remove { width: 100%; margin-top: 2px; }
 .prop-row input[type="number"], .prop-row .num, .arch-axes input[type="number"], .arch-axes .num {
     appearance: textfield;
     -moz-appearance: textfield;
@@ -1563,6 +1576,12 @@ a.tool-btn { text-decoration: none; }
 .chat-send button:hover { background: var(--line); color: var(--ink-mid); }
 .chat-send button:disabled { color: var(--faint-2); cursor: default; background: var(--hover); }
 
+.props-count {
+    margin-left: 6px;
+    font-size: 10px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
 .props-ro {
     margin-left: 6px;
     font-size: 9px;
@@ -1623,6 +1642,15 @@ a.tool-btn { text-decoration: none; }
     max-height: calc(100vh - 40px);
     overflow-y: auto;
 }
+/* The explorer list scrolls and clips, so a row's menu is placed against the window instead. */
+.tree-add-menu { position: fixed; top: auto; left: auto; min-width: 150px; }
+/* Where a dragged folder or part would land. */
+.tree-item.drop-into {
+    background: var(--sel-soft);
+    box-shadow: inset 0 0 0 1px var(--accent);
+}
+.tree-add-backdrop { position: fixed; inset: 0; z-index: 69; }
+
 .menu-drop::-webkit-scrollbar { width: 8px; }
 .menu-drop::-webkit-scrollbar-track { background: transparent; }
 .menu-drop::-webkit-scrollbar-thumb { background: var(--line-mid); border-radius: 4px; }

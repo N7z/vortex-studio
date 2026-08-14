@@ -48,11 +48,12 @@ export async function loadMap(name, team = null) {
     const d = await r.json();
 
     return Array.isArray(d)
-        ? { parts: d, groups: [], lights: [], projectId: null, version: 0 }
+        ? { parts: d, groups: [], lighting: null, projectId: null, version: 0 }
         : {
             parts: d.parts ?? [],
             groups: d.groups ?? [],
-            lights: d.lights ?? [],
+            // Maps saved before the rig became one object still carry a list of suns.
+            lighting: d.lighting ?? d.lights ?? null,
             projectId: d.project_id ?? null,
             version: d.version ?? 0,
         };
@@ -81,15 +82,15 @@ const gzip = async (text) => new Response(
     new Blob([text]).stream().pipeThrough(new CompressionStream('gzip')),
 ).arrayBuffer();
 
-export const saveBody = (parts, groups, version, lights = [], projectId = null) => JSON.stringify({
-    parts, groups, lights, project_id: projectId, version,
+export const saveBody = (parts, groups, version, lighting = null, projectId = null) => JSON.stringify({
+    parts, groups, lighting, project_id: projectId, version,
 });
 
 export async function saveMap(
     name, parts, groups, team = null, version = null, body = null, confirmed = false,
-    lights = [], projectId = null,
+    lighting = null, projectId = null,
 ) {
-    const text = body ?? saveBody(parts, groups, version, lights, projectId);
+    const text = body ?? saveBody(parts, groups, version, lighting, projectId);
     const headers = { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf };
     if (confirmed) headers['X-Confirm-Destructive'] = '1';
     let payload = text;

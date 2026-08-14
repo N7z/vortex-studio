@@ -34,13 +34,13 @@ export function readBackup(name) {
     } catch {
         return null;
     }
-    if (Array.isArray(doc)) return { parts: doc, groups: [], lights: [], projectId: null };
+    if (Array.isArray(doc)) return { parts: doc, groups: [], lighting: null, projectId: null };
     if (!doc || typeof doc !== 'object' || !Array.isArray(doc.parts)) return null;
 
     return {
         parts: doc.parts,
         groups: Array.isArray(doc.groups) ? doc.groups : [],
-        lights: Array.isArray(doc.lights) ? doc.lights : [],
+        lighting: doc.lighting ?? (Array.isArray(doc.lights) ? doc.lights : null),
         projectId: doc.project_id ?? null,
     };
 }
