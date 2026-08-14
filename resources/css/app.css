@@ -353,9 +353,10 @@ input[type='range']:disabled::-moz-range-thumb { background: var(--disabled); cu
 }
 .tree-item:hover { background: var(--hover-soft); }
 .tree-item.selected { background: var(--sel-bg); color: var(--ink-white); }
-.tree-item.child { padding-left: 26px; }
+/* Depth comes from --indent on the row, so a group nested in a group needs no new rule. */
+.tree-item { padding-left: var(--indent, 8px); }
 .tree-item .icon { width: 14px; height: 14px; flex: none; }
-.tree-item.group { padding-left: 6px; gap: 4px; cursor: default; }
+.tree-item.group { gap: 4px; cursor: default; }
 .tree-item.group .label { flex: 1; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
 .tree-item.group .count { color: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums; }
 .tree-item .clear {
@@ -376,22 +377,20 @@ input[type='range']:disabled::-moz-range-thumb { background: var(--disabled); cu
     color: var(--ink); border-radius: 3px; padding: 0 4px; font-size: 12px; height: 16px;
 }
 .tree-item.group .group-name:focus { outline: none; }
-.tree-item.child.nested { padding-left: 40px; }
-
 /* What a row hangs off, drawn per row so it survives the virtual list: each one
-   contributes its own segment and together they read as one line. 15px is the
-   centre of a top-level icon, 29px the centre of a folder's. */
-.tree-item.child::before, .tree-item.group::before, .tree-item.child.nested::after {
+   contributes its own segment and together they read as one line, straight down
+   the centre of the parent's twist, one indent step to the left. */
+.tree-item[data-nested]::before {
     content: '';
     position: absolute;
     top: 0;
     bottom: 0;
+    left: calc(var(--indent) - 8px);
     width: 1px;
     background: var(--line-faint);
     pointer-events: none;
 }
-.tree-item.child::before, .tree-item.group::before { left: 15px; }
-.tree-item.child.nested::after { left: 29px; }
+.twist-gap { width: 12px; height: 12px; flex: none; }
 .twist {
     background: none; border: none; color: var(--dim); cursor: pointer;
     padding: 0; width: 12px; height: 12px; flex: none; display: flex;

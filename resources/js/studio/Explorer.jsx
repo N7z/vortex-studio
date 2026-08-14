@@ -18,6 +18,23 @@ const OVERSCAN = 8;
 
 const NO_LIGHTS = [];
 
+// Every row reserves the same twist slot whether or not it has one, so the icons
+// down a column line up and a guide can be drawn at a fixed offset from the indent.
+const rowProps = (depth) => ({
+    style: { '--indent': `${6 + depth * 14}px` },
+    ...(depth ? { 'data-nested': '' } : {}),
+});
+
+const Twist = ({ open, onToggle }) => (onToggle ? (
+    <button
+        className={`twist ${open ? 'open' : ''}`}
+        title={open ? 'Collapse' : 'Expand'}
+        onClick={(e) => { e.stopPropagation(); onToggle(); }}
+    >
+        <ChevronIcon />
+    </button>
+) : <span className="twist-gap" />);
+
 export default function Explorer({
     parts, selectedIds, setSelectedId, selectMany, groups = [], onUngroup, onRenameGroup, mapName,
     flags = EMPTY, onFlag, onClearFlags, lights = NO_LIGHTS, onAddPart, onAddLight, onRemoveLight,
@@ -31,7 +48,10 @@ export default function Explorer({
     const primary = selectedIds.length ? selectedIds[selectedIds.length - 1] : null;
 
     const q = query.trim().toLowerCase();
+    // Groups past a certain size start closed; the two roots start open.
     const isOpen = (g) => open[g.id] ?? (g.ids.length <= AUTO_OPEN_MAX);
+    const rootOpen = (key) => open[key] ?? true;
+    const toggle = (key, next) => setOpen((o) => ({ ...o, [key]: next }));
     const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
 
     const { items, matched } = useMemo(() => {
@@ -47,22 +67,28 @@ export default function Explorer({
             else loose.push(row);
         }
 
+        // A search flattens the tree: what matched has to be reachable, whatever is collapsed.
+        const wsOpen = q || (open.ws ?? true);
+        const lightsOpen = q || (open.lighting ?? true);
+
         const out = [];
-        if (!q) out.push({ k: 'ws' });
-        for (const g of groups) {
-            const rowsIn = buckets.get(g.id) ?? [];
-            if (q && !rowsIn.length) continue;
-            out.push({ k: 'group', g });
-            if (open[g.id] ?? (g.ids.length <= AUTO_OPEN_MAX)) {
-                for (const row of rowsIn) out.push({ k: 'part', row, nested: true });
+        if (!q) out.push({ k: 'ws', depth: 0 });
+        if (wsOpen) {
+            for (const g of groups) {
+                const rowsIn = buckets.get(g.id) ?? [];
+                if (q && !rowsIn.length) continue;
+                out.push({ k: 'group', g, depth: 1 });
+                if (open[g.id] ?? (g.ids.length <= AUTO_OPEN_MAX)) {
+                    for (const row of rowsIn) out.push({ k: 'part', row, depth: 2 });
+                }
             }
+            for (const row of loose) out.push({ k: 'part', row, depth: 1 });
         }
-        for (const row of loose) out.push({ k: 'part', row });
 
         const shown = lights.filter((l) => !q || l.N.toLowerCase().includes(q));
-        if (!q || shown.length) out.push({ k: 'lighting' });
-        if (!q || shown.length) {
-            for (const l of shown) out.push({ k: 'lightrow', light: l });
+        if (!q || shown.length) out.push({ k: 'lighting', depth: 0 });
+        if (lightsOpen) {
+            for (const l of shown) out.push({ k: 'lightrow', light: l, depth: 1 });
         }
 
         return { items: out, matched: rows.length + shown.length };
@@ -118,17 +144,19 @@ export default function Explorer({
         </span>
     );
 
-    const partRow = ({ p }, nested) => {
+    const partRow = ({ p }, depth) => {
         const hidden = isHidden(flags, p);
         const locked = isLocked(flags, p);
 
         return (
             <div
                 key={p._id}
-                className={`tree-item child ${nested ? 'nested' : ''} ${selected.has(p._id) ? 'selected' : ''}`
+                {...rowProps(depth)}
+                className={`tree-item child ${selected.has(p._id) ? 'selected' : ''}`
                     + `${hidden ? ' is-hidden' : ''}${locked ? ' is-locked' : ''}`}
                 onClick={(e) => setSelectedId(p._id, e.ctrlKey || e.metaKey, null, true)}
             >
+                <Twist />
                 <span className="icon">{cubeIcon(ICON_COLOR[p.T] ?? '#b9b9c0')}</span>
                 {p.T}
                 {toggles([p._id], hidden, locked)}
@@ -136,15 +164,13 @@ export default function Explorer({
         );
     };
 
-    const groupRow = (g) => (
-        <div key={g.id} className={`tree-item group ${g.ids.some((id) => selected.has(id)) ? 'selected' : ''}`}>
-            <button
-                className={`twist ${isOpen(g) ? 'open' : ''}`}
-                onClick={() => setOpen((o) => ({ ...o, [g.id]: !isOpen(g) }))}
-                title={isOpen(g) ? 'Collapse' : 'Expand'}
-            >
-                <ChevronIcon />
-            </button>
+    const groupRow = (g, depth) => (
+        <div
+            key={g.id}
+            {...rowProps(depth)}
+            className={`tree-item group ${g.ids.some((id) => selected.has(id)) ? 'selected' : ''}`}
+        >
+            <Twist open={isOpen(g)} onToggle={() => toggle(g.id, !isOpen(g))} />
             <span className="icon"><FolderIcon /></span>
             {renaming === g.id ? (
                 <input
@@ -198,12 +224,18 @@ export default function Explorer({
                     <>
                         <div style={{ height: first * ROW_H }} />
                         {slice.map((it) => {
-                            if (it.k === 'part') return partRow(it.row, it.nested);
-                            if (it.k === 'group') return groupRow(it.g);
+                            if (it.k === 'part') return partRow(it.row, it.depth);
+                            if (it.k === 'group') return groupRow(it.g, it.depth);
                             if (it.k === 'ws') {
                                         // I  anyone will replace this with "Add a part" with "Add a instance" and menu of instances because i dont know react :D
                                 return (
-                                    <div className="tree-item" key="ws" onClick={() => setSelectedId(null)}>
+                                    <div
+                                        className="tree-item"
+                                        key="ws"
+                                        {...rowProps(0)}
+                                        onClick={() => setSelectedId(null)}
+                                    >
+                                        <Twist open={rootOpen('ws')} onToggle={() => toggle('ws', !rootOpen('ws'))} />
                                         <span className="icon"><WorkspaceIcon /></span>
                                         Workspace{mapName ? `: ${mapName}` : ''}
 
@@ -245,9 +277,11 @@ export default function Explorer({
                                 return (
                                     <div
                                         key={ref}
+                                        {...rowProps(it.depth)}
                                         className={`tree-item child ${selected.has(ref) ? 'selected' : ''}`}
                                         onClick={(e) => setSelectedId(ref, e.ctrlKey || e.metaKey, null, true)}
                                     >
+                                        <Twist />
                                         <span className="icon"><LightingIcon /></span>
                                         {it.light.N}
                                         {onRemoveLight && (
@@ -264,7 +298,11 @@ export default function Explorer({
                             }
 
                             return (
-                                <div className="tree-item" key="light">
+                                <div className="tree-item" key="light" {...rowProps(0)}>
+                                    <Twist
+                                        open={rootOpen('lighting')}
+                                        onToggle={() => toggle('lighting', !rootOpen('lighting'))}
+                                    />
                                     <span className="icon"><LightingIcon /></span>
                                     Lighting
                                     <span className="count">{lights.length}</span>
