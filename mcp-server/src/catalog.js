@@ -22,8 +22,8 @@ export const MAX_JUMP_HEIGHT = (PLAY.jumpVelocity ** 2) / (2 * Math.abs(PLAY.gra
 export const LIMITS = {
     maxParts: 60_000,
     maxGroups: 2_000,
-    maxLights: 32,
     maxIlluminance: 200_000,
+    maxBrightness: 4_000,
     maxBytes: 8_000_000,
 };
 

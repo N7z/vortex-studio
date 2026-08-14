@@ -262,7 +262,7 @@ export function register(server, ctx) {
             ctx.doc.reset({
                 parts: data.parts ?? [],
                 groups: data.groups ?? [],
-                lights: data.lights ?? [],
+                lighting: data.lighting ?? data.lights ?? null,
             });
             ctx.mapName = name;
             ctx.teamId = team ?? null;
@@ -273,7 +273,7 @@ export function register(server, ctx) {
                 name,
                 parts: ctx.doc.parts.length,
                 groups: ctx.doc.groups.length,
-                lights: ctx.doc.lights.length,
+                lighting: ctx.doc.lighting,
                 mode: 'offline',
             });
         },
@@ -298,7 +298,7 @@ export function register(server, ctx) {
             const result = await ctx.studio.saveMap(target, {
                 parts: ctx.doc.parts,
                 groups: ctx.doc.groups,
-                lights: ctx.doc.lights,
+                lighting: ctx.doc.lighting,
                 projectId: ctx.projectId,
                 teamId: team ?? ctx.teamId,
                 version: ctx.version,
@@ -323,7 +323,7 @@ export function register(server, ctx) {
         + 'lights. Start here before planning any change.',
         {},
         async () => {
-            const stats = statistics(ctx.doc.parts, ctx.doc.groups, ctx.doc.lights);
+            const stats = statistics(ctx.doc.parts, ctx.doc.groups, ctx.doc.lighting);
 
             return ok(describeResult(ctx, {
                 mapName: ctx.mapName,
@@ -331,9 +331,7 @@ export function register(server, ctx) {
                 folders: ctx.doc.groups.map((g) => ({
                     id: g.id, name: g.name, parts: g.ids.length, ...(g.parent ? { parent: g.parent } : {}),
                 })),
-                lights: ctx.doc.lights.map((l) => ({
-                    id: l._id, name: l.N, position: roundVec(l.P), color: l.C, illuminance: l.I,
-                })),
+                lighting: ctx.doc.lighting,
             }));
         },
     );
@@ -467,15 +465,7 @@ export function register(server, ctx) {
                     };
                 }),
                 spawns: ctx.doc.parts.filter((p) => p.T === 'SpawnLocation').map(partSummary),
-                lights: ctx.doc.lights.map((l) => ({
-                    id: l._id,
-                    name: l.N,
-                    position: roundVec(l.P),
-                    rotation: roundVec(l.R),
-                    color: l.C,
-                    illuminance: l.I,
-                    shadows: l.Sd,
-                })),
+                lighting: ctx.doc.lighting,
                 ungrouped: ctx.doc.parts.length
                     - ctx.doc.groups.reduce((n, g) => n + g.ids.length, 0),
             });
@@ -997,39 +987,31 @@ export function register(server, ctx) {
     );
 
     edit(
-        'add_lighting',
-        'Add or replace the directional lights that light the whole map. These are suns, not point '
-        + 'lights: position and rotation set the direction the light comes from. Torches and '
-        + 'braziers are props and only look like light sources, so pair them with a warm sun here.',
+        'set_lighting',
+        'Set the light the whole map sits in: an ambient fill with no direction, and one sun with a '
+        + 'colour, an illuminance in lux and a rotation that says which way it comes from. Torches '
+        + 'and braziers are props and only look like light sources, so pair a warm sun with them. '
+        + 'To light one spot rather than the map, put a point or spot light on a part instead.',
         {
-            name: z.string().default('Sun'),
-            position: vector3.default([80, 160, 60]),
-            rotation: vector3.default([-69.44, 25.09, 17.53])
-                .describe('the direction the light points, in degrees'),
-            color: hexColor.default('ffffff'),
-            illuminance: z.number().min(0).max(LIMITS.maxIlluminance).default(10000),
-            shadows: z.boolean().default(true),
-            replace: z.boolean().default(false).describe('true clears the existing lights first'),
+            ambient_color: hexColor.optional().describe('colour of the fill light'),
+            brightness: z.number().min(0).max(LIMITS.maxBrightness).optional()
+                .describe('how strong the fill is; 0 leaves the shadows black'),
+            sun_color: hexColor.optional(),
+            sun_illuminance: z.number().min(0).max(LIMITS.maxIlluminance).optional()
+                .describe('lux; 10000 is daylight'),
+            sun_shadow_maps_enabled: z.boolean().optional(),
+            sun_rotation: vector3.optional()
+                .describe('degrees, the direction the sun shines from, like a part rotation'),
         },
-        async ({
-            name, position, rotation, color, illuminance, shadows, replace,
-        }) => {
-            const light = {
-                _id: newId(),
-                N: name,
-                P: position,
-                R: rotation,
-                C: color.replace(/^#/, '').toLowerCase(),
-                I: illuminance,
-                Sd: shadows,
-            };
-            const next = replace ? [light] : [...ctx.doc.lights, light];
-            if (next.length > LIMITS.maxLights) {
-                throw new MapError(`that would be ${next.length} lights, over the ${LIMITS.maxLights} limit`);
+        async (args) => {
+            const patch = Object.fromEntries(Object.entries(args).filter(([, v]) => v !== undefined));
+            if (!Object.keys(patch).length) throw new MapError('give at least one thing to change');
+            for (const k of ['ambient_color', 'sun_color']) {
+                if (patch[k]) patch[k] = patch[k].replace(/^#/, '').toLowerCase();
             }
-            ctx.doc.setLights(`add light ${name}`, next);
+            ctx.doc.setLighting('set lighting', { ...ctx.doc.lighting, ...patch });
 
-            return ok(describeResult(ctx, { light: name, lights: ctx.doc.lights.length }));
+            return ok(describeResult(ctx, { lighting: ctx.doc.lighting }));
         },
     );
 
@@ -1414,7 +1396,7 @@ export function register(server, ctx) {
         + 'total volume and bounds. Useful for spotting that a map is all one grey colour.',
         {},
         async () => ok(describeResult(ctx, {
-            ...statistics(ctx.doc.parts, ctx.doc.groups, ctx.doc.lights),
+            ...statistics(ctx.doc.parts, ctx.doc.groups, ctx.doc.lighting),
             overlappingPairs: findOverlaps(ctx.doc.parts, { limit: 50 }).length,
             floatingParts: findUnsupported(ctx.doc.parts, { limit: 50 }).length,
         })),

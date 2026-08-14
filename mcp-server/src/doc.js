@@ -4,7 +4,7 @@ import {
 import {
     applyGroupOp, pruneEmptyGroups, validateGroupOp,
 } from '../../live-editing-server/src/groupops.js';
-import { cleanLights } from '../../live-editing-server/src/lights.js';
+import { DEFAULT_LIGHTING, cleanLighting } from '../../live-editing-server/src/lights.js';
 import { LIMITS } from './catalog.js';
 
 const ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';
@@ -25,10 +25,12 @@ export const newGroupId = () => `g-${newId()}`;
 export class MapError extends Error {}
 
 export class MapDoc {
-    constructor({ parts = [], groups = [], lights = [], sink = null, maxParts = LIMITS.maxParts } = {}) {
+    constructor({
+        parts = [], groups = [], lighting = null, sink = null, maxParts = LIMITS.maxParts,
+    } = {}) {
         this.parts = parts;
         this.groups = groups;
-        this.lights = lights;
+        this.lighting = cleanLighting(lighting) ?? { ...DEFAULT_LIGHTING };
         this.sink = sink;
         this.maxParts = maxParts;
         this.past = [];
@@ -39,10 +41,10 @@ export class MapDoc {
         this.sink = sink;
     }
 
-    reset({ parts = [], groups = [], lights = [] }) {
+    reset({ parts = [], groups = [], lighting = null }) {
         this.parts = parts;
         this.groups = groups;
-        this.lights = lights;
+        this.lighting = cleanLighting(lighting) ?? { ...DEFAULT_LIGHTING };
         this.past = [];
         this.future = [];
     }
@@ -60,8 +62,8 @@ export class MapDoc {
         this.groups = pruneGroups(groups ?? [], this.parts);
     }
 
-    setRemoteLights(lights) {
-        this.lights = cleanLights(lights) ?? this.lights;
+    setRemoteLighting(lighting) {
+        this.lighting = cleanLighting(lighting) ?? this.lighting;
     }
 
     byId(id) {
@@ -91,7 +93,7 @@ export class MapDoc {
         const start = {
             parts: this.parts,
             groups: this.groups,
-            lights: this.lights,
+            lighting: this.lighting,
         };
         let state = start;
         const inverses = [];
@@ -117,19 +119,19 @@ export class MapDoc {
                 state = { ...state, groups: applyGroupOp(state.groups, change.gop) };
                 continue;
             }
-            if (change.lights) {
-                const clean = cleanLights(change.lights);
+            if (change.lighting) {
+                const clean = cleanLighting(change.lighting);
                 if (!clean) throw new MapError('bad light data');
-                inverses.push({ lights: state.lights });
-                state = { ...state, lights: clean };
+                inverses.push({ lighting: state.lighting });
+                state = { ...state, lighting: clean };
             }
         }
 
         this.parts = state.parts;
         this.groups = pruneGroups(state.groups, state.parts);
-        this.lights = state.lights;
+        this.lighting = state.lighting;
 
-        this.past.push({ label, inverses: inverses.filter((i) => i.op || i.groups || i.lights) });
+        this.past.push({ label, inverses: inverses.filter((i) => i.op || i.groups || i.lighting) });
         if (this.past.length > HISTORY_LIMIT) this.past.shift();
         this.future = [];
 
@@ -143,7 +145,7 @@ export class MapDoc {
         for (const change of changes) {
             if (change.op) this.sink.sendOp(change.op);
             else if (change.gop) this.sink.sendGroupOp(change.gop);
-            else if (change.lights) this.sink.sendLights(this.lights);
+            else if (change.lighting) this.sink.sendLighting(this.lighting);
         }
         if (changes.some((c) => c.gop)) this.sink.sendGroups(this.groups);
     }
@@ -292,8 +294,8 @@ export class MapDoc {
         return { ...this.commit(label, [{ op: { t: 'set', items } }]), changed: items.length };
     }
 
-    setLights(label, lights) {
-        return this.commit(label, [{ lights }]);
+    setLighting(label, lighting) {
+        return this.commit(label, [{ lighting }]);
     }
 
     step(from, to) {
@@ -310,10 +312,10 @@ export class MapDoc {
                 redo.push({ groups: this.groups });
                 this.groups = inverse.groups;
                 this.sink?.sendGroups(this.groups);
-            } else if (inverse.lights) {
-                redo.push({ lights: this.lights });
-                this.lights = inverse.lights;
-                this.sink?.sendLights(this.lights);
+            } else if (inverse.lighting) {
+                redo.push({ lighting: this.lighting });
+                this.lighting = inverse.lighting;
+                this.sink?.sendLighting(this.lighting);
             }
         }
         this.groups = pruneGroups(this.groups, this.parts);

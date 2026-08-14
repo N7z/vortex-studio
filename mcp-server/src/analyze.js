@@ -259,7 +259,7 @@ export function findUnsupported(parts, { limit = 100 } = {}) {
     return out;
 }
 
-export function statistics(parts, groups, lights) {
+export function statistics(parts, groups, lighting) {
     const bounds = boundsOf(parts);
     const byType = {};
     const byMaterial = {};
@@ -289,7 +289,7 @@ export function statistics(parts, groups, lights) {
     return {
         parts: parts.length,
         groups: groups.length,
-        lights: lights.length,
+        lighting: lighting ?? null,
         partBudget: { used: parts.length, limit: LIMITS.maxParts },
         bounds: bounds ? {
             minX: round(bounds.minX),
@@ -364,7 +364,7 @@ export function density(parts, options = {}) {
 }
 
 export function validate(doc, options = {}) {
-    const { parts, groups, lights } = doc;
+    const { parts, groups, lighting } = doc;
     const issues = [];
     const add = (severity, code, message, extra = {}) => issues
         .push({ severity, code, message, ...extra });
@@ -449,11 +449,8 @@ export function validate(doc, options = {}) {
         }
     }
 
-    if (lights.length > LIMITS.maxLights) {
-        add('error', 'light_limit', `${lights.length} lights is over the ${LIMITS.maxLights} limit`);
-    }
-    if (!lights.length) {
-        add('info', 'no_lights', 'the map has no lights; it will render with the default sun only');
+    if (lighting && !lighting.sun_illuminance && !lighting.brightness) {
+        add('warning', 'no_light', 'the sun and the ambient fill are both at zero, so the map renders black');
     }
 
     return {

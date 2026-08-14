@@ -325,16 +325,22 @@ const LIGHT = [
     'C' => 'ffffff', 'I' => 10000, 'Sd' => true,
 ];
 
+const LIGHTING = [
+    'ambient_color' => 'cfe8ff', 'brightness' => 80, 'sun_color' => 'ffffff',
+    'sun_illuminance' => 10000, 'sun_shadow_maps_enabled' => true,
+    'sun_rotation' => [-69.44, 25.09, 17.53],
+];
+
 const PROJECT_ID = 'c32819ed4aa4a42511cefa9d974e3ce3';
 
 it('round-trips every property the studio document carries', function () {
     asToken()->putJson('/api/maps/parity', [
-        'parts' => [FULL_PART], 'groups' => [], 'lights' => [LIGHT], 'project_id' => PROJECT_ID,
+        'parts' => [FULL_PART], 'groups' => [], 'lighting' => LIGHTING, 'project_id' => PROJECT_ID,
     ])->assertOk();
 
     asToken()->getJson('/api/maps/parity')->assertOk()->assertJson([
         'parts' => [FULL_PART],
-        'lights' => [LIGHT],
+        'lighting' => LIGHTING,
         'project_id' => PROJECT_ID,
     ]);
 });
@@ -350,17 +356,26 @@ it('refuses a part property it does not know', function (array $bad) {
     'textures as the document list, not our map' => [['Tx' => [['face' => 'Top', 'kind' => 'Studs']]]],
 ]);
 
-it('refuses a light it cannot store', function (array $bad) {
-    asToken()->putJson('/api/maps/bad', ['parts' => [], 'groups' => [], 'lights' => [array_merge(LIGHT, $bad)]])
+it('refuses a lighting rig it cannot store', function (array $bad) {
+    asToken()->putJson('/api/maps/bad', ['parts' => [], 'groups' => [], 'lighting' => array_merge(LIGHTING, $bad)])
         ->assertStatus(400);
 })->with([
-    'no shadow flag' => [['Sd' => null]],
-    'illuminance past the ceiling' => [['I' => 1e9]],
-    'a colour that is not six hex digits' => [['C' => 'white']],
-    'an empty name' => [['N' => '']],
+    'a shadow flag that is not a boolean' => [['sun_shadow_maps_enabled' => 'yes']],
+    'illuminance past the ceiling' => [['sun_illuminance' => 1e9]],
+    'brightness past the ceiling' => [['brightness' => 1e9]],
+    'a colour that is not six hex digits' => [['ambient_color' => 'white']],
+    'a sun rotation that is not three numbers' => [['sun_rotation' => [1, 2]]],
+    'a property the rig does not have' => [['sun_position' => [1, 2, 3]]],
 ]);
 
-it('refuses two lights sharing an id', function () {
+it('still takes the list of suns a map was saved with before the rig became one object', function () {
+    asToken()->putJson('/api/maps/legacy', ['parts' => [], 'groups' => [], 'lights' => [LIGHT]])
+        ->assertOk();
+
+    asToken()->getJson('/api/maps/legacy')->assertOk()->assertJson(['lighting' => [LIGHT]]);
+});
+
+it('refuses two of the old suns sharing an id', function () {
     asToken()->putJson('/api/maps/bad', ['parts' => [], 'groups' => [], 'lights' => [LIGHT, LIGHT]])
         ->assertStatus(400);
 });
@@ -370,19 +385,19 @@ it('refuses a project id that is not 32 hex characters', function () {
         ->assertStatus(400);
 });
 
-it('leaves stored lights and project id alone when a save omits them', function () {
+it('leaves the stored lighting and project id alone when a save omits them', function () {
     asToken()->putJson('/api/maps/keep', [
-        'parts' => [FULL_PART], 'groups' => [], 'lights' => [LIGHT], 'project_id' => PROJECT_ID,
+        'parts' => [FULL_PART], 'groups' => [], 'lighting' => LIGHTING, 'project_id' => PROJECT_ID,
     ])->assertOk();
 
     asToken()->putJson('/api/maps/keep', [FULL_PART])->assertOk();
 
     asToken()->getJson('/api/maps/keep')->assertOk()
-        ->assertJson(['lights' => [LIGHT], 'project_id' => PROJECT_ID]);
+        ->assertJson(['lighting' => LIGHTING, 'project_id' => PROJECT_ID]);
 });
 
 it('still takes a map with none of the new properties', function () {
     asToken()->putJson('/api/maps/old', [PART])->assertOk();
     asToken()->getJson('/api/maps/old')->assertOk()
-        ->assertJson(['parts' => [PART], 'lights' => [], 'project_id' => null]);
+        ->assertJson(['parts' => [PART], 'lighting' => null, 'project_id' => null]);
 });

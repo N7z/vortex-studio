@@ -43,7 +43,7 @@ import { predict, record } from './estimate';
 import { convertRoblox, importSummary } from './roblox';
 import { fromProject, isProject, newProjectId, toProject } from './vortexProject';
 import {
-    DEFAULT_SUN, MAX_LIGHTS, isLightRef, lightIdOf, lightRef, newLight, repairLights,
+    AMBIENT, DEFAULT_LIGHTING, SUN, isLightRef, repairLighting,
 } from './lighting';
 import useDialogs from '../ui/useDialogs';
 import Busy from '../ui/Busy';
@@ -119,7 +119,7 @@ export default function App() {
     const loadedModels = useRef({});
     const modelSigs = useRef({});
     const [groups, setGroups] = useState([]);
-    const [lights, setLights] = useState([]);
+    const [lighting, setLighting] = useState(() => ({ ...DEFAULT_LIGHTING }));
     const [flags, setFlags] = useState(flagStore.EMPTY);
     const [tabs, setTabs] = useState([]);
     const [activeTab, setActiveTab] = useState('home');
@@ -151,9 +151,9 @@ export default function App() {
     const flagsRef = useRef(flags);
     flagsRef.current = flags;
     const loadedGroups = useRef(groups);
-    const lightsRef = useRef(lights);
-    lightsRef.current = lights;
-    const loadedLights = useRef(lights);
+    const lightingRef = useRef(lighting);
+    lightingRef.current = lighting;
+    const loadedLighting = useRef(lighting);
     const projectId = useRef(null);
     const mapNameRef = useRef(null);
     const mapTeamRef = useRef(null);
@@ -211,7 +211,7 @@ export default function App() {
 
     const resetDocument = (
         name, raw, isDirty, remoteGroups, teamId = null, version = null,
-        remoteLights = null, remoteProjectId = null,
+        remoteLighting = null, remoteProjectId = null,
     ) => {
         const { parts: data, fixed } = repairParts(raw);
         if (fixed) flash(`Repaired ${fixed} part${fixed === 1 ? '' : 's'} the server would reject`);
@@ -225,9 +225,9 @@ export default function App() {
         setActiveTab(name ? 'game' : 'home');
         setSelectedIds([]);
         setFaces({});
-        const litUp = repairLights(remoteLights ?? []);
-        loadedLights.current = litUp;
-        setLights(litUp);
+        const rig = repairLighting(remoteLighting);
+        loadedLighting.current = rig;
+        setLighting(rig);
         projectId.current = remoteProjectId ?? (name ? newProjectId() : null);
         const legacy = remoteGroups?.length ? [] : takeLegacyGroups(name, data);
         const next = legacy.length ? legacy : (remoteGroups ?? []);
@@ -238,7 +238,7 @@ export default function App() {
         dirty.current = isDirty || fixed > 0 || legacy.length > 0;
         setFlags(flagStore.prune(flagStore.load(flagStore.mapKey(name, teamId)), data));
 
-        return { parts: data, groups: next, lights: litUp };
+        return { parts: data, groups: next, lighting: rig };
     };
 
     const live = useLive({
@@ -248,12 +248,12 @@ export default function App() {
                 const alive = new Set(msg.parts.map((p) => p._id));
                 setParts(msg.parts);
                 setGroups(msg.groups ?? []);
-                setLights(repairLights(msg.lights ?? []));
+                setLighting(repairLighting(msg.lighting));
                 setSelectedIds((cur) => cur.filter((id) => alive.has(id)));
             } else {
                 if (mapTeamRef.current == null) setTeamOpen(true);
                 resetDocument(msg.mapName, msg.parts, false, msg.groups ?? [],
-                    mapTeamRef.current, versionRef.current, msg.lights ?? [], projectId.current);
+                    mapTeamRef.current, versionRef.current, msg.lighting, projectId.current);
             }
             if (mapTeamRef.current != null) {
                 flash(msg.resumed ? 'Back with the team' : `Editing with the team as ${msg.you.name}`);
@@ -272,15 +272,15 @@ export default function App() {
             if (msg.groups) {
                 setGroups(msg.groups);
             }
-            if (msg.lights) setLights(repairLights(msg.lights));
+            if (msg.lighting) setLighting(repairLighting(msg.lighting));
             history.current = [];
             future.current = [];
         },
         onGroups: (msg) => {
             setGroups(msg.groups);
         },
-        onLights: (msg) => {
-            setLights(repairLights(msg.lights));
+        onLighting: (msg) => {
+            setLighting(repairLighting(msg.lighting));
             if (liveRef.current?.canEdit) dirty.current = true;
         },
         onGroupOp: (msg) => {
@@ -322,12 +322,12 @@ export default function App() {
             ? parts.filter((p) => selectedSet.has(p._id))
             : (selected ? [selected] : [])
     ), [parts, selectedSet, selected]);
+    // Either half of the rig can be selected, and neither is a part, so it is the name that is held.
     const selectedLight = useMemo(() => {
         const last = selectedIds.length ? selectedIds[selectedIds.length - 1] : null;
-        const id = lightIdOf(last);
 
-        return id ? lights.find((l) => l._id === id) ?? null : null;
-    }, [selectedIds, lights]);
+        return isLightRef(last) ? last : null;
+    }, [selectedIds]);
     const pluginTarget = selected;
     const selectionInfo = useMemo(() => {
         if (!selectedParts.length) return null;
@@ -426,11 +426,11 @@ export default function App() {
         const entry = from.current.pop();
         if (!entry) return;
 
-        if (entry.t === 'lights') {
-            remember(to, { t: 'lights', lights: lightsRef.current });
+        if (entry.t === 'lighting') {
+            remember(to, { t: 'lighting', lighting: lightingRef.current });
             dirty.current = true;
-            setLights(entry.lights);
-            liveRef.current.sendLights(entry.lights);
+            setLighting(entry.lighting);
+            liveRef.current.sendLighting(entry.lighting);
 
             return;
         }
@@ -821,41 +821,18 @@ export default function App() {
         liveRef.current.sendGroups(next);
     }, []);
 
-    const commitLights = useCallback((next) => {
-        remember(history, { t: 'lights', lights: lightsRef.current });
+    const commitLighting = useCallback((next) => {
+        remember(history, { t: 'lighting', lighting: lightingRef.current });
         future.current = [];
-        setLights(next);
+        setLighting(next);
         dirty.current = true;
-        liveRef.current.sendLights(next);
+        liveRef.current.sendLighting(next);
     }, []);
 
-    const addLight = useCallback(() => {
-        if (!canEditRef.current) {
-            flash('You are a spectator in this session');
-
-            return;
-        }
-        const cur = lightsRef.current;
-        if (cur.length >= MAX_LIGHTS) {
-            flash(`A map can carry ${MAX_LIGHTS} lights`);
-
-            return;
-        }
-        const light = newLight({ N: `Light ${cur.length + 1}` });
-        commitLights([...cur, light]);
-        setSelectedIds([lightRef(light._id)]);
-    }, [commitLights, flash]);
-
-    const removeLight = useCallback((id) => {
+    const patchLighting = useCallback((patch) => {
         if (!canEditRef.current) return;
-        commitLights(lightsRef.current.filter((l) => l._id !== id));
-        setSelectedIds((cur) => cur.filter((x) => x !== lightRef(id)));
-    }, [commitLights]);
-
-    const patchLight = useCallback((id, patch) => {
-        if (!canEditRef.current) return;
-        commitLights(lightsRef.current.map((l) => (l._id === id ? { ...l, ...patch } : l)));
-    }, [commitLights]);
+        commitLighting({ ...lightingRef.current, ...patch });
+    }, [commitLighting]);
 
     const groupSelection = useCallback(() => {
         if (selectedIds.length < 2) return;
@@ -896,8 +873,8 @@ export default function App() {
     }, [groups]);
 
     useEffect(() => {
-        if (mapName && lights !== loadedLights.current) dirty.current = true;
-    }, [lights]);
+        if (mapName && lighting !== loadedLighting.current) dirty.current = true;
+    }, [lighting]);
 
     const changeGraphics = (patch) => {
         setGraphics((g) => {
@@ -917,10 +894,10 @@ export default function App() {
         try {
             const doc = await loadMap(name, teamId);
             const ready = resetDocument(
-                name, doc.parts, false, doc.groups, teamId, doc.version, doc.lights, doc.projectId,
+                name, doc.parts, false, doc.groups, teamId, doc.version, doc.lighting, doc.projectId,
             );
             if (teamId != null) {
-                liveRef.current.openTeam(name, ready.parts, ready.groups, teamId, ready.lights);
+                liveRef.current.openTeam(name, ready.parts, ready.groups, teamId, ready.lighting);
             }
         } catch (e) {
             flash(String(e.message ?? e));
@@ -932,7 +909,7 @@ export default function App() {
     const restore = (name, doc) => {
         resetDocument(
             name, doc.parts, true, doc.groups ?? null, null, null,
-            doc.lights ?? null, doc.projectId ?? null,
+            doc.lighting ?? null, doc.projectId ?? null,
         );
         flash(`Restored ${name}.json from this device`);
     };
@@ -943,9 +920,9 @@ export default function App() {
             const groups = incoming
                 .map((g) => newGroup(g.name, g.slots.map((i) => seeded[i]?._id).filter(Boolean)))
                 .filter((g) => g.ids.length);
-            resetDocument(name, seeded, true, groups, null, null, doc?.lights, doc?.projectId);
+            resetDocument(name, seeded, true, groups, null, null, doc?.lighting, doc?.projectId);
         } else {
-            resetDocument(name, data, true, null, null, null, doc?.lights, doc?.projectId);
+            resetDocument(name, data, true, null, null, null, doc?.lighting, doc?.projectId);
         }
         flash(`Loaded upload as ${name}.json, Save to keep it`);
     };
@@ -1001,7 +978,7 @@ export default function App() {
                 .filter((g) => g.ids.length);
             resetDocument(
                 mapNameFrom(fileName), seeded, true, groups, null, null,
-                result.lights ?? [], result.projectId ?? null,
+                result.lighting ?? null, result.projectId ?? null,
             );
         }
         flash(importSummary(result));
@@ -1028,7 +1005,7 @@ export default function App() {
 
     const download = () => {
         if (!mapName) return;
-        const text = JSON.stringify(toProject(parts, groups, projectId.current ?? newProjectId(), lights));
+        const text = JSON.stringify(toProject(parts, groups, projectId.current ?? newProjectId(), lighting));
         if (text.length > ENGINE_MAX_BYTES) {
             flash(`This map is ${(text.length / 1048576).toFixed(1)} MB, over the 10 MB the game `
                 + 'accepts. Rebuild it with a lower Detail or a higher Merge angle.');
@@ -1051,7 +1028,7 @@ export default function App() {
             withNewId(NEW_SPAWN),
         ], true, null, teamId, null, [newLight(DEFAULT_SUN)], null);
         if (teamId != null) {
-            liveRef.current.openTeam(name, ready.parts, ready.groups, teamId, ready.lights);
+            liveRef.current.openTeam(name, ready.parts, ready.groups, teamId, ready.lighting);
         }
     };
 
@@ -1077,7 +1054,7 @@ export default function App() {
         }
         const snapshot = partsRef.current;
         const grouped = groupsRef.current;
-        const lit = lightsRef.current;
+        const lit = lightingRef.current;
         const project = projectId.current;
         const body = saveBody(snapshot, grouped, versionRef.current, lit, project);
         const backed = writeBackup(mapName, snapshot, body);
@@ -1129,7 +1106,7 @@ export default function App() {
 
     const goLive = () => {
         if (!mapName) return;
-        live.host(mapName, partsRef.current, groups, mapTeamRef.current, lightsRef.current);
+        live.host(mapName, partsRef.current, groups, mapTeamRef.current, lightingRef.current);
         setTeamOpen(true);
     };
 
@@ -1287,7 +1264,7 @@ export default function App() {
         if (!viewing) return;
         loadMapAsAdmin(viewing)
             .then((m) => {
-                resetDocument(m.name, m.parts, false, m.groups ?? [], null, null, m.lights ?? []);
+                resetDocument(m.name, m.parts, false, m.groups ?? [], null, null, m.lighting ?? m.lights ?? null);
                 flash(`Viewing ${m.name} as admin, read-only`);
             })
             .catch((e) => flash(String(e.message ?? e)));
@@ -1504,8 +1481,8 @@ export default function App() {
                         selectMany={selectMany}
                         faces={faces}
                         showFaces={!!activePlugin?.usesFaces}
-                        lights={lights}
-                        onLightTransform={patchLight}
+                        lighting={lighting}
+                        onSunRotate={(sun_rotation) => patchLighting({ sun_rotation })}
                         brush={brushRadius > 0 && !playing ? { radius: brushRadius } : null}
                         onBrush={brushStroke}
                         tintRef={tintRef}
@@ -1635,10 +1612,8 @@ export default function App() {
                             flags={flags}
                             onFlag={setFlag}
                             onClearFlags={clearFlag}
-                            lights={lights}
+                            lighting={lighting}
                             onAddPart={canEdit && mapName ? addPart : null}
-                            onAddLight={canEdit && mapName ? addLight : null}
-                            onRemoveLight={canEdit ? removeLight : null}
                             NEW_PART={NEW_PART}
                         />
                     )}
@@ -1657,7 +1632,8 @@ export default function App() {
                             onChange={updateSelected}
                             readOnly={!canEdit}
                             light={selectedLight}
-                            onLightChange={(patch) => selectedLight && patchLight(selectedLight._id, patch)}
+                            lighting={lighting}
+                            onLightChange={patchLighting}
                         />
                     )}
                 </div>

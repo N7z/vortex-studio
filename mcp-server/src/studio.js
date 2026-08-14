@@ -135,7 +135,7 @@ export class Studio {
     }
 
     saveMap(name, {
-        parts, groups, lights, projectId, teamId = null, version = null, confirm = false,
+        parts, groups, lighting, projectId, teamId = null, version = null, confirm = false,
     }) {
         const q = teamId != null ? `?team=${teamId}` : '';
 
@@ -145,7 +145,7 @@ export class Studio {
             body: {
                 parts,
                 groups,
-                lights,
+                lighting,
                 project_id: projectId ?? null,
                 version,
             },

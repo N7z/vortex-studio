@@ -115,7 +115,7 @@ export class LiveSession {
                 this.doc?.reset({
                     parts: msg.parts ?? [],
                     groups: msg.groups ?? [],
-                    lights: msg.lights ?? [],
+                    lighting: msg.lighting ?? null,
                 });
                 break;
             case 'members':
@@ -134,15 +134,15 @@ export class LiveSession {
             case 'groups':
                 if (msg.from !== this.you?.id) this.doc?.setRemoteGroups(msg.groups);
                 break;
-            case 'lights':
-                if (msg.from !== this.you?.id) this.doc?.setRemoteLights(msg.lights);
+            case 'lighting':
+                if (msg.from !== this.you?.id) this.doc?.setRemoteLighting(msg.lighting);
                 break;
             case 'snapshot':
                 this.seq = msg.seq ?? this.seq;
                 this.doc?.reset({
                     parts: msg.parts ?? [],
                     groups: msg.groups ?? [],
-                    lights: msg.lights ?? [],
+                    lighting: msg.lighting ?? null,
                 });
                 break;
             case 'kicked':
@@ -175,8 +175,8 @@ export class LiveSession {
         return this.send({ t: 'groups', groups });
     }
 
-    sendLights(lights) {
-        return this.send({ t: 'lights', lights });
+    sendLighting(lighting) {
+        return this.send({ t: 'lighting', lighting });
     }
 
     sendSelection(ids) {
@@ -207,14 +207,14 @@ export function joinHello(code, identity) {
     return { t: 'join', code, identity };
 }
 
-export function createHello(mapName, parts, groups, lights, identity) {
+export function createHello(mapName, parts, groups, lighting, identity) {
     return {
-        t: 'create', mapName, parts, groups, lights, identity,
+        t: 'create', mapName, parts, groups, lighting, identity,
     };
 }
 
-export function openHello(mapName, parts, groups, lights, teamId, identity) {
+export function openHello(mapName, parts, groups, lighting, teamId, identity) {
     return {
-        t: 'open', mapName, parts, groups, lights, teamId, identity,
+        t: 'open', mapName, parts, groups, lighting, teamId, identity,
     };
 }

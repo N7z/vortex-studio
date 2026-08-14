@@ -1114,3 +1114,59 @@ test('an empty chat message says nothing and history reaches a joiner', async ()
     owner.ws.close();
     late.ws.close();
 });
+
+test('the lighting rig reaches a joiner and a change is relayed', async () => {
+    const { c: owner, welcome: hi } = await host([part('a')]);
+
+    assert.equal(hi.lighting.sun_illuminance, 10000);
+    assert.equal(hi.lighting.brightness, 80);
+
+    const { c: other } = await guest(hi.code);
+    owner.send({ t: 'lighting', lighting: { ...hi.lighting, brightness: 200, ambient_color: 'ff8800' } });
+
+    const seen = await other.next('lighting');
+    assert.equal(seen.lighting.brightness, 200);
+    assert.equal(seen.lighting.ambient_color, 'ff8800');
+
+    const { c: late, welcome } = await guest(hi.code);
+    assert.equal(welcome.lighting.brightness, 200);
+
+    owner.ws.close();
+    other.ws.close();
+    late.ws.close();
+});
+
+test('a host still carrying a list of suns has it folded into the one sun', async () => {
+    const c = new Client();
+    await c.open;
+    c.send({
+        t: 'create',
+        mapName: 'legacy',
+        parts: [part('a')],
+        lights: [
+            { _id: 'l1', N: 'Sun', P: [0, 0, 0], R: [-40, 10, 0], C: 'ffdd88', I: 4200, Sd: false },
+            { _id: 'l2', N: 'Second', P: [0, 0, 0], R: [0, 0, 0], C: 'ffffff', I: 900, Sd: true },
+        ],
+    });
+    const hi = await c.next('welcome');
+
+    assert.equal(hi.lighting.sun_color, 'ffdd88');
+    assert.equal(hi.lighting.sun_illuminance, 4200);
+    assert.equal(hi.lighting.sun_shadow_maps_enabled, false);
+    assert.deepEqual(hi.lighting.sun_rotation, [-40, 10, 0]);
+
+    c.ws.close();
+});
+
+test('lighting that is out of range is refused', async () => {
+    const { c: owner, welcome: hi } = await host([part('a')]);
+
+    owner.send({ t: 'lighting', lighting: { brightness: -1 } });
+    assert.match((await owner.next('error')).message, /light/);
+
+    const { c: late, welcome } = await guest(hi.code);
+    assert.equal(welcome.lighting.brightness, 80);
+
+    owner.ws.close();
+    late.ws.close();
+});

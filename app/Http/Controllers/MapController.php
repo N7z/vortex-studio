@@ -47,6 +47,13 @@ class MapController extends Controller
 
     private const LIGHT_KEYS = ['_id', 'N', 'P', 'R', 'C', 'I', 'Sd'];
 
+    private const LIGHTING_KEYS = [
+        'ambient_color', 'brightness', 'sun_color', 'sun_illuminance', 'sun_shadow_maps_enabled',
+        'sun_rotation',
+    ];
+
+    private const MAX_BRIGHTNESS = 4_000;
+
     private const MAX_ILLUMINANCE = 200_000;
 
     private const MAX_THUMB_BYTES = 300_000;
@@ -490,7 +497,7 @@ class MapController extends Controller
         return response(
             '{"parts":'.$parts
             .',"groups":'.($groups ?: '[]')
-            .',"lights":'.($lights ?: '[]')
+            .',"lighting":'.($lights ?: 'null')
             .',"project_id":'.json_encode($projectId)
             .',"version":'.$version.'}',
         )->header('Content-Type', 'application/json');
@@ -527,7 +534,7 @@ class MapController extends Controller
         } else {
             $parts = $body['parts'] ?? null;
             $groups = $body['groups'] ?? null;
-            $lights = $body['lights'] ?? null;
+            $lights = $body['lighting'] ?? $body['lights'] ?? null;
             $projectId = $body['project_id'] ?? null;
             abort_unless(is_array($parts) && array_is_list($parts), 400, 'body must be a JSON array of parts');
             abort_unless($groups === null || is_array($groups) && array_is_list($groups), 400, 'bad group data');
@@ -541,7 +548,7 @@ class MapController extends Controller
 
         abort_unless($this->validParts($parts), 400, 'bad part data');
         abort_unless($groups === null || $this->validGroups($groups, $parts), 400, 'bad group data');
-        abort_unless($lights === null || $this->validLights($lights), 400, 'bad light data');
+        abort_unless($lights === null || $this->validLighting($lights), 400, 'bad light data');
 
         $data = json_encode($parts);
         $encodedGroups = $groups === null ? null : json_encode($groups);
@@ -752,6 +759,54 @@ class MapController extends Controller
         foreach ($tx as $face => $kind) {
             if (! in_array($face, self::FACES, true) || ! in_array($kind, self::TEXTURES, true)) {
                 return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * The rig is one object now. A map saved before that carries a list of suns, which stays
+     * readable so old rows keep loading; the client folds it into the one sun on the way in.
+     */
+    private function validLighting(array $lighting): bool
+    {
+        if (array_is_list($lighting)) {
+            return $this->validLights($lighting);
+        }
+
+        if (array_diff_key($lighting, array_flip(self::LIGHTING_KEYS))) {
+            return false;
+        }
+
+        foreach (['ambient_color', 'sun_color'] as $k) {
+            $v = $lighting[$k] ?? null;
+            if ($v !== null && (! is_string($v) || ! preg_match('/^[0-9a-fA-F]{6}$/', $v))) {
+                return false;
+            }
+        }
+
+        foreach ([['brightness', self::MAX_BRIGHTNESS], ['sun_illuminance', self::MAX_ILLUMINANCE]] as [$k, $max]) {
+            $v = $lighting[$k] ?? null;
+            if ($v !== null && (! is_int($v) && ! is_float($v) || $v < 0 || $v > $max)) {
+                return false;
+            }
+        }
+
+        $shadows = $lighting['sun_shadow_maps_enabled'] ?? null;
+        if ($shadows !== null && ! is_bool($shadows)) {
+            return false;
+        }
+
+        $rotation = $lighting['sun_rotation'] ?? null;
+        if ($rotation !== null) {
+            if (! is_array($rotation) || ! array_is_list($rotation) || count($rotation) !== 3) {
+                return false;
+            }
+            foreach ($rotation as $n) {
+                if (! is_int($n) && ! is_float($n)) {
+                    return false;
+                }
             }
         }
 

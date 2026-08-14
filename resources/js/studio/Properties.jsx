@@ -4,7 +4,7 @@ import {
     FACES, MATERIALS, TEXTURES,
     canCollide, castsShadow, isAnchored, isBaseplate, materialOf, texturesOf,
 } from './materials';
-import { MAX_ILLUMINANCE } from './lighting';
+import { AMBIENT, MAX_BRIGHTNESS, MAX_ILLUMINANCE } from './lighting';
 
 const COLOR_COMMIT = 150;
 
@@ -106,54 +106,80 @@ function ColorRow({ id, value, readOnly, onCommit }) {
     );
 }
 
-function LightProperties({ light, onChange, readOnly }) {
+function AmbientProperties({ lighting, onChange, readOnly }) {
     return (
         <div className="panel properties">
             <div className="panel-title">
-                Properties: {light.N}
+                Properties: Ambient
+                {readOnly && <span className="props-ro">read only</span>}
+            </div>
+            <div className="panel-body">
+                <div className="props">
+                    <ColorRow
+                        id="ambient"
+                        value={lighting.ambient_color}
+                        readOnly={readOnly}
+                        onCommit={(ambient_color) => onChange({ ambient_color })}
+                    />
+                    <div className="prop-row">
+                        <label>Brightness</label>
+                        <Slider
+                            value={lighting.brightness}
+                            min={0}
+                            max={MAX_BRIGHTNESS}
+                            step={5}
+                            readOnly={readOnly}
+                            onChange={(brightness) => onChange({ brightness })}
+                        />
+                    </div>
+                    <div className="prop-note">
+                        Light with no direction, filling the shadows the sun leaves.
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function SunProperties({ lighting, onChange, readOnly }) {
+    return (
+        <div className="panel properties">
+            <div className="panel-title">
+                Properties: Sun
                 {readOnly && <span className="props-ro">read only</span>}
             </div>
             <div className="panel-body">
                 <div className="props">
                     <div className="prop-row">
-                        <label>Name</label>
-                        <input
-                            type="text"
-                            value={light.N}
+                        <label>Rotation</label>
+                        <Vec3
+                            value={lighting.sun_rotation}
                             readOnly={readOnly}
-                            onChange={(e) => onChange({ N: e.target.value.slice(0, 64) || 'Light' })}
+                            onChange={(sun_rotation) => onChange({ sun_rotation })}
                         />
                     </div>
-                    <div className="prop-row">
-                        <label>Position</label>
-                        <Vec3 value={light.P} readOnly={readOnly} onChange={(P) => onChange({ P })} />
-                    </div>
-                    <div className="prop-row">
-                        <label>Rotation</label>
-                        <Vec3 value={light.R} readOnly={readOnly} onChange={(R) => onChange({ R })} />
-                    </div>
                     <ColorRow
-                        id={light._id}
-                        value={light.C}
+                        id="sun"
+                        value={lighting.sun_color}
                         readOnly={readOnly}
-                        onCommit={(C) => onChange({ C })}
+                        onCommit={(sun_color) => onChange({ sun_color })}
                     />
                     <div className="prop-row">
                         <label>Illuminance</label>
                         <Slider
-                            value={light.I}
+                            value={lighting.sun_illuminance}
                             min={0}
                             max={MAX_ILLUMINANCE}
                             step={100}
                             readOnly={readOnly}
-                            onChange={(I) => onChange({ I })}
+                            onChange={(sun_illuminance) => onChange({ sun_illuminance })}
                         />
                     </div>
                     <Toggle
                         label="Shadows"
-                        checked={light.Sd !== false}
+                        checked={lighting.sun_shadow_maps_enabled !== false}
                         readOnly={readOnly}
-                        onChange={(Sd) => onChange({ Sd })}
+                        onChange={(sun_shadow_maps_enabled) => onChange({ sun_shadow_maps_enabled })}
                     />
                 </div>
             </div>
@@ -162,13 +188,15 @@ function LightProperties({ light, onChange, readOnly }) {
 }
 
 export default function Properties({
-    part, count = 0, onChange, readOnly = false, light = null, onLightChange = null,
+    part, count = 0, onChange, readOnly = false, light = null, lighting = null, onLightChange = null,
 }) {
     const id = part?._id ?? null;
     const [draft, setColorDraft] = useColorDraft(id, (hex) => onChange({ C: hex }));
 
-    if (light) {
-        return <LightProperties light={light} onChange={onLightChange} readOnly={readOnly} />;
+    if (light && lighting) {
+        const Panel = light === AMBIENT ? AmbientProperties : SunProperties;
+
+        return <Panel lighting={lighting} onChange={onLightChange} readOnly={readOnly} />;
     }
 
     if (!part) {

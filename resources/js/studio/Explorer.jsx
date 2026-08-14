@@ -3,7 +3,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { WorkspaceIcon, LightingIcon, cubeIcon, FolderIcon, ChevronIcon } from './icons';
 import { groupIndex, groupParts, groupTree } from './groups';
 import { EMPTY, isHidden, isLocked } from './flags';
-import { lightRef } from './lighting';
+import { AMBIENT, SUN } from './lighting';
 
 const ICON_COLOR = {
     Part: '#b9b9c0',
@@ -16,7 +16,10 @@ const AUTO_OPEN_MAX = 25;
 const ROW_H = 20;
 const OVERSCAN = 8;
 
-const NO_LIGHTS = [];
+const RIG = [
+    { ref: AMBIENT, label: 'Ambient', key: 'ambient' },
+    { ref: SUN, label: 'Sun', key: 'sun' },
+];
 
 // Every row reserves the same twist slot whether or not it has one, so the icons
 // down a column line up and a guide can be drawn at a fixed offset from the indent.
@@ -37,8 +40,7 @@ const Twist = ({ open, onToggle }) => (onToggle ? (
 
 export default function Explorer({
     parts, selectedIds, setSelectedId, selectMany, groups = [], onUngroup, onRenameGroup, mapName,
-    flags = EMPTY, onFlag, onClearFlags, lights = NO_LIGHTS, onAddPart, onAddLight, onRemoveLight,
-    NEW_PART
+    flags = EMPTY, onFlag, onClearFlags, onAddPart, NEW_PART
 }) {
     const listRef = useRef(null);
     const [query, setQuery] = useState('');
@@ -95,14 +97,14 @@ export default function Explorer({
             for (const row of loose) out.push({ k: 'part', row, depth: 1 });
         }
 
-        const shown = lights.filter((l) => !q || l.N.toLowerCase().includes(q));
-        if (!q || shown.length) out.push({ k: 'lighting', depth: 0 });
+        const shown = RIG.filter((r) => !q || r.label.toLowerCase().includes(q));
+        if (shown.length) out.push({ k: 'lighting', depth: 0 });
         if (lightsOpen) {
-            for (const l of shown) out.push({ k: 'lightrow', light: l, depth: 1 });
+            for (const r of shown) out.push({ k: 'lightrow', rig: r, depth: 1 });
         }
 
         return { items: out, matched: rows.length + shown.length };
-    }, [parts, groups, lights, q, open]);
+    }, [parts, groups, q, open]);
 
     const first = Math.max(0, Math.floor(view.top / ROW_H) - OVERSCAN);
     const last = Math.min(items.length, Math.ceil((view.top + view.h) / ROW_H) + OVERSCAN);
@@ -292,27 +294,16 @@ export default function Explorer({
                                 );
                             }
                             if (it.k === 'lightrow') {
-                                const ref = lightRef(it.light._id);
-
                                 return (
                                     <div
-                                        key={ref}
+                                        key={it.rig.ref}
                                         {...rowProps(it.depth)}
-                                        className={`tree-item child ${selected.has(ref) ? 'selected' : ''}`}
-                                        onClick={(e) => setSelectedId(ref, e.ctrlKey || e.metaKey, null, true)}
+                                        className={`tree-item child ${selected.has(it.rig.ref) ? 'selected' : ''}`}
+                                        onClick={() => setSelectedId(it.rig.ref, false, null, true)}
                                     >
                                         <Twist />
                                         <span className="icon"><LightingIcon /></span>
-                                        {it.light.N}
-                                        {onRemoveLight && (
-                                            <button
-                                                className="clear"
-                                                title="Delete this light"
-                                                onClick={(e) => { e.stopPropagation(); onRemoveLight(it.light._id); }}
-                                            >
-                                                ×
-                                            </button>
-                                        )}
+                                        {it.rig.label}
                                     </div>
                                 );
                             }
@@ -325,16 +316,6 @@ export default function Explorer({
                                     />
                                     <span className="icon"><LightingIcon /></span>
                                     Lighting
-                                    <span className="count">{lights.length}</span>
-                                    {onAddLight && (
-                                        <button
-                                            className="add"
-                                            title="Add a light"
-                                            onClick={(e) => { e.stopPropagation(); onAddLight(); }}
-                                        >
-                                            +
-                                        </button>
-                                    )}
                                 </div>
                             );
                         })}

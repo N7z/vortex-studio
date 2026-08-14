@@ -26,15 +26,36 @@ test('a project the Studio wrote survives import and export unchanged', { skip: 
     const read = fromProject(official);
     const parts = read.parts.map(withNewId);
     const groups = read.groups.map((g) => newGroup(g.name, g.slots.map((i) => parts[i]._id)));
+    const out = toProject(parts, groups, read.projectId, read.lighting);
 
-    assert.deepEqual(round(toProject(parts, groups, read.projectId, read.lights)), round(official));
+    // The reference file predates the rig becoming one object, so it still carries a list of suns.
+    // Everything else has to come back byte for byte.
+    const { lighting, ...rest } = out;
+    const { lights, ...officialRest } = official;
+    assert.deepEqual(round(rest), round(officialRest));
+});
+
+test('a list of suns is folded into the one sun the rig now has', { skip: !have }, () => {
+    const read = fromProject(official);
+
+    assert.equal(read.lighting.sun_illuminance, official.lights[0].illuminance);
+    assert.equal(read.lighting.sun_shadow_maps_enabled, official.lights[0].shadows_enabled !== false);
+
+    const out = toProject(read.parts.map(withNewId), [], read.projectId, read.lighting);
+    assert.deepEqual(Object.keys(out.lighting).sort(), [
+        'ambient_color', 'brightness', 'sun_color', 'sun_illuminance', 'sun_rotation',
+        'sun_shadow_maps_enabled',
+    ]);
+    assert.equal(out.lighting.sun_illuminance, DEFAULT_ILLUMINANCE);
+    assert.equal(Object.keys(out.lighting.ambient_color).sort().join(''), 'abgr');
+    assert.equal(out.lights, undefined, 'the list is gone');
 });
 
 test('a group is an index into groups, and ungrouped is null', { skip: !have }, () => {
     const read = fromProject(official);
     const parts = read.parts.map(withNewId);
     const groups = read.groups.map((g) => newGroup(g.name, g.slots.map((i) => parts[i]._id)));
-    const out = toProject(parts, groups, read.projectId, read.lights);
+    const out = toProject(parts, groups, read.projectId, read.lighting);
 
     for (const g of out.groups) {
         assert.deepEqual(Object.keys(g).sort(), ['name', 'parent_group']);

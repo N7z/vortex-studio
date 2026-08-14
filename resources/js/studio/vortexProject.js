@@ -5,7 +5,10 @@ import {
     DEFAULT_MATERIAL, FACES, MATERIALS, TEXTURES,
     canCollide, castsShadow, isAnchored, isBaseplate, materialOf, texturesOf,
 } from './materials';
-import { DEFAULT_ILLUMINANCE, MAX_ILLUMINANCE, MAX_LIGHTS } from './lighting';
+import {
+    DEFAULT_BRIGHTNESS, DEFAULT_ILLUMINANCE, DEFAULT_LIGHTING, MAX_BRIGHTNESS, MAX_ILLUMINANCE,
+    cleanLighting, lightingFromSuns,
+} from './lighting';
 import { newPartId } from './ops';
 
 const DEG = Math.PI / 180;
@@ -91,17 +94,31 @@ function partToProject(part, group) {
     };
 }
 
-function lightToProject(light) {
-    const [x, y, z] = light.P;
-    const [r, g, b] = rgbOf(light.C);
+const colorTo = (hex) => {
+    const [r, g, b] = rgbOf(hex);
+
+    return { r: round(r), g: round(g), b: round(b), a: 1 };
+};
+
+const colorFrom = (raw, fallback) => {
+    const c = raw && typeof raw === 'object' ? raw : null;
+    if (!c) return fallback;
+    const rgb = [num(c.r, 1), num(c.g, 1), num(c.b, 1)];
+    const scaled = rgb.every((n) => n >= 0 && n <= 1) ? rgb : rgb.map((n) => n / 255);
+
+    return scaled.map(byte).join('');
+};
+
+function lightingToProject(lighting) {
+    const lit = cleanLighting(lighting) ?? { ...DEFAULT_LIGHTING };
 
     return {
-        name: light.N,
-        position: { x: num(x), y: num(y), z: num(z) },
-        rotation: quatFrom(light.R),
-        color: { r: round(r), g: round(g), b: round(b), a: 1 },
-        illuminance: num(light.I, DEFAULT_ILLUMINANCE),
-        shadows_enabled: light.Sd !== false,
+        ambient_color: colorTo(lit.ambient_color),
+        brightness: num(lit.brightness, DEFAULT_BRIGHTNESS),
+        sun_color: colorTo(lit.sun_color),
+        sun_illuminance: num(lit.sun_illuminance, DEFAULT_ILLUMINANCE),
+        sun_shadow_maps_enabled: lit.sun_shadow_maps_enabled !== false,
+        sun_rotation: quatFrom(lit.sun_rotation),
     };
 }
 
@@ -112,7 +129,7 @@ export function newProjectId() {
     return [...bytes].map((n) => n.toString(16).padStart(2, '0')).join('');
 }
 
-export function toProject(parts, groups = [], projectId = newProjectId(), lights = []) {
+export function toProject(parts, groups = [], projectId = newProjectId(), lighting = null) {
     const owner = new Map();
     const slotOf = new Map(groups.map((g, at) => [g.id, at]));
     groups.forEach((g, at) => g.ids.forEach((id) => owner.set(id, at)));
@@ -120,7 +137,7 @@ export function toProject(parts, groups = [], projectId = newProjectId(), lights
     return {
         project_id: projectId,
         parts: parts.map((p) => partToProject(p, owner.get(p._id) ?? null)),
-        lights: lights.map(lightToProject),
+        lighting: lightingToProject(lighting),
         groups: groups.map((g) => ({
             name: g.name,
             parent_group: (g.parent ? slotOf.get(g.parent) : undefined) ?? null,
@@ -172,22 +189,29 @@ function partFromProject(part) {
     return out;
 }
 
-function lightFromProject(light) {
-    const c = light.color && typeof light.color === 'object' ? light.color : {};
-    const rgb = [num(c.r, 1), num(c.g, 1), num(c.b, 1)];
-    const unit = rgb.every((n) => n >= 0 && n <= 1);
-    const scaled = unit ? rgb : rgb.map((n) => n / 255);
-    const name = typeof light.name === 'string' && light.name ? light.name.slice(0, 64) : 'Light';
+// A rig from a file that predates it being one object arrives as a list of suns instead.
+function lightingFromProject(doc) {
+    if (Array.isArray(doc.lights)) {
+        return lightingFromSuns(doc.lights.map((l) => ({
+            C: colorFrom(l?.color, DEFAULT_LIGHTING.sun_color),
+            I: Math.min(Math.max(num(l?.illuminance, DEFAULT_ILLUMINANCE), 0), MAX_ILLUMINANCE),
+            Sd: l?.shadows_enabled !== false,
+            R: eulerOf(l?.rotation),
+        })));
+    }
 
-    return {
-        _id: newPartId(),
-        N: name,
-        P: vec3Of(light.position).map(round),
-        R: eulerOf(light.rotation),
-        C: scaled.map(byte).join(''),
-        I: Math.min(Math.max(num(light.illuminance, DEFAULT_ILLUMINANCE), 0), MAX_ILLUMINANCE),
-        Sd: light.shadows_enabled !== false,
-    };
+    const raw = doc.lighting && typeof doc.lighting === 'object' ? doc.lighting : {};
+
+    return cleanLighting({
+        ambient_color: colorFrom(raw.ambient_color, DEFAULT_LIGHTING.ambient_color),
+        brightness: Math.min(Math.max(num(raw.brightness, DEFAULT_BRIGHTNESS), 0), MAX_BRIGHTNESS),
+        sun_color: colorFrom(raw.sun_color, DEFAULT_LIGHTING.sun_color),
+        sun_illuminance: Math.min(
+            Math.max(num(raw.sun_illuminance, DEFAULT_ILLUMINANCE), 0), MAX_ILLUMINANCE,
+        ),
+        sun_shadow_maps_enabled: raw.sun_shadow_maps_enabled !== false,
+        sun_rotation: raw.sun_rotation ? eulerOf(raw.sun_rotation) : DEFAULT_LIGHTING.sun_rotation,
+    }) ?? { ...DEFAULT_LIGHTING };
 }
 
 export function fromProject(doc, limit = Infinity) {
@@ -244,15 +268,12 @@ export function fromProject(doc, limit = Infinity) {
             parentAt: parentAt(at),
         }));
 
-    const lights = (Array.isArray(doc.lights) ? doc.lights : [])
-        .filter((l) => l && typeof l === 'object' && !Array.isArray(l))
-        .slice(0, MAX_LIGHTS)
-        .map(lightFromProject);
+    const lighting = lightingFromProject(doc);
 
     return {
         parts,
         groups,
-        lights,
+        lighting,
         projectId: /^[a-f0-9]{32}$/i.test(doc.project_id ?? '') ? String(doc.project_id).toLowerCase() : null,
         dropped,
         reshaped: 0,
