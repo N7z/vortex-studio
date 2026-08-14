@@ -4,7 +4,7 @@ import * as THREE from 'three';
 
 import {
     DEFAULT_LIGHTING, DEFAULT_POINT_LIGHT, DEFAULT_SPOT_LIGHT, FACE_DIRECTION, MAX_RANGE,
-    USEFUL_RANGE, cleanLighting, rangeToDistance,
+    USEFUL_RANGE, cleanLighting, rangeToDistance, shadowNear,
 } from '../resources/js/studio/lighting.js';
 
 // The rule the renderer walks the scene by: an invisible object takes everything under it with it.
@@ -139,4 +139,21 @@ test('the range track stops where ranges stop being useful', () => {
         DEFAULT_POINT_LIGHT.range < USEFUL_RANGE / 2,
         'and the default sits well inside the track rather than against its floor',
     );
+});
+
+test('a light with shadows on is not blocked by the part it comes from', () => {
+    // The default shadow camera starts at 0.5, well inside any part worth putting a lamp in, so
+    // the part shadows its own light.
+    assert.equal(new THREE.PointLight(0xffffff, 1).shadow.camera.near, 0.5);
+
+    const part = [4, 1, 2];
+    const near = shadowNear(part);
+    const corner = Math.hypot(...part) / 2;
+
+    assert.ok(near > corner, `the map starts at ${near}, past the corner at ${corner}`);
+    assert.ok(near < corner * 1.5, 'but not so far out that it swallows what is next to the part');
+
+    // A big part pushes it further out, a thin one barely at all.
+    assert.ok(shadowNear([40, 40, 40]) > shadowNear([1, 1, 1]));
+    assert.ok(shadowNear([0.2, 0.2, 0.2]) >= 0.05, 'and it never collapses to nothing');
 });

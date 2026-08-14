@@ -55,6 +55,15 @@ export const hasPartLight = (part) => !!(part?.point_light || part?.spot_light);
 // limit", which is the opposite, so it never gets one.
 export const rangeToDistance = (range) => (range > 0 ? range : 0.0001);
 
+// A light on a part sits inside it, so with shadows on the part is the first thing its own light
+// meets and it shadows everything. Starting the shadow map just outside the part's own corners
+// leaves the part out of it, which is what "the light comes from this part" has to mean.
+export function shadowNear(size) {
+    const [x, y, z] = Array.isArray(size) ? size : [1, 1, 1];
+
+    return Math.max(0.05, Math.hypot(x, y, z) / 2 + 0.05);
+}
+
 // Ranges past this are legal but nobody aims with them, so the slider stops here and the box
 // carries on to MAX_RANGE.
 export const USEFUL_RANGE = 200;

@@ -11,6 +11,7 @@ import {
 } from './parts3d';
 import {
     DEFAULT_BRIGHTNESS, DEFAULT_ILLUMINANCE, DEFAULT_LIGHTING, FACE_DIRECTION, rangeToDistance,
+    shadowNear,
 } from './lighting';
 import { MARK_KINDS, makeMarkTexture } from './facemarks';
 
@@ -192,6 +193,17 @@ export default function Viewport({
             partLights.delete(id);
         };
 
+        const aimShadow = (light, part, range) => {
+            const near = shadowNear(part.S);
+            const far = Math.max(near * 2, range);
+            const cam = light.shadow.camera;
+            if (cam.near === near && cam.far === far) return;
+            cam.near = near;
+            cam.far = far;
+            cam.updateProjectionMatrix();
+            light.shadow.needsUpdate = true;
+        };
+
         const syncPartLights = (part, mesh) => {
             const c = ctx.current;
             const wantPoint = part.point_light ?? null;
@@ -217,6 +229,7 @@ export default function Viewport({
             }
             if (held.point) {
                 held.point.color.set(`#${wantPoint.color}`);
+                aimShadow(held.point, part, wantPoint.range);
                 // The format quotes lumens, which is what power takes; intensity is per steradian.
                 held.point.power = wantPoint.intensity;
                 held.point.distance = rangeToDistance(wantPoint.range);
@@ -240,6 +253,7 @@ export default function Viewport({
             if (held.spot) {
                 const dir = FACE_DIRECTION[wantSpot.face] ?? FACE_DIRECTION.Bottom;
                 held.spot.face = wantSpot.face;
+                aimShadow(held.spot, part, wantSpot.range);
                 held.spot.color.set(`#${wantSpot.color}`);
                 held.spot.power = wantSpot.intensity;
                 held.spot.distance = rangeToDistance(wantSpot.range);
