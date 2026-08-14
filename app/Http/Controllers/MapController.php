@@ -52,7 +52,7 @@ class MapController extends Controller
         'sun_rotation',
     ];
 
-    private const MAX_BRIGHTNESS = 4_000;
+    private const MAX_BRIGHTNESS = 20_000;
 
     private const POINT_LIGHT_KEYS = ['color', 'intensity', 'range', 'shadow_maps_enabled'];
 

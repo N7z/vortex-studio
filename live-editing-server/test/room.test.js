@@ -1119,7 +1119,7 @@ test('the lighting rig reaches a joiner and a change is relayed', async () => {
     const { c: owner, welcome: hi } = await host([part('a')]);
 
     assert.equal(hi.lighting.sun_illuminance, 10000);
-    assert.equal(hi.lighting.brightness, 80);
+    assert.equal(hi.lighting.brightness, 2000);
 
     const { c: other } = await guest(hi.code);
     owner.send({ t: 'lighting', lighting: { ...hi.lighting, brightness: 200, ambient_color: 'ff8800' } });
@@ -1165,7 +1165,7 @@ test('lighting that is out of range is refused', async () => {
     assert.match((await owner.next('error')).message, /light/);
 
     const { c: late, welcome } = await guest(hi.code);
-    assert.equal(welcome.lighting.brightness, 80);
+    assert.equal(welcome.lighting.brightness, 2000);
 
     owner.ws.close();
     late.ws.close();

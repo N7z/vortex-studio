@@ -20,8 +20,9 @@ const DEG = Math.PI / 180;
 
 const SUN_PER_LUX = DEFAULT_ILLUMINANCE / 1.6;
 
-// The ambient fill is quoted the way the format quotes it; this is what the default is worth in
-// the renderer, so a map that never touches it looks like it always did.
+// The ambient fill is quoted the way the format quotes it, on a scale where a couple of thousand is
+// an ordinary room. This is what the default is worth in the renderer, so a map that never touches
+// it looks like it always did.
 const AMBIENT_PER_UNIT = 0.9 / DEFAULT_BRIGHTNESS;
 
 

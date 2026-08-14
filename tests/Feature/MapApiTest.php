@@ -326,7 +326,7 @@ const LIGHT = [
 ];
 
 const LIGHTING = [
-    'ambient_color' => 'cfe8ff', 'brightness' => 80, 'sun_color' => 'ffffff',
+    'ambient_color' => 'cfe8ff', 'brightness' => 2000, 'sun_color' => 'ffffff',
     'sun_illuminance' => 10000, 'sun_shadow_maps_enabled' => true,
     'sun_rotation' => [-69.44, 25.09, 17.53],
 ];

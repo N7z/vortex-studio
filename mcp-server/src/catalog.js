@@ -38,7 +38,7 @@ export const LIMITS = {
     maxParts: 60_000,
     maxGroups: 2_000,
     maxIlluminance: 200_000,
-    maxBrightness: 4_000,
+    maxBrightness: 20_000,
     maxIntensity: 10_000_000,
     maxRange: 2_000,
     maxBytes: 8_000_000,

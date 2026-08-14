@@ -4,9 +4,9 @@ export const DEFAULT_ILLUMINANCE = 10000;
 
 export const MAX_ILLUMINANCE = 200000;
 
-export const DEFAULT_BRIGHTNESS = 80;
+export const DEFAULT_BRIGHTNESS = 2000;
 
-export const MAX_BRIGHTNESS = 4000;
+export const MAX_BRIGHTNESS = 20000;
 
 export const MAX_INTENSITY = 10000000;
 

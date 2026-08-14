@@ -94,7 +94,7 @@ test('the lumens a light quotes are what three.js calls power', () => {
 
 test('the rig defaults are the ones a map gets when it carries none', () => {
     assert.deepEqual(cleanLighting(null), DEFAULT_LIGHTING);
-    assert.equal(cleanLighting({ brightness: 4001 }), null, 'past the ceiling is refused');
+    assert.equal(cleanLighting({ brightness: 20001 }), null, 'past the ceiling is refused');
     assert.equal(cleanLighting({ nope: 1 }), null, 'a property the rig does not have is refused');
     assert.equal(DEFAULT_SPOT_LIGHT.face, 'Bottom');
 });
