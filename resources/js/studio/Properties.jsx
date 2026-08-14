@@ -206,7 +206,7 @@ function SunProperties({ lighting, onChange, readOnly }) {
 }
 
 function PartLightProperties({
-    part, kind, onChange, readOnly, onRemove,
+    part, kind, count = 1, onChange, readOnly, onRemove,
 }) {
     const spot = kind === 'spot';
     const light = spot ? spotLightOf(part) : pointLightOf(part);
@@ -218,6 +218,7 @@ function PartLightProperties({
         <div className="panel properties">
             <div className="panel-title">
                 Properties: {spot ? 'SpotLight' : 'PointLight'}
+                {count > 1 && <span className="props-count">{count} selected</span>}
                 {readOnly && <span className="props-ro">read only</span>}
             </div>
             <div className="panel-body">
@@ -287,7 +288,7 @@ function PartLightProperties({
                     </div>
                     {!readOnly && (
                         <button className="prop-remove" onClick={() => onRemove(key)}>
-                            Remove this light
+                            {count > 1 ? `Remove these ${count} lights` : 'Remove this light'}
                         </button>
                     )}
                 </div>
@@ -308,6 +309,7 @@ export default function Properties({
             <PartLightProperties
                 part={part}
                 kind={partLight}
+                count={count}
                 onChange={onChange}
                 readOnly={readOnly}
                 onRemove={(key) => onChange({ [key]: null })}

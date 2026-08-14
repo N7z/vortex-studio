@@ -310,7 +310,7 @@ export default function Explorer({
                                         key={ref}
                                         {...rowProps(it.depth)}
                                         className={`tree-item child ${selected.has(ref) ? 'selected' : ''}`}
-                                        onClick={() => setSelectedId(ref, false, null, true)}
+                                        onClick={(e) => setSelectedId(ref, e.ctrlKey || e.metaKey, null, true)}
                                     >
                                         <Twist />
                                         <span className="icon"><LightingIcon /></span>

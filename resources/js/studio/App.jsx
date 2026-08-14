@@ -33,6 +33,7 @@ import {
 } from './ops';
 import { DeleteIcon, DuplicateIcon } from './icons';
 import { loadGraphics, saveGraphics } from './graphics';
+import { continues, editKey, lightingKey } from './history';
 import { roomFromUrl } from './live';
 import UpdateNotice from './UpdateNotice';
 import { watchForUpdate } from './version';
@@ -147,6 +148,7 @@ export default function App() {
     const future = useRef([]);
     const partsRef = useRef(parts);
     partsRef.current = parts;
+    const lastEdit = useRef({ key: null, at: 0 });
     const groupsRef = useRef([]);
     groupsRef.current = groups;
     const flagsRef = useRef(flags);
@@ -377,7 +379,23 @@ export default function App() {
     const activeModels = activePlugin ? pluginModels[activePlugin.id] ?? null : null;
 
     const select = useCallback((id, additive, normal, solo) => {
-        if (isLightRef(id) || partLightOf(id)) {
+        const lit = partLightOf(id);
+        if (lit) {
+            // Lights on parts gather the way parts do, as long as they are the same kind of light:
+            // a point and a spot have nothing in common to edit together.
+            setSelectedIds((cur) => {
+                const kept = additive
+                    ? cur.filter((x) => partLightOf(x)?.kind === lit.kind)
+                    : [];
+                if (kept.includes(id)) return kept.filter((x) => x !== id);
+
+                return [...kept, id];
+            });
+            setFaces({});
+
+            return;
+        }
+        if (isLightRef(id)) {
             setSelectedIds([id]);
             setFaces({});
 
@@ -435,8 +453,15 @@ export default function App() {
 
         const inverse = invertOp(before, op);
         if (inverse) {
-            remember(history, { t: 'parts', op: inverse });
-            future.current = [];
+            // Still the same move? The entry already on the stack undoes the whole of it.
+            const key = editKey(op);
+            const now = performance.now();
+            const same = continues(lastEdit.current, key, now) && history.current.length;
+            lastEdit.current = { key, at: now };
+            if (!same) {
+                remember(history, { t: 'parts', op: inverse });
+                future.current = [];
+            }
         }
         dirty.current = true;
         setParts(next);
@@ -446,6 +471,8 @@ export default function App() {
     const step = useCallback((from, to) => {
         const entry = from.current.pop();
         if (!entry) return;
+        // Whatever comes next starts its own move, even if it touches the same field again.
+        lastEdit.current = { key: null, at: 0 };
 
         if (entry.t === 'lighting') {
             remember(to, { t: 'lighting', lighting: lightingRef.current });
@@ -842,9 +869,14 @@ export default function App() {
         liveRef.current.sendGroups(next);
     }, []);
 
-    const commitLighting = useCallback((next) => {
-        remember(history, { t: 'lighting', lighting: lightingRef.current });
-        future.current = [];
+    const commitLighting = useCallback((next, key = null) => {
+        const now = performance.now();
+        const same = continues(lastEdit.current, key, now) && history.current.length;
+        lastEdit.current = { key, at: now };
+        if (!same) {
+            remember(history, { t: 'lighting', lighting: lightingRef.current });
+            future.current = [];
+        }
         setLighting(next);
         dirty.current = true;
         liveRef.current.sendLighting(next);
@@ -852,7 +884,10 @@ export default function App() {
 
     const patchLighting = useCallback((patch) => {
         if (!canEditRef.current) return;
-        commitLighting({ ...lightingRef.current, ...patch });
+        commitLighting(
+            { ...lightingRef.current, ...patch },
+            lightingKey(patch),
+        );
     }, [commitLighting]);
 
     const groupSelection = useCallback(() => {
@@ -1184,14 +1219,18 @@ export default function App() {
     const updateSelected = (patch) => {
         const lit = partLightOf(selectedIds[selectedIds.length - 1]);
         if (lit) {
+            const hosts = selectedIds
+                .map(partLightOf)
+                .filter((x) => x?.kind === lit.kind)
+                .map((x) => x.partId);
             const gone = Object.entries(patch).filter(([, v]) => v === null).map(([k]) => k);
             if (gone.length) {
-                edit(unsetOp([lit.partId], gone));
-                setSelectedIds([lit.partId]);
+                edit(unsetOp(hosts, gone));
+                setSelectedIds(hosts);
 
                 return;
             }
-            edit(patchOp([lit.partId], patch));
+            edit(patchOp(hosts, patch));
 
             return;
         }
@@ -1256,8 +1295,12 @@ export default function App() {
         // halves of the map's own rig cannot be deleted at all.
         const lit = partLightOf(selectedIds[selectedIds.length - 1]);
         if (lit) {
-            edit(unsetOp([lit.partId], [lit.kind === 'spot' ? 'spot_light' : 'point_light']));
-            setSelectedIds([lit.partId]);
+            const hosts = selectedIds
+                .map(partLightOf)
+                .filter((x) => x?.kind === lit.kind)
+                .map((x) => x.partId);
+            edit(unsetOp(hosts, [lit.kind === 'spot' ? 'spot_light' : 'point_light']));
+            setSelectedIds(hosts);
 
             return;
         }
@@ -1333,6 +1376,24 @@ export default function App() {
             if (e.ctrlKey && e.key.toLowerCase() === 's' && scriptTab) {
                 e.preventDefault();
                 saveTab(scriptTab);
+                return;
+            }
+            // Undo and redo belong to the map wherever the focus happens to be: a slider or a
+            // property box would otherwise hand them to the browser's own undo for that field.
+            // A textarea keeps them, since that is a script being written.
+            const typing = e.target.tagName === 'TEXTAREA' || e.target.isContentEditable;
+            if (!typing && e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
+                e.target.blur?.();
+                undo();
+
+                return;
+            }
+            if (!typing && e.ctrlKey && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
+                e.preventDefault();
+                e.target.blur?.();
+                redo();
+
                 return;
             }
             if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable) return;

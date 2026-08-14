@@ -1611,6 +1611,12 @@ input[type='range']:disabled::-moz-range-thumb { background: var(--disabled); cu
 .chat-send button:hover { background: var(--line); color: var(--ink-mid); }
 .chat-send button:disabled { color: var(--faint-2); cursor: default; background: var(--hover); }
 
+.props-count {
+    margin-left: 6px;
+    font-size: 10px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
 .props-ro {
     margin-left: 6px;
     font-size: 9px;
