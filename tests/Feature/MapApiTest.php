@@ -206,12 +206,14 @@ it('rejects too many groups', function () {
     $this->putJson('/api/maps/m', ['parts' => [IPART], 'groups' => $groups])->assertStatus(400);
 });
 
-it('rejects a group with an empty id list and an unknown key', function () {
+it('takes a group with an empty id list, which is a folder holding only folders', function () {
     $this->putJson('/api/maps/m', [
         'parts' => [IPART],
         'groups' => [['id' => 'g1', 'name' => 'A', 'ids' => []]],
-    ])->assertStatus(400);
+    ])->assertOk();
+});
 
+it('rejects a group with a key it does not know', function () {
     $this->putJson('/api/maps/m', [
         'parts' => [IPART],
         'groups' => [['id' => 'g1', 'name' => 'A', 'ids' => ['p1'], 'evil' => 1]],
@@ -354,6 +356,41 @@ it('refuses a part property it does not know', function (array $bad) {
     'unknown texture' => [['Tx' => ['Top' => 'Bricks']]],
     'a toggle that is not a boolean' => [['Cs' => 'yes']],
     'textures as the document list, not our map' => [['Tx' => [['face' => 'Top', 'kind' => 'Studs']]]],
+]);
+
+it('saves a folder inside a folder, including one holding only folders', function () {
+    $parts = [array_merge(PART, ['_id' => 'aaa']), array_merge(PART, ['_id' => 'bbb'])];
+    $groups = [
+        ['id' => 'g-out', 'name' => 'Building', 'ids' => []],
+        ['id' => 'g-in', 'name' => 'Walls', 'ids' => ['aaa', 'bbb'], 'parent' => 'g-out'],
+    ];
+
+    asToken()->putJson('/api/maps/nested', ['parts' => $parts, 'groups' => $groups])->assertOk();
+    asToken()->getJson('/api/maps/nested')->assertOk()->assertJson(['groups' => $groups]);
+});
+
+it('refuses folder nesting that goes nowhere or round in circles', function (array $groups) {
+    asToken()->putJson('/api/maps/bad', [
+        'parts' => [array_merge(PART, ['_id' => 'aaa'])], 'groups' => $groups,
+    ])->assertStatus(400);
+})->with([
+    'a parent that does not exist' => [[
+        ['id' => 'g-1', 'name' => 'Walls', 'ids' => ['aaa'], 'parent' => 'g-nope'],
+    ]],
+    'a folder inside itself' => [[
+        ['id' => 'g-1', 'name' => 'Walls', 'ids' => ['aaa'], 'parent' => 'g-1'],
+    ]],
+    'two folders inside each other' => [[
+        ['id' => 'g-1', 'name' => 'A', 'ids' => ['aaa'], 'parent' => 'g-2'],
+        ['id' => 'g-2', 'name' => 'B', 'ids' => [], 'parent' => 'g-1'],
+    ]],
+    'two folders sharing an id' => [[
+        ['id' => 'g-1', 'name' => 'A', 'ids' => ['aaa']],
+        ['id' => 'g-1', 'name' => 'B', 'ids' => []],
+    ]],
+    'a parent that is not a string' => [[
+        ['id' => 'g-1', 'name' => 'A', 'ids' => ['aaa'], 'parent' => 7],
+    ]],
 ]);
 
 it('takes a part that carries a light, and refuses one it cannot store', function () {

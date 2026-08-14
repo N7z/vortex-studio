@@ -671,8 +671,10 @@ class MapController extends Controller
         }
 
         $taken = [];
+        $seen = [];
+        $parents = [];
         foreach ($groups as $g) {
-            if (! is_array($g) || array_diff_key($g, array_flip(['id', 'name', 'ids']))) {
+            if (! is_array($g) || array_diff_key($g, array_flip(['id', 'name', 'ids', 'parent']))) {
                 return false;
             }
             foreach (['id', 'name'] as $k) {
@@ -680,8 +682,13 @@ class MapController extends Controller
                     return false;
                 }
             }
+            if (isset($seen[$g['id']])) {
+                return false;
+            }
+            $seen[$g['id']] = true;
             $ids = $g['ids'] ?? null;
-            if (! is_array($ids) || ! array_is_list($ids) || ! $ids) {
+            // A folder holding nothing but other folders has no parts of its own.
+            if (! is_array($ids) || ! array_is_list($ids)) {
                 return false;
             }
             foreach ($ids as $id) {
@@ -689,6 +696,27 @@ class MapController extends Controller
                     return false;
                 }
                 $taken[$id] = true;
+            }
+            $parent = $g['parent'] ?? null;
+            if ($parent !== null) {
+                if (! is_string($parent) || $parent === $g['id'] || strlen($parent) > 64) {
+                    return false;
+                }
+                $parents[$g['id']] = $parent;
+            }
+        }
+
+        foreach ($parents as $id => $parent) {
+            if (! isset($seen[$parent])) {
+                return false;
+            }
+            // Walking up has to reach the top rather than come back round.
+            $at = $parent;
+            for ($hops = 0; $at !== null && $hops <= count($groups); $hops++) {
+                if ($at === $id) {
+                    return false;
+                }
+                $at = $parents[$at] ?? null;
             }
         }
 
