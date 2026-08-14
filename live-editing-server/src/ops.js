@@ -1,7 +1,7 @@
 import { validPointLight, validSpotLight } from './lights.js';
 
 export const PART_KEYS = [
-    '_id', 'T', 'P', 'S', 'R', 'C', 'Tr', 'Shape', 'Sh', 'ItemId',
+    '_id', 'T', 'N', 'P', 'S', 'R', 'C', 'Tr', 'Shape', 'Sh', 'ItemId',
     'M', 'Cs', 'An', 'Cc', 'Bp', 'Tx', 'point_light', 'spot_light',
 ];
 
@@ -124,6 +124,8 @@ export function validPart(p) {
     }
     if (typeof p._id !== 'string' || !p._id || p._id.length > 64) return false;
     if (typeof p.T !== 'string' || !p.T || p.T.length > 32) return false;
+    // A part can be called whatever its builder wants; without a name it goes by its type.
+    if ('N' in p && (typeof p.N !== 'string' || !p.N || p.N.length > 64)) return false;
     for (const k of VEC_KEYS) {
         const v = p[k];
         if (!Array.isArray(v) || v.length !== 3 || !v.every(isNum)) return false;

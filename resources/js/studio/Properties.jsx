@@ -394,6 +394,16 @@ export default function Properties({
                         />
                     </div>
                     <div className="prop-row">
+                        <label>Name</label>
+                        <input
+                            type="text"
+                            value={part.N ?? ''}
+                            placeholder={part.T}
+                            readOnly={readOnly}
+                            onChange={(e) => onChange({ N: e.target.value.slice(0, 64) || null })}
+                        />
+                    </div>
+                    <div className="prop-row">
                         <label>Transparency</label>
                         <Slider
                             value={part.Tr ?? 0}

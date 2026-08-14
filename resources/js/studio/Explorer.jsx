@@ -48,7 +48,7 @@ const Twist = ({ open, onToggle }) => (onToggle ? (
 export default function Explorer({
     parts, selectedIds, setSelectedId, selectMany, groups = [], onUngroup, onRenameGroup, mapName,
     flags = EMPTY, onFlag, onClearFlags, onAddPart, onAddUnder, onReparent, onFilePartsUnder,
-    NEW_PART
+    onRenamePart, NEW_PART
 }) {
     const listRef = useRef(null);
     const [query, setQuery] = useState('');
@@ -69,7 +69,11 @@ export default function Explorer({
     const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
 
     const { items, matched } = useMemo(() => {
-        const match = ({ p, i }) => !q || p.T.toLowerCase().includes(q) || `#${i}`.includes(q) || String(i) === q;
+        const match = ({ p, i }) => !q
+            || (p.N ?? p.T).toLowerCase().includes(q)
+            || p.T.toLowerCase().includes(q)
+            || `#${i}`.includes(q)
+            || String(i) === q;
         const rows = parts.map((p, i) => ({ p, i })).filter(match);
 
         const byPart = groupIndex(groups);
@@ -148,17 +152,20 @@ export default function Explorer({
         return () => ro.disconnect();
     }, []);
 
-    // F2 renames the folder the selection is in, the way a file manager does.
+    // F2 renames what is selected: the part, or the folder when a whole folder is what is selected.
     const renamable = useMemo(() => {
         if (!selectedIds.length) return null;
         const byPart = groupIndex(groups);
         const homes = new Set(selectedIds.map((id) => byPart.get(id)?.id));
+        const home = homes.size === 1 && !homes.has(undefined) ? [...homes][0] : null;
+        const whole = home && groupParts(groups, home).every((id) => selectedIds.includes(id));
+        if (whole) return home;
 
-        return homes.size === 1 && !homes.has(undefined) ? [...homes][0] : null;
+        return selectedIds.length === 1 && !isLightRef(selectedIds[0]) ? selectedIds[0] : null;
     }, [groups, selectedIds]);
 
     useEffect(() => {
-        if (!onRenameGroup) return undefined;
+        if (!onRenameGroup && !onRenamePart) return undefined;
         const onKey = (e) => {
             if (e.key !== 'F2' || !renamable) return;
             if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
@@ -168,7 +175,7 @@ export default function Explorer({
         window.addEventListener('keydown', onKey);
 
         return () => window.removeEventListener('keydown', onKey);
-    }, [renamable, onRenameGroup]);
+    }, [renamable, onRenameGroup, onRenamePart]);
 
     useEffect(() => {
         const el = listRef.current;
@@ -195,6 +202,7 @@ export default function Explorer({
     })) : []);
 
     const partMenu = (p) => [
+        ...(onRenamePart ? [{ label: 'Rename', pick: () => setRenaming(p._id) }, { sep: true }] : []),
         ...addItems(p),
         ...(onAddUnder ? [{ sep: true }] : []),
         {
@@ -279,7 +287,30 @@ export default function Explorer({
             >
                 <Twist />
                 <span className="icon">{cubeIcon(ICON_COLOR[p.T] ?? '#b9b9c0')}</span>
-                {p.T}
+                {renaming === p._id ? (
+                    <input
+                        className="group-name"
+                        autoFocus
+                        defaultValue={p.N ?? p.T}
+                        onClick={(e) => e.stopPropagation()}
+                        onBlur={(e) => {
+                            const v = e.target.value.trim().slice(0, 64);
+                            if (v && v !== (p.N ?? p.T)) onRenamePart?.(p._id, v);
+                            setRenaming(null);
+                        }}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') e.target.blur();
+                            if (e.key === 'Escape') setRenaming(null);
+                        }}
+                    />
+                ) : (
+                    <span
+                        className="label"
+                        onDoubleClick={(e) => { e.stopPropagation(); if (onRenamePart) setRenaming(p._id); }}
+                    >
+                        {p.N ?? p.T}
+                    </span>
+                )}
                 {canAdd && (
                     <button
                         className="add"

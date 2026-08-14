@@ -28,14 +28,17 @@ test('a project the Studio wrote survives import and export unchanged', { skip: 
     const groups = read.groups.map((g) => newGroup(g.name, g.slots.map((i) => parts[i]._id)));
     const out = toProject(parts, groups, read.projectId, read.lighting);
 
-    // The reference file predates both the rig becoming one object and a part being able to hold a
-    // light, so it carries a list of suns and no light keys on its parts. Everything else has to
-    // come back byte for byte.
+    // This file predates the rig becoming one object, a part being able to hold a light, and
+    // custom_appearance, so those are the fields it cannot be compared on. Everything else has to
+    // come back byte for byte. What the format looks like now is covered against a current file.
     const { lighting, ...rest } = out;
     const { lights, ...officialRest } = official;
-    rest.parts = rest.parts.map(({ point_light, spot_light, ...p }) => {
+    rest.parts = rest.parts.map(({
+        point_light, spot_light, custom_appearance, ...p
+    }) => {
         assert.equal(point_light, null);
         assert.equal(spot_light, null);
+        assert.equal(custom_appearance, false);
 
         return p;
     });
@@ -50,9 +53,8 @@ test('a list of suns is folded into the one sun the rig now has', { skip: !have 
 
     const out = toProject(read.parts.map(withNewId), [], read.projectId, read.lighting);
     assert.deepEqual(Object.keys(out.lighting).sort(), [
-        'ambient_color', 'brightness', 'sun_color', 'sun_illuminance', 'sun_rotation',
-        'sun_shadow_maps_enabled',
-    ]);
+        'ambient_color', 'brightness', 'sun_color', 'sun_illuminance', 'sun_shadow_maps_enabled',
+    ], 'and the rig is written with the fields the format has, no more');
     assert.equal(out.lighting.sun_illuminance, DEFAULT_ILLUMINANCE);
     assert.equal(Object.keys(out.lighting.ambient_color).sort().join(''), 'abgr');
     assert.equal(out.lights, undefined, 'the list is gone');
@@ -194,4 +196,31 @@ test('a part with no light carries no light keys', () => {
     assert.equal(out.point_light, null);
     assert.equal(out.spot_light, null);
     assert.equal('point_light' in fromProject({ parts: [out] }).parts[0], false);
+});
+
+const CURRENT = new URL(
+    '../../VortexStuff/maps/studio-0-2-project.json', import.meta.url,
+).pathname;
+
+const haveCurrent = existsSync(CURRENT);
+const current = haveCurrent ? JSON.parse(readFileSync(CURRENT, 'utf8')) : null;
+
+test('a project written by the Studio as it is now round trips exactly', { skip: !haveCurrent }, () => {
+    const read = fromProject(current);
+    const parts = read.parts.map(withNewId);
+    const groups = read.groups.map((g) => newGroup(g.name, g.slots.map((i) => parts[i]._id)));
+
+    assert.deepEqual(round(toProject(parts, groups, read.projectId, read.lighting)), round(current));
+});
+
+test('a part keeps the name it was given, and one that says nothing is left off', { skip: !haveCurrent }, () => {
+    const read = fromProject(current);
+    const named = read.parts.find((p) => p.N);
+
+    assert.equal(named.N, 'oies', 'a renamed baseplate keeps its name');
+    assert.equal(named.Bp, true, 'and is still a baseplate');
+    assert.ok(read.parts.some((p) => !p.N), 'a part called after its type carries no name');
+
+    const [out] = toProject([{ ...named, _id: 'a' }], [], 'a'.repeat(32), read.lighting).parts;
+    assert.equal(out.name, 'oies');
 });

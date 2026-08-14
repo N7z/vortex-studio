@@ -36,7 +36,7 @@ class MapController extends Controller
 
     private const PART_KEYS = [
         '_id', 'T', 'P', 'S', 'R', 'C', 'Tr', 'Shape', 'Sh', 'ItemId',
-        'M', 'Cs', 'An', 'Cc', 'Bp', 'Tx', 'point_light', 'spot_light',
+        'M', 'Cs', 'An', 'Cc', 'Bp', 'Tx', 'point_light', 'spot_light', 'N',
     ];
 
     private const MATERIALS = ['Plastic', 'Wood', 'Metal', 'Grass', 'Ice', 'Paint'];
@@ -752,6 +752,10 @@ class MapController extends Controller
                 }
             }
             if (array_key_exists('Tx', $p) && ! $this->validTextures($p['Tx'])) {
+                return false;
+            }
+            if (array_key_exists('N', $p)
+                && (! is_string($p['N']) || $p['N'] === '' || strlen($p['N']) > 64)) {
                 return false;
             }
             foreach ([['point_light', false], ['spot_light', true]] as [$k, $spot]) {

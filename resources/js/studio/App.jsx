@@ -1254,6 +1254,11 @@ export default function App() {
     );
 
     const updateSelected = (patch) => {
+        if (patch.N === null) {
+            edit(unsetOp(selectedIds, ['N']));
+
+            return;
+        }
         const lit = partLightOf(selectedIds[selectedIds.length - 1]);
         if (lit) {
             const hosts = selectedIds
@@ -1760,6 +1765,7 @@ export default function App() {
                             onAddUnder={canEdit ? addUnderPart : null}
                             onReparent={canEdit ? reparentGroup : null}
                             onFilePartsUnder={canEdit ? filePartsUnder : null}
+                            onRenamePart={canEdit ? ((id, N) => edit(patchOp([id], { N }))) : null}
                             NEW_PART={NEW_PART}
                         />
                     )}

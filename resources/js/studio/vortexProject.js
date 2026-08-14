@@ -76,7 +76,7 @@ function partToProject(part, group) {
     const baseplate = isBaseplate(part);
 
     return {
-        name: baseplate && kind === 'Part' ? 'Baseplate' : kind,
+        name: part.N || (baseplate && kind === 'Part' ? 'Baseplate' : kind),
         position: { x: num(x), y: num(y), z: num(z) },
         rotation: quatFrom(part.R ?? [0, 0, 0]),
         scale: { x: num(sx, 1), y: num(sy, 1), z: num(sz, 1) },
@@ -90,6 +90,8 @@ function partToProject(part, group) {
         can_collide: canCollide(part),
         spawn_location: kind === 'SpawnLocation',
         baseplate,
+        // Carried so a document written here still loads where every field has to be present.
+        custom_appearance: false,
         truss: kind === 'Truss',
         textures: FACES.filter((f) => textures[f]).map((f) => ({ face: f, kind: textures[f] })),
         point_light: partLightTo(pointLightOf(part), false),
@@ -150,7 +152,8 @@ function lightingToProject(lighting) {
         sun_color: colorTo(lit.sun_color),
         sun_illuminance: num(lit.sun_illuminance, DEFAULT_ILLUMINANCE),
         sun_shadow_maps_enabled: lit.sun_shadow_maps_enabled !== false,
-        sun_rotation: quatFrom(lit.sun_rotation),
+        // Where the sun comes from is ours and has no field here, and a document with a field the
+        // format does not know is refused whole, so it stays out and lives in the map instead.
     };
 }
 
@@ -217,6 +220,10 @@ function partFromProject(part) {
     if (part.baseplate === true) out.Bp = true;
     const textures = texturesFrom(part.textures);
     if (textures) out.Tx = textures;
+    // A name that says no more than the type does is left off rather than stored.
+    const name = typeof part.name === 'string' ? part.name.trim().slice(0, 64) : '';
+    const plain = ['Part', 'SpawnLocation', 'ShirtPad', 'Truss', 'Baseplate'];
+    if (name && !plain.includes(name)) out.N = name;
     const point = partLightFrom(part.point_light, false);
     if (point) out.point_light = point;
     const spot = partLightFrom(part.spot_light, true);

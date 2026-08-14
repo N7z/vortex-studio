@@ -174,3 +174,14 @@ test('a part can carry a point light and a spot light, within their ranges', () 
         },
     }), false, 'a spot points at a face of the part it is on');
 });
+
+test('a part can be given a name, and an empty one is refused', () => {
+    const part = {
+        _id: 'a', T: 'Part', P: [0, 0, 0], S: [1, 1, 1], R: [0, 0, 0],
+    };
+
+    assert.equal(validPart({ ...part, N: 'Lamp post' }), true);
+    assert.equal(validPart({ ...part, N: '' }), false, 'a part with no name goes by its type');
+    assert.equal(validPart({ ...part, N: 'x'.repeat(65) }), false);
+    assert.equal(validPart({ ...part, N: 7 }), false);
+});
