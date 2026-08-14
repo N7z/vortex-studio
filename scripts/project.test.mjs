@@ -97,3 +97,36 @@ test('a default is written as an absent key, not an explicit one', () => {
         assert.ok(!(k in back), `${k} should be absent when it is the default`);
     }
 });
+
+test('a group inside a group survives export and import', () => {
+    const parts = [
+        { _id: 'p1', T: 'Part', P: [0, 0, 0], S: [4, 1, 2] },
+        { _id: 'p2', T: 'Part', P: [8, 0, 0], S: [4, 1, 2] },
+    ];
+    const outer = newGroup('Outer', []);
+    const inner = { ...newGroup('Inner', ['p1', 'p2']), parent: outer.id };
+
+    const doc = toProject(parts, [outer, inner], '0'.repeat(32), []);
+    assert.deepEqual(doc.groups, [
+        { name: 'Outer', parent_group: null },
+        { name: 'Inner', parent_group: 0 },
+    ]);
+
+    const read = fromProject(doc);
+    const back = read.groups;
+    assert.equal(back.length, 2, 'the empty outer folder is kept because it holds the inner one');
+    assert.equal(back[0].name, 'Outer');
+    assert.equal(back[0].parentAt, null);
+    assert.deepEqual(back[0].slots, []);
+    assert.equal(back[1].name, 'Inner');
+    assert.equal(back[1].parentAt, 0);
+    assert.deepEqual(back[1].slots, [0, 1]);
+});
+
+test('a parent index pointing nowhere is dropped, not obeyed', () => {
+    const parts = [{ _id: 'p1', T: 'Part', P: [0, 0, 0], S: [4, 1, 2] }];
+    const doc = toProject(parts, [newGroup('Solo', ['p1'])], '0'.repeat(32), []);
+    doc.groups[0].parent_group = 7;
+
+    assert.equal(fromProject(doc).groups[0].parentAt, null);
+});

@@ -1,7 +1,9 @@
 import {
     applyOp, invertOp, validateOp, validPart,
 } from '../../live-editing-server/src/ops.js';
-import { applyGroupOp, validateGroupOp } from '../../live-editing-server/src/groupops.js';
+import {
+    applyGroupOp, pruneEmptyGroups, validateGroupOp,
+} from '../../live-editing-server/src/groupops.js';
 import { cleanLights } from '../../live-editing-server/src/lights.js';
 import { LIMITS } from './catalog.js';
 
@@ -193,7 +195,9 @@ export class MapDoc {
         };
     }
 
-    groupParts(label, { folder, ids, replace = false }) {
+    groupParts(label, {
+        folder, ids, replace = false, parent,
+    }) {
         const alive = new Set(this.parts.map((p) => p._id));
         const hit = [...new Set(ids)].filter((id) => alive.has(id));
         if (!hit.length) throw new MapError('none of those ids are in the map');
@@ -203,10 +207,31 @@ export class MapDoc {
         const name = existing?.name ?? folder;
         const kept = replace || !existing ? [] : existing.ids.filter((x) => alive.has(x));
         const merged = [...new Set([...kept, ...hit])];
-        const result = this.commit(label, [{ gop: { t: 'group', id, name, ids: merged } }]);
+
+        let under = existing?.parent ?? null;
+        if (parent !== undefined) {
+            if (parent === null) under = null;
+            else {
+                const owner = this.findGroup(parent);
+                if (!owner) throw new MapError(`no folder called "${parent}" to nest it in`);
+                if (owner.id === id) throw new MapError('a folder cannot hold itself');
+                under = owner.id;
+            }
+        }
+
+        const result = this.commit(label, [{
+            gop: {
+                t: 'group', id, name, ids: merged, ...(under ? { parent: under } : {}),
+            },
+        }]);
 
         return {
-            ...result, folderId: id, folder: name, moved: hit.length, parts: merged.length,
+            ...result,
+            folderId: id,
+            folder: name,
+            moved: hit.length,
+            parts: merged.length,
+            ...(under ? { parent: this.findGroup(under)?.name ?? under } : {}),
         };
     }
 
@@ -328,8 +353,9 @@ export function pruneGroups(groups, parts) {
             continue;
         }
         changed = true;
-        if (ids.length) out.push({ ...g, ids });
+        out.push({ ...g, ids });
     }
 
-    return changed ? out : groups;
+    // A folder that lost its last part still stands while it holds another folder.
+    return changed ? pruneEmptyGroups(out) : groups;
 }

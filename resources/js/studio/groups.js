@@ -1,13 +1,15 @@
+import { pruneEmptyGroups } from '../../../live-editing-server/src/groupops.js';
 import { newPartId } from './ops.js';
 
-export { applyGroupOp } from '../../../live-editing-server/src/groupops.js';
+export { applyGroupOp, pruneEmptyGroups } from '../../../live-editing-server/src/groupops.js';
 
 export const newGroupId = () => `g-${newPartId()}`;
 
-export const newGroup = (name, ids) => ({
+export const newGroup = (name, ids, parent = null) => ({
     id: newGroupId(),
     name,
     ids: [...ids],
+    ...(parent ? { parent } : {}),
 });
 
 export function pruneGroups(groups, parts) {
@@ -22,9 +24,46 @@ export function pruneGroups(groups, parts) {
             continue;
         }
         changed = true;
-        if (ids.length) out.push({ ...g, ids });
+        out.push({ ...g, ids });
     }
-    return changed ? out : groups;
+    // A group that lost its last part still stands while it holds another group.
+    return changed ? pruneEmptyGroups(out) : groups;
+}
+
+// Roots first, then each group's children, so an explorer can walk it straight down.
+export function groupTree(groups) {
+    const kids = new Map();
+    const known = new Set(groups.map((g) => g.id));
+    for (const g of groups) {
+        const parent = known.has(g.parent) ? g.parent : null;
+        if (!kids.has(parent)) kids.set(parent, []);
+        kids.get(parent).push(g);
+    }
+
+    return { roots: kids.get(null) ?? [], childrenOf: (id) => kids.get(id) ?? [] };
+}
+
+export function descendants(groups, id) {
+    const { childrenOf } = groupTree(groups);
+    const out = [];
+    const walk = (at) => {
+        for (const g of childrenOf(at)) {
+            out.push(g);
+            walk(g.id);
+        }
+    };
+    walk(id);
+
+    return out;
+}
+
+// What a group holds, counting everything nested under it.
+export function groupParts(groups, id) {
+    const self = groups.find((g) => g.id === id);
+    const all = [...(self ? self.ids : [])];
+    for (const g of descendants(groups, id)) all.push(...g.ids);
+
+    return all;
 }
 
 export function groupIndex(groups) {

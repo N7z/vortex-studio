@@ -25,10 +25,11 @@ So the tools are built around what you actually do in a 3D block editor:
   settings it suits. `paint_region` restyles what is already there, `add_lighting` handles suns.
 * **Precision** - `place_parts`, `modify_parts`, `move_parts`, `delete_parts` and `find_parts` for
   the corrections the semantic tools cannot express.
-* **Organisation** - `group_parts`, `rename_folder` and `delete_folder`. A part lives in exactly one
-  folder, and the `folder` argument of `place_parts`, `place_prop` and `scatter_props` extends the
-  folder it names instead of creating a second one with the same name, so a room stays one folder as
-  the model adds to it. `create_room` still makes a folder per call, and says so when the name is
+* **Organisation** - `group_parts`, `rename_folder` and `delete_folder`. Folders nest, so a building
+  can hold its rooms, and a folder stays alive while it holds another one even after its own parts
+  are gone. A part lives in exactly one folder, and the `folder` argument of `place_parts`,
+  `place_prop` and `scatter_props` extends the folder it names instead of creating a second one with
+  the same name, so a room stays one folder as the model adds to it. `create_room` still makes a folder per call, and says so when the name is
   already taken.
 * **Judgement** - `render_map_preview` returns a real PNG the model can look at, `validate_map`,
   `analyze_walkability`, `analyze_density` and `get_map_statistics` catch what the eye misses.

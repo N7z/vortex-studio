@@ -12,7 +12,7 @@ A live instance is available at [studio.zpaulin.com](https://studio.zpaulin.com)
 
 ### 3D Viewport and Geometry Editor
 
-The editor runs on Three.js with a WebGL viewport that has shadows, a directional sun, and orbit and fly camera modes. You can insert parts (Block and SpawnLocation), then move, rotate and scale them using on-screen gizmos or by typing values straight into the Properties panel. Materials are Plastic, Wood, Metal, Grass, Ice and Paint, all with PBR texture maps. Each face can have Studs or Inlets applied on its own. The Explorer panel on the right shows the full scene tree and supports folder grouping and renaming.
+The editor runs on Three.js with a WebGL viewport that has shadows, a directional sun, and orbit and fly camera modes. You can insert parts (Block and SpawnLocation), then move, rotate and scale them using on-screen gizmos or by typing values straight into the Properties panel. Materials are Plastic, Wood, Metal, Grass, Ice and Paint, all with PBR texture maps. Each face can have Studs or Inlets applied on its own. The Explorer panel on the right shows the full scene tree and supports folder grouping and renaming, with folders nested inside folders as deep as you like.
 
 Map Transfer lets you move a map between your personal storage and a team workspace without losing any of its history.
 

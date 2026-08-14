@@ -1,7 +1,7 @@
 import { config } from './config.js';
 import { uniqueName } from './identity.js';
 import { MEMBER_COLORS, randomCode, randomId, randomName } from './names.js';
-import { applyGroupOp, validateGroupOp } from './groupops.js';
+import { applyGroupOp, pruneEmptyGroups, validateGroupOp } from './groupops.js';
 import { applyOp, validateOp } from './ops.js';
 import { cleanLights } from './lights.js';
 
@@ -76,11 +76,17 @@ export function cleanGroups(input, known = null) {
         }
         total += ids.length;
         if (total > config.maxParts) return null;
+        if (g.parent !== undefined && g.parent !== null && typeof g.parent !== 'string') return null;
         const live = known ? ids.filter((id) => known.has(id)) : ids;
-        if (live.length) out.push({ id: g.id.slice(0, 64), name: g.name.slice(0, 64), ids: live });
+        out.push({
+            id: g.id.slice(0, 64),
+            name: g.name.slice(0, 64),
+            ids: live,
+            ...(g.parent ? { parent: String(g.parent).slice(0, 64) } : {}),
+        });
     }
 
-    return out;
+    return pruneEmptyGroups(out);
 }
 
 class Room {
@@ -343,9 +349,9 @@ class Room {
     pruneGroups() {
         if (!this.groups.length) return;
         const alive = new Set(this.parts.map((p) => p._id));
-        this.groups = this.groups
-            .map((g) => ({ ...g, ids: g.ids.filter((id) => alive.has(id)) }))
-            .filter((g) => g.ids.length);
+        this.groups = pruneEmptyGroups(
+            this.groups.map((g) => ({ ...g, ids: g.ids.filter((id) => alive.has(id)) })),
+        );
     }
 
     setViewFrom(member, view) {

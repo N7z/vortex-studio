@@ -328,7 +328,9 @@ export function register(server, ctx) {
             return ok(describeResult(ctx, {
                 mapName: ctx.mapName,
                 ...stats,
-                folders: ctx.doc.groups.map((g) => ({ id: g.id, name: g.name, parts: g.ids.length })),
+                folders: ctx.doc.groups.map((g) => ({
+                    id: g.id, name: g.name, parts: g.ids.length, ...(g.parent ? { parent: g.parent } : {}),
+                })),
                 lights: ctx.doc.lights.map((l) => ({
                     id: l._id, name: l.N, position: roundVec(l.P), color: l.C, illuminance: l.I,
                 })),
@@ -448,6 +450,7 @@ export function register(server, ctx) {
                         id: g.id,
                         name: g.name,
                         parts: parts.length,
+                        ...(g.parent ? { parent: g.parent } : {}),
                         bounds: b ? {
                             minX: round(b.minX),
                             maxX: round(b.maxX),
@@ -1156,16 +1159,23 @@ export function register(server, ctx) {
         'File parts into a folder, by name or id. An existing folder gains the parts, a new name '
         + 'creates the folder, and a part only ever lives in one folder, so this is also how you '
         + 'move parts between them. Use it when something was built outside the folder it belongs '
-        + 'to, instead of deleting and rebuilding it.',
+        + 'to, instead of deleting and rebuilding it. Folders nest: pass parent to put this folder '
+        + 'inside another one, which is how a building keeps its rooms together.',
         {
             folder: z.string().describe('folder name or id; an unknown name creates the folder'),
             ids: z.array(z.string()).min(1).max(500).describe('the parts to file under it'),
             replace: z.boolean().default(false)
                 .describe('true drops whatever else was in the folder, leaving only these parts'),
+            parent: z.string().nullable().optional()
+                .describe('folder name or id to nest this folder inside; null moves it to the top level'),
         },
-        async ({ folder, ids, replace }) => ok(describeResult(
+        async ({
+            folder, ids, replace, parent,
+        }) => ok(describeResult(
             ctx,
-            ctx.doc.groupParts(`file ${ids.length} parts under ${folder}`, { folder, ids, replace }),
+            ctx.doc.groupParts(`file ${ids.length} parts under ${folder}`, {
+                folder, ids, replace, parent,
+            }),
         )),
     );
 

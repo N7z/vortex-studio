@@ -161,3 +161,41 @@ test('create_room can raise its own roof in one undoable action', async () => {
     const undone = await ok('undo');
     assert.equal(undone.totalParts, before, 'room and roof come back off together');
 });
+
+test('a folder can be nested inside another one', async () => {
+    const walls = await ok('place_parts', { parts: [slab(60), slab(62)] });
+    const roof = await ok('place_parts', { parts: [slab(64)] });
+
+    await ok('group_parts', { folder: 'Predio', ids: walls.ids });
+    const inner = await ok('group_parts', { folder: 'Telhado', ids: roof.ids, parent: 'Predio' });
+    assert.equal(inner.parent, 'Predio');
+
+    const structure = await ok('get_structure');
+    const predio = structure.folders.find((f) => f.name === 'Predio');
+    const telhado = structure.folders.find((f) => f.name === 'Telhado');
+    assert.equal(telhado.parent, predio.id);
+    assert.equal(predio.parent, undefined);
+
+    const loop = await call('group_parts', { folder: 'Predio', ids: walls.ids, parent: 'Telhado' });
+    assert.equal(loop.isError, false, 'the server drops a cycle rather than refusing the call');
+    assert.equal(
+        (await ok('get_structure')).folders.find((f) => f.name === 'Predio').parent,
+        undefined,
+        'so Predio stays at the top level',
+    );
+
+    const gone = await call('group_parts', { folder: 'X', ids: walls.ids, parent: 'Nowhere' });
+    assert.equal(gone.isError, true);
+    assert.match(gone.data.error, /no folder called "Nowhere"/);
+});
+
+test('a folder holding only folders survives its parts leaving', async () => {
+    const kept = await ok('place_parts', { parts: [slab(70)] });
+    await ok('group_parts', { folder: 'Casca', ids: kept.ids });
+    await ok('group_parts', { folder: 'Miolo', ids: kept.ids, parent: 'Casca' });
+
+    const structure = await ok('get_structure');
+    const casca = structure.folders.find((f) => f.name === 'Casca');
+    assert.ok(casca, 'Casca has no parts of its own now, but it still holds Miolo');
+    assert.equal(casca.parts, 0);
+});

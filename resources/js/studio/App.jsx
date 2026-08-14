@@ -48,7 +48,8 @@ import {
 import useDialogs from '../ui/useDialogs';
 import Busy from '../ui/Busy';
 import {
-    applyGroupOp, groupIndex, newGroup, newGroupId, pruneGroups, takeLegacyGroups, ungroupIds,
+    applyGroupOp, groupIndex, newGroup, newGroupId, pruneEmptyGroups, pruneGroups, takeLegacyGroups,
+    ungroupIds,
 } from './groups';
 import * as flagStore from './flags';
 import { buildGrid, nearGrid } from './partgrid';
@@ -813,6 +814,13 @@ export default function App() {
         liveRef.current.sendGroupOp(op);
     }, []);
 
+    // A whole tree at once, for when sending it group by group would pass through states where a
+    // parent has nothing in it yet.
+    const replaceGroups = useCallback((next) => {
+        setGroups(next);
+        liveRef.current.sendGroups(next);
+    }, []);
+
     const commitLights = useCallback((next) => {
         remember(history, { t: 'lights', lights: lightsRef.current });
         future.current = [];
@@ -851,10 +859,19 @@ export default function App() {
 
     const groupSelection = useCallback(() => {
         if (selectedIds.length < 2) return;
+        // Grouping parts that all sit in one group nests the new group inside it, rather than
+        // pulling them out to the top level.
+        const byPart = groupIndex(groupsRef.current);
+        const homes = new Set(selectedIds.map((id) => byPart.get(id)?.id ?? null));
+        const parent = homes.size === 1 ? [...homes][0] : null;
         runGroupOp({
-            t: 'group', id: newGroupId(), name: `Group ${groupsRef.current.length + 1}`, ids: [...selectedIds],
+            t: 'group',
+            id: newGroupId(),
+            name: `Group ${groupsRef.current.length + 1}`,
+            ids: [...selectedIds],
+            ...(parent ? { parent } : {}),
         });
-        flash(`Grouped ${selectedIds.length} parts`);
+        flash(parent ? `Grouped ${selectedIds.length} parts inside` : `Grouped ${selectedIds.length} parts`);
     }, [selectedIds, flash, runGroupOp]);
 
     const ungroupSelection = useCallback(() => {
@@ -961,10 +978,14 @@ export default function App() {
             }
             const added = addMany(result.parts);
             if (result.groups?.length) {
-                for (const g of result.groups) {
-                    const ids = g.slots.map((i) => added[i]?._id).filter(Boolean);
-                    if (ids.length) runGroupOp({ t: 'group', id: newGroupId(), name: g.name, ids });
-                }
+                const idFor = new Map(result.groups.map((g) => [g.at, newGroupId()]));
+                const imported = result.groups.map((g) => ({
+                    id: idFor.get(g.at),
+                    name: g.name,
+                    ids: g.slots.map((i) => added[i]?._id).filter(Boolean),
+                    ...(g.parentAt === null ? {} : { parent: idFor.get(g.parentAt) }),
+                }));
+                replaceGroups(pruneEmptyGroups([...groupsRef.current, ...imported]));
             } else {
                 runGroupOp({
                     t: 'group',

@@ -481,6 +481,44 @@ test('the folders the host brings reach a joiner', async () => {
     other.ws.close();
 });
 
+test('a folder inside a folder reaches a joiner and survives losing its own parts', async () => {
+    const groups = [
+        { id: 'g-out', name: 'Building', ids: [] },
+        { id: 'g-in', name: 'Walls', ids: ['a', 'b'], parent: 'g-out' },
+    ];
+    const { c: owner, welcome: hi } = await host([part('a'), part('b')], groups);
+    const { c: other, welcome } = await guest(hi.code);
+
+    assert.deepEqual(welcome.groups, groups, 'the empty outer folder is kept, it holds the inner one');
+
+    // Emptying the inner folder must not strand it: the parts go, the nesting stays put.
+    owner.send({ t: 'op', op: { t: 'remove', ids: ['a', 'b'] } });
+    await other.next('op');
+
+    const { c: late, welcome: after } = await guest(hi.code);
+    assert.deepEqual(after.groups, [], 'nothing is left holding anything');
+
+    owner.ws.close();
+    other.ws.close();
+    late.ws.close();
+});
+
+test('a folder cannot be put inside itself', async () => {
+    const { c: owner, welcome: hi } = await host([part('a')]);
+    const { c: other } = await guest(hi.code);
+
+    owner.send({ t: 'gop', op: { t: 'group', id: 'g-1', name: 'Walls', ids: ['a'] } });
+    await other.next('gop');
+    owner.send({ t: 'gop', op: { t: 'reparent', id: 'g-1', parent: 'g-1' } });
+
+    const { c: late, welcome } = await guest(hi.code);
+    assert.equal(welcome.groups[0].parent, undefined);
+
+    owner.ws.close();
+    other.ws.close();
+    late.ws.close();
+});
+
 test('a folder change is relayed to the others but not echoed back', async () => {
     const { c: owner, welcome: hi } = await host([part('a'), part('b')]);
     const { c: other } = await guest(hi.code);

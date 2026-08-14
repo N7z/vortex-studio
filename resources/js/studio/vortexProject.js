@@ -114,13 +114,17 @@ export function newProjectId() {
 
 export function toProject(parts, groups = [], projectId = newProjectId(), lights = []) {
     const owner = new Map();
+    const slotOf = new Map(groups.map((g, at) => [g.id, at]));
     groups.forEach((g, at) => g.ids.forEach((id) => owner.set(id, at)));
 
     return {
         project_id: projectId,
         parts: parts.map((p) => partToProject(p, owner.get(p._id) ?? null)),
         lights: lights.map(lightToProject),
-        groups: groups.map((g) => ({ name: g.name, parent_group: null })),
+        groups: groups.map((g) => ({
+            name: g.name,
+            parent_group: (g.parent ? slotOf.get(g.parent) : undefined) ?? null,
+        })),
     };
 }
 
@@ -214,11 +218,31 @@ export function fromProject(doc, limit = Infinity) {
         parts.push(partFromProject(raw));
     }
 
+    // A group is kept when it holds parts or when it holds another kept group, so a folder that
+    // only exists to hold folders survives the trip.
     const listed = Array.isArray(doc.groups) ? doc.groups : [];
-    const groups = [...slotsByGroup.entries()]
-        .sort((a, b) => a[0] - b[0])
-        .map(([at, slots]) => ({ name: listed[at]?.name ?? `Group ${at + 1}`, slots }))
-        .filter((g) => g.slots.length);
+    const parentAt = (at) => {
+        const raw = listed[at]?.parent_group;
+
+        return Number.isInteger(raw) && raw >= 0 && raw < listed.length && raw !== at ? raw : null;
+    };
+    const keep = new Set(slotsByGroup.keys());
+    for (let pass = 0; pass < listed.length; pass += 1) {
+        const before = keep.size;
+        for (const at of [...keep]) {
+            const up = parentAt(at);
+            if (up !== null) keep.add(up);
+        }
+        if (keep.size === before) break;
+    }
+    const groups = [...keep]
+        .sort((a, b) => a - b)
+        .map((at) => ({
+            at,
+            name: listed[at]?.name ?? `Group ${at + 1}`,
+            slots: slotsByGroup.get(at) ?? [],
+            parentAt: parentAt(at),
+        }));
 
     const lights = (Array.isArray(doc.lights) ? doc.lights : [])
         .filter((l) => l && typeof l === 'object' && !Array.isArray(l))

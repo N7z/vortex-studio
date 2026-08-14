@@ -1,7 +1,7 @@
 import { Eye, EyeOff, Lock, LockOpen } from 'lucide-react';
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { WorkspaceIcon, LightingIcon, cubeIcon, FolderIcon, ChevronIcon } from './icons';
-import { groupIndex } from './groups';
+import { groupIndex, groupParts, groupTree } from './groups';
 import { EMPTY, isHidden, isLocked } from './flags';
 import { lightRef } from './lighting';
 
@@ -71,17 +71,27 @@ export default function Explorer({
         const wsOpen = q || (open.ws ?? true);
         const lightsOpen = q || (open.lighting ?? true);
 
+        const { roots, childrenOf } = groupTree(groups);
+
+        // A group holds parts and other groups, so the tree is walked rather than listed. Under a
+        // search, a group earns its row when anything below it matched.
+        const held = (g) => (buckets.get(g.id) ?? []).length
+            + childrenOf(g.id).reduce((n, c) => n + held(c), 0);
+
+        const walk = (list, depth) => {
+            for (const g of list) {
+                if (q && !held(g)) continue;
+                out.push({ k: 'group', g, depth });
+                if (!(open[g.id] ?? (g.ids.length <= AUTO_OPEN_MAX))) continue;
+                walk(childrenOf(g.id), depth + 1);
+                for (const row of buckets.get(g.id) ?? []) out.push({ k: 'part', row, depth: depth + 1 });
+            }
+        };
+
         const out = [];
         if (!q) out.push({ k: 'ws', depth: 0 });
         if (wsOpen) {
-            for (const g of groups) {
-                const rowsIn = buckets.get(g.id) ?? [];
-                if (q && !rowsIn.length) continue;
-                out.push({ k: 'group', g, depth: 1 });
-                if (open[g.id] ?? (g.ids.length <= AUTO_OPEN_MAX)) {
-                    for (const row of rowsIn) out.push({ k: 'part', row, depth: 2 });
-                }
-            }
+            walk(roots, 1);
             for (const row of loose) out.push({ k: 'part', row, depth: 1 });
         }
 
@@ -164,11 +174,14 @@ export default function Explorer({
         );
     };
 
-    const groupRow = (g, depth) => (
+    const groupRow = (g, depth) => {
+        const held = groupParts(groups, g.id);
+
+        return (
         <div
             key={g.id}
             {...rowProps(depth)}
-            className={`tree-item group ${g.ids.some((id) => selected.has(id)) ? 'selected' : ''}`}
+            className={`tree-item group ${held.some((id) => selected.has(id)) ? 'selected' : ''}`}
         >
             <Twist open={isOpen(g)} onToggle={() => toggle(g.id, !isOpen(g))} />
             <span className="icon"><FolderIcon /></span>
@@ -190,18 +203,25 @@ export default function Explorer({
             ) : (
                 <span
                     className="label"
-                    onClick={(e) => selectMany?.(g.ids, e.ctrlKey || e.metaKey)}
+                    onClick={(e) => selectMany?.(held, e.ctrlKey || e.metaKey)}
                     onDoubleClick={() => setRenaming(g.id)}
-                    title={`${g.name}: click to select all ${g.ids.length}, double-click to rename`}
+                    title={`${g.name}: click to select all ${held.length}, double-click to rename`}
                 >
                     {g.name}
                 </span>
             )}
-            <span className="count">{g.ids.length}</span>
-            {toggles(g.ids, g.ids.every((id) => isHidden(flags, id)), g.ids.every((id) => isLocked(flags, id)))}
-            <button className="clear" onClick={() => onUngroup?.(g.id)} title="Ungroup (the parts stay)">×</button>
+            <span className="count">{held.length}</span>
+            {toggles(held, held.every((id) => isHidden(flags, id)), held.every((id) => isLocked(flags, id)))}
+            <button
+                className="clear"
+                onClick={() => onUngroup?.(g.id)}
+                title="Ungroup (what is inside stays, one level up)"
+            >
+                ×
+            </button>
         </div>
-    );
+        );
+    };
 
     return (
         <div className="panel explorer">
