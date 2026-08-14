@@ -327,12 +327,14 @@ export default function Explorer({
 
     const groupRow = (g, depth) => {
         const held = groupParts(groups, g.id);
+        // The folder reads as selected only when everything in it is, not when one child is.
+        const whole = held.length > 0 && held.every((id) => selected.has(id));
 
         return (
         <div
             key={g.id}
             {...rowProps(depth)}
-            className={`tree-item group ${held.some((id) => selected.has(id)) ? 'selected' : ''}`
+            className={`tree-item group ${whole ? 'selected' : ''}`
                 + `${dragging && dragOver === g.id ? ' drop-into' : ''}`}
             onContextMenu={(e) => openMenu(e, groupMenu(g))}
             draggable={!!onReparent}
