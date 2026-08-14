@@ -12,7 +12,7 @@ A live instance is available at [studio.zpaulin.com](https://studio.zpaulin.com)
 
 ### 3D Viewport and Geometry Editor
 
-The editor runs on Three.js with a WebGL viewport that has shadows, a directional sun, and orbit and fly camera modes. You can insert parts (Block and SpawnLocation), then move, rotate and scale them using on-screen gizmos or by typing values straight into the Properties panel. Materials are Plastic, Wood, Metal, Grass, Ice and Paint, all with PBR texture maps. Each face can have Studs or Inlets applied on its own. The Explorer panel on the right shows the full scene tree and supports folder grouping and renaming.
+The editor runs on Three.js with a WebGL viewport that has shadows, a filmic tone curve, an ambient fill and a sun you aim from the Explorer, point and spot lights carried by individual parts, and orbit and fly camera modes. You can insert parts (Block and SpawnLocation), then move, rotate and scale them using on-screen gizmos or by typing values straight into the Properties panel. Materials are Plastic, Wood, Metal, Grass, Ice and Paint, all with PBR texture maps. Each face can have Studs or Inlets applied on its own. The Explorer panel on the right shows the full scene tree and supports folder grouping and renaming, with folders nested inside folders as deep as you like.
 
 Map Transfer lets you move a map between your personal storage and a team workspace without losing any of its history.
 
@@ -43,6 +43,10 @@ Plugins are Lua scripts that run inside a Wasmoon (Lua 5.4 in WebAssembly) sandb
 ### Live Collaboration
 
 Multiple people can edit the same map at the same time. A standalone Node.js WebSocket server keeps everyone in sync using a shared operational transform engine, so edits always land in the same order regardless of who sends them. You can see where teammates are looking, what they have selected, and watch them run around during a playtest. Roles (Owner, Developer, Spectator) are enforced server-side - the server refuses ops from spectators rather than trusting the client to grey out its own buttons. Signed-in users get a short-lived HMAC token from Laravel so the live server knows who they are without hitting the database.
+
+### AI Map Building (MCP)
+
+A local MCP server in `mcp-server/` lets Claude Code build and refine maps. It works in terms of level design rather than individual parts - create a room with doorways, connect two rooms with a corridor that cuts its own openings through the walls, scatter props over an area, generate terrain - and it can render the map to an image and look at its own work, then check playability against the real character constants before calling it finished. It signs in as your Studio account and joins a live session as `Your Name (MCP)`, so you watch it build in the browser as it goes. See [mcp-server/README.md](mcp-server/README.md).
 
 ### Character and Clothing Customizer
 
@@ -105,18 +109,21 @@ php artisan migrate
 php artisan dev
 ```
 
-This starts the backend, frontend asset compiler, scheduler, and queue worker together. Open your browser at `http://localhost:8000`.
+This starts the backend, frontend asset compiler, scheduler, queue worker and, once its dependencies are installed, the live editing server. `composer run dev` does the same thing. Run `php artisan dev:list` to see the processes. Open your browser at `http://localhost:8000`.
 
 ### 4. Optional: Live Editing Server
 
-To enable real-time multiplayer editing, run the WebSocket server separately:
+To enable real-time multiplayer editing, install its dependencies once:
 
 ```bash
 cd live-editing-server
 npm install
 cp .env.example .env
-npm start
 ```
+
+From then on `php artisan dev` starts it along with everything else, as the `live` process. Until
+those dependencies exist it is skipped, so the dev stack still comes up without it. To run it on its
+own instead, use `npm start` from that directory.
 
 Then add these to your studio `.env`:
 
@@ -126,6 +133,21 @@ LIVE_SECRET=your_shared_secret_key
 ```
 
 `LIVE_SECRET` must match in both `.env` files. Without it the server still works, but identity is not verified and members keep randomly generated names.
+
+### 5. Optional: MCP Server for AI Map Building
+
+To let Claude Code build maps in the editor:
+
+```bash
+cd mcp-server
+npm install
+cp .env.example .env
+claude mcp add vortex-studio -- node "$(pwd)/src/index.js"
+```
+
+Put your Studio email and password in `mcp-server/.env` so the agent can sign in as you. It needs no
+port of its own - Claude Code runs it as a local subprocess. Live editing needs `LIVE_SECRET` set,
+as above. See [mcp-server/README.md](mcp-server/README.md).
 
 ## Development and Testing
 
@@ -137,13 +159,14 @@ npm run build
 node luacheck.mjs
 ./vendor/bin/pest
 cd live-editing-server && npm test
+cd ../mcp-server && npm test
 ```
 
 All of it has to pass. See [CONTRIBUTING.md](CONTRIBUTING.md) for branch naming, commit style, and pull request guidelines.
 
 ## System Architecture
 
-The Laravel backend handles persistence, authentication, team permissions, version snapshots, and HMAC token signing. The React frontend renders the 3D scene with Three.js, runs physics with Rapier3D, and executes Lua plugins through Wasmoon. The live editing server is a standalone Node.js process that keeps room state in memory and syncs edits between clients over WebSocket.
+The Laravel backend handles persistence, authentication, team permissions, version snapshots, and HMAC token signing. The React frontend renders the 3D scene with Three.js, runs physics with Rapier3D, and executes Lua plugins through Wasmoon. The live editing server is a standalone Node.js process that keeps room state in memory and syncs edits between clients over WebSocket. The MCP server is a separate stdio process that speaks the same op protocol as a client, so AI editing goes through exactly the same validation and role checks as a browser.
 
 ## Contributing and Community
 

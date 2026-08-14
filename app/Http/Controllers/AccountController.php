@@ -57,7 +57,7 @@ class AccountController extends Controller
         }
 
         $payload = [
-            'v' => 2, 'u' => $user->id, 'n' => $user->name,
+            'v' => 2, 'u' => $user->id, 'n' => self::liveName($user->name, $request->boolean('agent')),
             'm' => $map, 't' => $teamId, 'r' => $role,
         ];
         $encoded = rtrim(strtr(base64_encode(json_encode($payload)), '+/', '-_'), '=');
@@ -65,6 +65,21 @@ class AccountController extends Controller
         $sig = hash_hmac('sha256', "$encoded.$exp", $secret);
 
         return ['token' => "$encoded.$exp.$sig"];
+    }
+
+    private const AGENT_SUFFIX = ' (MCP)';
+
+    private const MAX_LIVE_NAME = 32;
+
+    private static function liveName(string $name, bool $agent): string
+    {
+        if (! $agent) {
+            return $name;
+        }
+
+        $room = self::MAX_LIVE_NAME - strlen(self::AGENT_SUFFIX);
+
+        return mb_strimwidth($name, 0, $room, '').self::AGENT_SUFFIX;
     }
 
     public function register(Request $request)

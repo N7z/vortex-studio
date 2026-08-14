@@ -9,16 +9,34 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 import {
     PLACEHOLDER, makeMaterialSets, makePartGeometry, makeTrussGeometry, partType,
 } from './parts3d';
-import { DEFAULT_ILLUMINANCE, isLightRef, lightIdOf, lightRef } from './lighting';
+import {
+    DEFAULT_BRIGHTNESS, DEFAULT_ILLUMINANCE, DEFAULT_LIGHTING, FACE_DIRECTION, rangeToDistance,
+    shadowNear,
+} from './lighting';
 import { MARK_KINDS, makeMarkTexture } from './facemarks';
 
 const TOOL_MODE = { move: 'translate', rotate: 'rotate', scale: 'scale' };
-const LIGHT_TOOL_MODE = { move: 'translate', rotate: 'rotate', scale: 'translate' };
 const DEG = Math.PI / 180;
 
 const SUN_PER_LUX = DEFAULT_ILLUMINANCE / 1.6;
 
-const LIGHT_MARKER_R = 1.2;
+// The ambient fill is quoted the way the format quotes it, on a scale where a couple of thousand is
+// an ordinary room. This is what the default is worth in the renderer, so a map that never touches
+// it looks like it always did.
+const AMBIENT_PER_UNIT = 0.9 / DEFAULT_BRIGHTNESS;
+
+
+const TONEMAPPING = {
+    filmic: THREE.ACESFilmicToneMapping,
+    neutral: THREE.NeutralToneMapping,
+    none: THREE.NoToneMapping,
+};
+
+// The renderer recompiles the materials that need it on its own when the curve changes.
+function applyTonemap(renderer, gfx) {
+    renderer.toneMapping = TONEMAPPING[gfx?.tonemap] ?? THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = typeof gfx?.exposure === 'number' ? gfx.exposure : 1;
+}
 const IDENTITY_Q = new THREE.Quaternion();
 
 const round = (v) => Math.round(v * 100) / 100;
@@ -92,7 +110,6 @@ const readTransform = (m) => ({
 });
 
 const NO_GROUPS = [];
-const NO_LIGHTS = [];
 
 export default function Viewport({
     parts, selectedIds, setSelectedId, selectMany, tool, snap, onTransform, onTransformMany,
@@ -100,7 +117,7 @@ export default function Viewport({
     faces, showFaces = false, statsRef, onBuild, brush = null, onBrush = null, tintRef,
     playing = false, onExitPlay, onPlayError, onPlayDeath, touchRef, playRef, onPlayState,
     members = [], thumbRef,
-    flags = EMPTY, groups = NO_GROUPS, lights = NO_LIGHTS, onLightTransform,
+    flags = EMPTY, groups = NO_GROUPS, lighting = null,
 }) {
     const mountRef = useRef(null);
     const ctx = useRef(null);
@@ -121,6 +138,7 @@ export default function Viewport({
         camera.position.set(40, 40, 40);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
+        applyTonemap(renderer, gfxRef.current);
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         renderer.shadowMap.autoUpdate = false;
@@ -133,94 +151,166 @@ export default function Viewport({
             dirty = 2;
         };
 
-        const hemi = new THREE.HemisphereLight(0xcfe8ff, 0x5a5a52, 0.9);
-        scene.add(hemi);
+        const ambient = new THREE.AmbientLight(0xcfe8ff, 0.9);
+        scene.add(ambient);
 
-        const lightRigs = new Map();
-        const markerGeom = new THREE.SphereGeometry(LIGHT_MARKER_R, 12, 8);
-        const markerMat = new THREE.MeshBasicMaterial({ color: 0xffe066 });
-        const markerSelMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-        const rayGeom = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -8),
-        ]);
-        const rayMat = new THREE.LineBasicMaterial({ color: 0xffe066 });
-        const lightForward = new THREE.Vector3();
-
-        const makeRig = () => {
-            const handle = new THREE.Object3D();
-            const light = new THREE.DirectionalLight(0xffffff, 1.6);
-            light.shadow.mapSize.set(2048, 2048);
-            const cam = light.shadow.camera;
+        // One sun, aimed by rotation rather than placed: it is infinitely far away, so only the
+        // direction it comes from means anything.
+        const sunAim = new THREE.Object3D();
+        const sunForward = new THREE.Vector3();
+        const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+        sun.shadow.mapSize.set(2048, 2048);
+        {
+            const cam = sun.shadow.camera;
             cam.left = cam.bottom = -250;
             cam.right = cam.top = 250;
             cam.far = 800;
-            light.shadow.normalBias = 0.08;
-            light.shadow.bias = -0.0005;
-            const marker = new THREE.Mesh(markerGeom, markerMat);
-            const ray = new THREE.Line(rayGeom, rayMat);
-            handle.add(marker);
-            handle.add(ray);
-            scene.add(handle);
-            scene.add(light);
-            scene.add(light.target);
+        }
+        sun.shadow.normalBias = 0.08;
+        sun.shadow.bias = -0.0005;
+        scene.add(sun);
+        scene.add(sun.target);
 
-            return { handle, light, marker, ray };
+        // A part can carry a point light and a spot light. They cannot hang off the part's own
+        // mesh: an opaque part is drawn through a batch, which leaves its mesh invisible, and the
+        // renderer skips everything inside an invisible object. So the lights live here, in the
+        // scene, and follow the part they belong to.
+        const partLights = new Map();
+        const lightHosts = new THREE.Group();
+        scene.add(lightHosts);
+        const lightAim = new THREE.Vector3();
+        const lightQuat = new THREE.Quaternion();
+
+        const dropPartLights = (id) => {
+            const held = partLights.get(id);
+            if (!held) return;
+            for (const light of [held.point, held.spot]) {
+                if (!light) continue;
+                light.shadow?.map?.dispose();
+                light.removeFromParent();
+                light.dispose();
+            }
+            held.target?.removeFromParent();
+            partLights.delete(id);
         };
 
-        const dropRig = (rig) => {
-            if (gizmo.object === rig.handle) gizmo.detach();
-            scene.remove(rig.handle);
-            scene.remove(rig.light);
-            scene.remove(rig.light.target);
-            rig.light.shadow.map?.dispose();
-            rig.light.dispose();
+        const aimShadow = (light, part, range) => {
+            const near = shadowNear(part.S);
+            const far = Math.max(near * 2, range);
+            const cam = light.shadow.camera;
+            if (cam.near === near && cam.far === far) return;
+            cam.near = near;
+            cam.far = far;
+            cam.updateProjectionMatrix();
+            light.shadow.needsUpdate = true;
         };
 
-        const syncLights = (list) => {
+        const syncPartLights = (part, mesh) => {
             const c = ctx.current;
-            const seen = new Set();
-            for (const l of list) {
-                seen.add(l._id);
-                let rig = lightRigs.get(l._id);
-                if (!rig) {
-                    rig = makeRig();
-                    lightRigs.set(l._id, rig);
-                }
-                const held = gizmo.dragging && gizmo.object === rig.handle;
-                if (!held) {
-                    rig.handle.position.set(l.P[0], l.P[1], l.P[2]);
-                    rig.handle.rotation.set(l.R[0] * DEG, l.R[1] * DEG, l.R[2] * DEG);
-                }
-                rig.handle.updateMatrixWorld(true);
-                lightForward.set(0, 0, -1).applyQuaternion(rig.handle.quaternion);
-                rig.light.position.copy(rig.handle.position);
-                rig.light.target.position.copy(rig.handle.position).addScaledVector(lightForward, 10);
-                rig.light.target.updateMatrixWorld();
-                rig.light.color.set(`#${l.C}`);
-                rig.light.intensity = l.I / SUN_PER_LUX;
-                rig.light.castShadow = !!(c?.shadows) && l.Sd !== false;
-                rig.marker.material = c?.selectedLightId === l._id ? markerSelMat : markerMat;
-                rig.handle.visible = !c?.session && !!c?.showLights;
+            const wantPoint = part.point_light ?? null;
+            const wantSpot = part.spot_light ?? null;
+            if (!wantPoint && !wantSpot) {
+                dropPartLights(part._id);
+
+                return;
             }
-            for (const [id, rig] of lightRigs) {
-                if (seen.has(id)) continue;
-                dropRig(rig);
-                lightRigs.delete(id);
+            let held = partLights.get(part._id);
+            if (!held) {
+                held = { point: null, spot: null, target: null };
+                partLights.set(part._id, held);
             }
-            reshadow();
+
+            if (wantPoint && !held.point) {
+                held.point = new THREE.PointLight(0xffffff, 1);
+                lightHosts.add(held.point);
+            } else if (!wantPoint && held.point) {
+                held.point.removeFromParent();
+                held.point.dispose();
+                held.point = null;
+            }
+            if (held.point) {
+                held.point.color.set(`#${wantPoint.color}`);
+                aimShadow(held.point, part, wantPoint.range);
+                // The format quotes lumens, which is what power takes; intensity is per steradian.
+                held.point.power = wantPoint.intensity;
+                held.point.distance = rangeToDistance(wantPoint.range);
+                held.point.decay = 2;
+                held.point.castShadow = !!c?.shadows && wantPoint.shadow_maps_enabled === true;
+            }
+
+            if (wantSpot && !held.spot) {
+                held.spot = new THREE.SpotLight(0xffffff, 1);
+                held.target = new THREE.Object3D();
+                lightHosts.add(held.spot);
+                lightHosts.add(held.target);
+                held.spot.target = held.target;
+            } else if (!wantSpot && held.spot) {
+                held.spot.removeFromParent();
+                held.spot.dispose();
+                held.target?.removeFromParent();
+                held.spot = null;
+                held.target = null;
+            }
+            if (held.spot) {
+                const dir = FACE_DIRECTION[wantSpot.face] ?? FACE_DIRECTION.Bottom;
+                held.spot.face = wantSpot.face;
+                aimShadow(held.spot, part, wantSpot.range);
+                held.spot.color.set(`#${wantSpot.color}`);
+                held.spot.power = wantSpot.intensity;
+                held.spot.distance = rangeToDistance(wantSpot.range);
+                held.spot.angle = wantSpot.angle * DEG;
+                held.spot.penumbra = 0.25;
+                held.spot.decay = 2;
+                held.spot.castShadow = !!c?.shadows && wantSpot.shadow_maps_enabled === true;
+            }
+
+            followPartLights(part._id, mesh);
         };
 
-        const followDraggedLight = () => {
-            if (!gizmo.dragging) return;
-            for (const rig of lightRigs.values()) {
-                if (rig.handle !== gizmo.object) continue;
-                rig.handle.updateMatrixWorld(true);
-                lightForward.set(0, 0, -1).applyQuaternion(rig.handle.quaternion);
-                rig.light.position.copy(rig.handle.position);
-                rig.light.target.position.copy(rig.handle.position).addScaledVector(lightForward, 10);
-                rig.light.target.updateMatrixWorld();
-                renderer.shadowMap.needsUpdate = true;
-            }
+        // Where the light sits is the part's own place in the world, taken off the mesh so a light
+        // keeps up with a part being dragged, not just one that was committed.
+        const followPartLights = (id, mesh) => {
+            const held = partLights.get(id);
+            if (!held || !mesh) return;
+            mesh.updateWorldMatrix(true, false);
+            lightAim.setFromMatrixPosition(mesh.matrixWorld);
+            held.point?.position.copy(lightAim);
+            if (!held.spot) return;
+            held.spot.position.copy(lightAim);
+            const dir = FACE_DIRECTION[held.spot.face] ?? FACE_DIRECTION.Bottom;
+            mesh.matrixWorld.decompose(lightAim, lightQuat, new THREE.Vector3());
+            held.target.position
+                .set(dir[0], dir[1], dir[2])
+                .applyQuaternion(lightQuat)
+                .multiplyScalar(4)
+                .add(lightAim);
+            held.target.updateMatrixWorld();
+        };
+
+        const followAllPartLights = () => {
+            if (!partLights.size) return;
+            const c = ctx.current;
+            for (const id of partLights.keys()) followPartLights(id, c?.meshes.get(id));
+        };
+
+        const syncLighting = (rig) => {
+            const c = ctx.current;
+            const lit = rig ?? DEFAULT_LIGHTING;
+            ambient.color.set(`#${lit.ambient_color}`);
+            ambient.intensity = lit.brightness * AMBIENT_PER_UNIT;
+
+            const r = lit.sun_rotation;
+            sunAim.rotation.set(r[0] * DEG, r[1] * DEG, r[2] * DEG);
+            sunAim.updateMatrixWorld(true);
+            sunForward.set(0, 0, -1).applyQuaternion(sunAim.quaternion);
+            // Stand the sun off along its own direction so its shadow camera covers the map.
+            sun.position.copy(sunForward).multiplyScalar(-260);
+            sun.target.position.set(0, 0, 0);
+            sun.target.updateMatrixWorld();
+            sun.color.set(`#${lit.sun_color}`);
+            sun.intensity = lit.sun_illuminance / SUN_PER_LUX;
+            sun.castShadow = !!(c?.shadows) && lit.sun_shadow_maps_enabled !== false;
+            reshadow();
         };
 
         const grid = new THREE.GridHelper(400, 100, 0x999999, 0xb5b5b5);
@@ -589,19 +679,6 @@ export default function Viewport({
             const c = ctx.current;
             if (!c || !gizmo.object) return;
             const held = gizmo.object;
-            const rigId = [...lightRigs.entries()].find(([, r]) => r.handle === held)?.[0] ?? null;
-            if (rigId) {
-                if (e.value) return;
-                c.onLightTransform?.(rigId, {
-                    P: [round(held.position.x), round(held.position.y), round(held.position.z)],
-                    R: [
-                        round(held.rotation.x / DEG),
-                        round(held.rotation.y / DEG),
-                        round(held.rotation.z / DEG),
-                    ],
-                });
-                return;
-            }
             const group = held === pivot;
             if (e.value) {
                 if (group) for (const m of c.selectedMeshes) pivot.attach(m);
@@ -793,21 +870,6 @@ export default function Viewport({
         };
 
         const pickMesh = (e) => pickHit(e)?.mesh ?? null;
-
-        const lightPickList = [];
-        const pickLight = (e) => {
-            if (!ctx.current?.showLights || !lightRigs.size) return null;
-            castPointer(e, false);
-            lightPickList.length = 0;
-            const owner = new Map();
-            for (const [id, rig] of lightRigs) {
-                lightPickList.push(rig.marker);
-                owner.set(rig.marker, id);
-            }
-            const hits = raycaster.intersectObjects(lightPickList, false);
-
-            return hits.length ? owner.get(hits[0].object) ?? null : null;
-        };
 
         const pickSurface = (e, exclude) => {
             const c = ctx.current;
@@ -1108,12 +1170,6 @@ export default function Viewport({
             if (gizmo.dragging) return;
             const c = ctx.current;
             if (!c) return;
-            const lit = e.altKey ? null : pickLight(e);
-            if (lit) {
-                c.setSelectedId(lightRef(lit), e.ctrlKey || e.metaKey, null, true);
-
-                return;
-            }
             const hit = pickHit(e);
             if (e.pointerType !== 'mouse') {
                 const t = performance.now();
@@ -1350,8 +1406,11 @@ export default function Viewport({
             const c = ctx.current;
             stepLivePeers(c, dt);
             if (flying || marquee?.active) invalidate();
-            if ((drag !== null && !drag.preview) || gizmo.dragging) reshadow();
-            followDraggedLight();
+            if ((drag !== null && !drag.preview) || gizmo.dragging) {
+                reshadow();
+                // A part being dragged has not been committed yet, so its light follows the mesh.
+                followAllPartLights();
+            }
             if (dirty <= 0) {
                 countFps(now);
                 publishStats(c);
@@ -1470,11 +1529,12 @@ export default function Viewport({
         ctx.current = {
             scene, camera, renderer, orbit, gizmo, tex, pivot, spawnPoint,
             grid, applyScale, syncBatches, setBatchShadows, invalidate, reshadow,
-            lightRigs, syncLights,
-            lights: [],
-            showLights: true,
-            selectedLightId: null,
-            onLightTransform: null,
+            syncLighting,
+            syncPartLights,
+            followAllPartLights,
+            dropPartLights,
+            sun,
+            lighting: null,
             isDragging: () => drag !== null,
             isDraggingMesh: (m) => !!drag?.meshes.includes(m),
             brush: null,
@@ -1503,7 +1563,6 @@ export default function Viewport({
             },
             enterPlay: () => {
                 gizmo.detach();
-                for (const rig of lightRigs.values()) rig.handle.visible = false;
                 for (const b of selBoxes) b.visible = false;
                 for (const b of peerBoxes) b.visible = false;
                 for (const q of faceQuads) q.visible = false;
@@ -1522,7 +1581,6 @@ export default function Viewport({
                     bumpBatch(mesh);
                 }
                 playMoved.clear();
-                for (const rig of lightRigs.values()) rig.handle.visible = !!ctx.current?.showLights;
                 grid.visible = true;
                 keys.clear();
                 orbit.enabled = true;
@@ -1616,15 +1674,19 @@ export default function Viewport({
             scene.remove(grid);
             grid.geometry.dispose();
             grid.material.dispose();
-            for (const rig of lightRigs.values()) dropRig(rig);
-            lightRigs.clear();
+            for (const id of [...partLights.keys()]) dropPartLights(id);
+            scene.remove(lightHosts);
+            sun.shadow.map?.dispose();
+            sun.dispose();
+            scene.remove(sun);
+            scene.remove(sun.target);
             markerGeom.dispose();
             markerMat.dispose();
             markerSelMat.dispose();
             rayGeom.dispose();
             rayMat.dispose();
-            scene.remove(hemi);
-            hemi.dispose();
+            scene.remove(ambient);
+            ambient.dispose();
             renderer.dispose();
             renderer.forceContextLoss();
             band.remove();
@@ -1650,7 +1712,6 @@ export default function Viewport({
         c.faces = faces ?? null;
         c.showFaces = showFaces;
         c.onView = onView ?? null;
-        c.onLightTransform = onLightTransform ?? null;
         c.onPlayState = onPlayState ?? null;
         c.playRef = playRef ?? null;
         c.statsRef = statsRef ?? null;
@@ -1658,15 +1719,7 @@ export default function Viewport({
         if (spawnRef) spawnRef.current = c.spawnPoint;
         if (tintRef) tintRef.current = c.tintParts;
         if (thumbRef) {
-            thumbRef.current = (snapshot) => {
-                const shown = [...c.lightRigs.values()].filter((r) => r.handle.visible);
-                for (const r of shown) r.handle.visible = false;
-                try {
-                    return captureThumb(c.renderer, c.scene, snapshot);
-                } finally {
-                    for (const r of shown) r.handle.visible = true;
-                }
-            };
+            thumbRef.current = (snapshot) => captureThumb(c.renderer, c.scene, snapshot);
         }
         c.invalidate();
     });
@@ -1714,16 +1767,16 @@ export default function Viewport({
         const g = graphics;
         const shadows = g.shadows && (g.mode ?? 'lit') === 'lit';
         const was = c.shadows;
+        applyTonemap(c.renderer, g);
         c.shadows = shadows;
         c.renderer.shadowMap.enabled = shadows;
         c.grid.visible = g.grid;
-        for (const rig of c.lightRigs.values()) {
-            if (rig.light.shadow.mapSize.x === g.shadowRes) continue;
-            rig.light.shadow.mapSize.set(g.shadowRes, g.shadowRes);
-            rig.light.shadow.map?.dispose();
-            rig.light.shadow.map = null;
+        if (c.sun.shadow.mapSize.x !== g.shadowRes) {
+            c.sun.shadow.mapSize.set(g.shadowRes, g.shadowRes);
+            c.sun.shadow.map?.dispose();
+            c.sun.shadow.map = null;
         }
-        c.syncLights(c.lights);
+        c.syncLighting(c.lighting);
         for (const mesh of c.meshes.values()) {
             mesh.castShadow = shadows;
             mesh.receiveShadow = shadows;
@@ -1786,6 +1839,8 @@ export default function Viewport({
 
             const geometry = partType(part) === 'Truss' ? c.trussGeometry : c.geometry;
             if (mesh.geometry !== geometry) mesh.geometry = geometry;
+
+            c.syncPartLights(part, mesh);
         };
 
         const publish = () => {
@@ -1801,6 +1856,7 @@ export default function Viewport({
             for (const [id, mesh] of c.meshes) {
                 if (!alive.has(id)) {
                     if (c.gizmo.object === mesh) c.gizmo.detach();
+                    c.dropPartLights(id);
                     mesh.removeFromParent();
                     c.sets.release(mesh.userData.set);
                     mesh.userData.set = null;
@@ -1878,40 +1934,18 @@ export default function Viewport({
         c.reshadow();
     }, [preview]);
 
-    const selectedLightId = useMemo(() => {
-        const last = selectedIds.length ? selectedIds[selectedIds.length - 1] : null;
-
-        return isLightRef(last) ? lightIdOf(last) : null;
-    }, [selectedIds]);
-
     useEffect(() => {
         const c = ctx.current;
         if (!c) return;
-        c.lights = lights;
-        c.selectedLightId = selectedLightId;
-        c.syncLights(lights);
+        c.lighting = lighting;
+        c.syncLighting(lighting);
         c.invalidate();
-    }, [lights, selectedLightId]);
+    }, [lighting]);
 
     useEffect(() => {
         const c = ctx.current;
         if (!c) return;
         if (c.gizmo.dragging) return;
-        if (selectedLightId) {
-            const rig = c.lightRigs.get(selectedLightId);
-            c.selectedMeshes = [];
-            c.bulk = null;
-            const lightMode = canEdit ? LIGHT_TOOL_MODE[tool] : null;
-            if (rig && lightMode) {
-                c.gizmo.setMode(lightMode);
-                c.gizmo.attach(rig.handle);
-            } else {
-                c.gizmo.detach();
-            }
-            c.invalidate();
-
-            return;
-        }
         const meshes = selectedIds.map((id) => c.meshes.get(id)).filter(Boolean);
         c.selectedMeshes = meshes;
         c.bulk = null;
@@ -1932,7 +1966,7 @@ export default function Viewport({
             c.gizmo.attach(c.pivot);
         }
         c.invalidate();
-    }, [selectedIds, selectedLightId, tool, parts, canEdit, lights]);
+    }, [selectedIds, tool, parts, canEdit]);
 
     useEffect(() => {
         const c = ctx.current;

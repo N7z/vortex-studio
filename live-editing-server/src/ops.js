@@ -1,6 +1,8 @@
+import { validPointLight, validSpotLight } from './lights.js';
+
 export const PART_KEYS = [
-    '_id', 'T', 'P', 'S', 'R', 'C', 'Tr', 'Shape', 'Sh', 'ItemId',
-    'M', 'Cs', 'An', 'Cc', 'Bp', 'Tx',
+    '_id', 'T', 'N', 'P', 'S', 'R', 'C', 'Tr', 'Shape', 'Sh', 'ItemId',
+    'M', 'Cs', 'An', 'Cc', 'Bp', 'Tx', 'point_light', 'spot_light',
 ];
 
 const VEC_KEYS = ['P', 'S', 'R'];
@@ -122,6 +124,8 @@ export function validPart(p) {
     }
     if (typeof p._id !== 'string' || !p._id || p._id.length > 64) return false;
     if (typeof p.T !== 'string' || !p.T || p.T.length > 32) return false;
+    // A part can be called whatever its builder wants; without a name it goes by its type.
+    if ('N' in p && (typeof p.N !== 'string' || !p.N || p.N.length > 64)) return false;
     for (const k of VEC_KEYS) {
         const v = p[k];
         if (!Array.isArray(v) || v.length !== 3 || !v.every(isNum)) return false;
@@ -137,6 +141,10 @@ export function validPart(p) {
         if (k in p && typeof p[k] !== 'boolean') return false;
     }
     if ('Tx' in p && !validFaceTextures(p.Tx)) return false;
+    // A light sits on the part rather than beside it, so it travels with the part and there is at
+    // most one of each kind.
+    if (p.point_light != null && !validPointLight(p.point_light)) return false;
+    if (p.spot_light != null && !validSpotLight(p.spot_light)) return false;
 
     return true;
 }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { applyOp, invertOp, validateOp } from '../src/ops.js';
+import { applyOp, invertOp, validPart, validateOp } from '../src/ops.js';
 import { normaliseCode, randomCode, randomName } from '../src/names.js';
 
 const part = (id, over = {}) => ({
@@ -137,4 +137,51 @@ test('randomName avoids names already in the room', () => {
     for (let i = 0; i < 200; i++) {
         assert.ok(!taken.has(randomName(taken)));
     }
+});
+
+test('a part can carry a point light and a spot light, within their ranges', () => {
+    const lit = {
+        _id: 'a',
+        T: 'Part',
+        P: [0, 0, 0],
+        S: [4, 4, 4],
+        R: [0, 0, 0],
+        point_light: {
+            color: 'ffe9c4', intensity: 60000, range: 40, shadow_maps_enabled: false,
+        },
+    };
+
+    assert.equal(validPart(lit), true);
+    assert.equal(validPart({
+        ...lit,
+        spot_light: {
+            color: 'ffffff', intensity: 1000, range: 20, shadow_maps_enabled: true, angle: 35, face: 'Bottom',
+        },
+    }), true);
+
+    // A spot needs the two things a point light has no use for.
+    assert.equal(validPart({ ...lit, spot_light: lit.point_light }), false);
+    assert.equal(validPart({
+        ...lit,
+        point_light: { ...lit.point_light, angle: 20 },
+    }), false, 'a point light has no cone');
+    assert.equal(validPart({ ...lit, point_light: { ...lit.point_light, range: -1 } }), false);
+    assert.equal(validPart({ ...lit, point_light: { ...lit.point_light, color: 'white' } }), false);
+    assert.equal(validPart({
+        ...lit,
+        spot_light: {
+            color: 'ffffff', intensity: 1, range: 1, shadow_maps_enabled: true, angle: 35, face: 'Sideways',
+        },
+    }), false, 'a spot points at a face of the part it is on');
+});
+
+test('a part can be given a name, and an empty one is refused', () => {
+    const part = {
+        _id: 'a', T: 'Part', P: [0, 0, 0], S: [1, 1, 1], R: [0, 0, 0],
+    };
+
+    assert.equal(validPart({ ...part, N: 'Lamp post' }), true);
+    assert.equal(validPart({ ...part, N: '' }), false, 'a part with no name goes by its type');
+    assert.equal(validPart({ ...part, N: 'x'.repeat(65) }), false);
+    assert.equal(validPart({ ...part, N: 7 }), false);
 });

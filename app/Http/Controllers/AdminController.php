@@ -95,7 +95,7 @@ class AdminController extends Controller
             '{"name":'.json_encode($row->name)
             .',"parts":'.$parts
             .',"groups":'.($row->groups ?: '[]')
-            .',"lights":'.($row->lights ?: '[]').'}',
+            .',"lighting":'.($row->lights ?: 'null').'}',
         )->header('Content-Type', 'application/json');
     }
 

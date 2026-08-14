@@ -1,0 +1,106 @@
+{
+  "project_id": "3d760c54bf4dfab88bbb1c78dfecbe36",
+  "parts": [
+    {
+      "name": "SpawnLocation",
+      "position": {
+        "x": 0.0,
+        "y": 0.5,
+        "z": 0.0
+      },
+      "rotation": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0,
+        "w": 1.0
+      },
+      "scale": {
+        "x": 6.0,
+        "y": 1.0,
+        "z": 6.0
+      },
+      "color": {
+        "r": 0.29411766,
+        "g": 0.5921569,
+        "b": 0.29411766,
+        "a": 1.0
+      },
+      "material": "Plastic",
+      "group": null,
+      "cast_shadow": true,
+      "anchored": true,
+      "can_collide": true,
+      "spawn_location": true,
+      "baseplate": false,
+      "custom_appearance": false,
+      "truss": false,
+      "textures": [],
+      "point_light": null,
+      "spot_light": null
+    },
+    {
+      "name": "oies",
+      "position": {
+        "x": 0.0,
+        "y": -2.0,
+        "z": 0.0
+      },
+      "rotation": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0,
+        "w": 1.0
+      },
+      "scale": {
+        "x": 255.0,
+        "y": 4.0,
+        "z": 255.0
+      },
+      "color": {
+        "r": 0.39215687,
+        "g": 0.39215687,
+        "b": 0.39215687,
+        "a": 1.0
+      },
+      "material": "Plastic",
+      "group": null,
+      "cast_shadow": true,
+      "anchored": true,
+      "can_collide": true,
+      "spawn_location": false,
+      "baseplate": true,
+      "custom_appearance": false,
+      "truss": false,
+      "textures": [
+        {
+          "face": "Top",
+          "kind": "Studs"
+        },
+        {
+          "face": "Bottom",
+          "kind": "Inlets"
+        }
+      ],
+      "point_light": null,
+      "spot_light": null
+    }
+  ],
+  "lighting": {
+    "ambient_color": {
+      "r": 0.99999994,
+      "g": 0.99999994,
+      "b": 0.99999994,
+      "a": 1.0
+    },
+    "brightness": 2000.0,
+    "sun_color": {
+      "r": 0.99999994,
+      "g": 0.99999994,
+      "b": 0.99999994,
+      "a": 1.0
+    },
+    "sun_illuminance": 8000.0,
+    "sun_shadow_maps_enabled": true
+  },
+  "groups": []
+}

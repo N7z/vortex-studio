@@ -117,6 +117,13 @@ export const patchOp = (ids, fields) => ({
     items: [...ids].map((id) => ({ id, fields })),
 });
 
+// Taking a property off a part rather than setting it to nothing, so the part carries no trace of
+// it: this is how a light is removed from the part that held it.
+export const unsetOp = (ids, keys) => ({
+    t: 'set',
+    items: [...ids].map((id) => ({ id, unset: [...keys] })),
+});
+
 export const transformOp = (updates) => ({
     t: 'set',
     items: updates.map(({ id, ...fields }) => ({ id, fields })),

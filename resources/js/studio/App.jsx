@@ -8,7 +8,6 @@ import StartScreen from './StartScreen';
 import Teams from './Teams';
 import Explorer from './Explorer';
 import Properties from './Properties';
-import Arrange from './Arrange';
 import Viewport from './Viewport';
 import PluginPanel from './PluginPanel';
 import TabBar from './TabBar';
@@ -28,11 +27,12 @@ import {
 import { writeBackup } from './backup';
 import {
     ENGINE_MAX_BYTES,
-    addOp, applyOp, fillPart, invertOp, patchOp, removeOp, repairParts, stripIds,
+    addOp, applyOp, fillPart, invertOp, patchOp, removeOp, repairParts, stripIds, unsetOp,
     transformOp, withNewId,
 } from './ops';
 import { DeleteIcon, DuplicateIcon } from './icons';
 import { loadGraphics, saveGraphics } from './graphics';
+import { continues, editKey, lightingKey } from './history';
 import { roomFromUrl } from './live';
 import UpdateNotice from './UpdateNotice';
 import { watchForUpdate } from './version';
@@ -43,12 +43,14 @@ import { predict, record } from './estimate';
 import { convertRoblox, importSummary } from './roblox';
 import { fromProject, isProject, newProjectId, toProject } from './vortexProject';
 import {
-    DEFAULT_SUN, MAX_LIGHTS, isLightRef, lightIdOf, lightRef, newLight, repairLights,
+    AMBIENT, DEFAULT_LIGHTING, DEFAULT_POINT_LIGHT, DEFAULT_SPOT_LIGHT, SUN, isLightRef,
+    partLightOf, partLightRef, repairLighting,
 } from './lighting';
 import useDialogs from '../ui/useDialogs';
 import Busy from '../ui/Busy';
 import {
-    applyGroupOp, groupIndex, newGroup, newGroupId, pruneGroups, takeLegacyGroups, ungroupIds,
+    applyGroupOp, groupIndex, newGroup, newGroupId, pruneEmptyGroups, pruneGroups, takeLegacyGroups,
+    ungroupIds,
 } from './groups';
 import * as flagStore from './flags';
 import { buildGrid, nearGrid } from './partgrid';
@@ -118,7 +120,7 @@ export default function App() {
     const loadedModels = useRef({});
     const modelSigs = useRef({});
     const [groups, setGroups] = useState([]);
-    const [lights, setLights] = useState([]);
+    const [lighting, setLighting] = useState(() => ({ ...DEFAULT_LIGHTING }));
     const [flags, setFlags] = useState(flagStore.EMPTY);
     const [tabs, setTabs] = useState([]);
     const [activeTab, setActiveTab] = useState('home');
@@ -145,14 +147,15 @@ export default function App() {
     const future = useRef([]);
     const partsRef = useRef(parts);
     partsRef.current = parts;
+    const lastEdit = useRef({ key: null, at: 0 });
     const groupsRef = useRef([]);
     groupsRef.current = groups;
     const flagsRef = useRef(flags);
     flagsRef.current = flags;
     const loadedGroups = useRef(groups);
-    const lightsRef = useRef(lights);
-    lightsRef.current = lights;
-    const loadedLights = useRef(lights);
+    const lightingRef = useRef(lighting);
+    lightingRef.current = lighting;
+    const loadedLighting = useRef(lighting);
     const projectId = useRef(null);
     const mapNameRef = useRef(null);
     const mapTeamRef = useRef(null);
@@ -210,7 +213,7 @@ export default function App() {
 
     const resetDocument = (
         name, raw, isDirty, remoteGroups, teamId = null, version = null,
-        remoteLights = null, remoteProjectId = null,
+        remoteLighting = null, remoteProjectId = null,
     ) => {
         const { parts: data, fixed } = repairParts(raw);
         if (fixed) flash(`Repaired ${fixed} part${fixed === 1 ? '' : 's'} the server would reject`);
@@ -224,9 +227,9 @@ export default function App() {
         setActiveTab(name ? 'game' : 'home');
         setSelectedIds([]);
         setFaces({});
-        const litUp = repairLights(remoteLights ?? []);
-        loadedLights.current = litUp;
-        setLights(litUp);
+        const rig = repairLighting(remoteLighting);
+        loadedLighting.current = rig;
+        setLighting(rig);
         projectId.current = remoteProjectId ?? (name ? newProjectId() : null);
         const legacy = remoteGroups?.length ? [] : takeLegacyGroups(name, data);
         const next = legacy.length ? legacy : (remoteGroups ?? []);
@@ -237,7 +240,7 @@ export default function App() {
         dirty.current = isDirty || fixed > 0 || legacy.length > 0;
         setFlags(flagStore.prune(flagStore.load(flagStore.mapKey(name, teamId)), data));
 
-        return { parts: data, groups: next, lights: litUp };
+        return { parts: data, groups: next, lighting: rig };
     };
 
     const live = useLive({
@@ -247,12 +250,12 @@ export default function App() {
                 const alive = new Set(msg.parts.map((p) => p._id));
                 setParts(msg.parts);
                 setGroups(msg.groups ?? []);
-                setLights(repairLights(msg.lights ?? []));
+                setLighting(repairLighting(msg.lighting));
                 setSelectedIds((cur) => cur.filter((id) => alive.has(id)));
             } else {
                 if (mapTeamRef.current == null) setTeamOpen(true);
                 resetDocument(msg.mapName, msg.parts, false, msg.groups ?? [],
-                    mapTeamRef.current, versionRef.current, msg.lights ?? [], projectId.current);
+                    mapTeamRef.current, versionRef.current, msg.lighting, projectId.current);
             }
             if (mapTeamRef.current != null) {
                 flash(msg.resumed ? 'Back with the team' : `Editing with the team as ${msg.you.name}`);
@@ -271,15 +274,15 @@ export default function App() {
             if (msg.groups) {
                 setGroups(msg.groups);
             }
-            if (msg.lights) setLights(repairLights(msg.lights));
+            if (msg.lighting) setLighting(repairLighting(msg.lighting));
             history.current = [];
             future.current = [];
         },
         onGroups: (msg) => {
             setGroups(msg.groups);
         },
-        onLights: (msg) => {
-            setLights(repairLights(msg.lights));
+        onLighting: (msg) => {
+            setLighting(repairLighting(msg.lighting));
             if (liveRef.current?.canEdit) dirty.current = true;
         },
         onGroupOp: (msg) => {
@@ -321,12 +324,30 @@ export default function App() {
             ? parts.filter((p) => selectedSet.has(p._id))
             : (selected ? [selected] : [])
     ), [parts, selectedSet, selected]);
+    // Either half of the rig can be selected, and neither is a part, so it is the name that is held.
     const selectedLight = useMemo(() => {
         const last = selectedIds.length ? selectedIds[selectedIds.length - 1] : null;
-        const id = lightIdOf(last);
 
-        return id ? lights.find((l) => l._id === id) ?? null : null;
-    }, [selectedIds, lights]);
+        return isLightRef(last) ? last : null;
+    }, [selectedIds]);
+
+    // A light on a part, on the other hand, is edited through the part that carries it.
+    const selectedPartLight = useMemo(() => {
+        const last = selectedIds.length ? selectedIds[selectedIds.length - 1] : null;
+
+        return partLightOf(last);
+    }, [selectedIds]);
+    const partLightHost = useMemo(() => (
+        selectedPartLight ? parts.find((p) => p._id === selectedPartLight.partId) ?? null : null
+    ), [parts, selectedPartLight]);
+
+    const addUnderPart = useCallback((partId, kind) => {
+        if (!canEditRef.current) return;
+        const key = kind === 'spot' ? 'spot_light' : 'point_light';
+        const value = kind === 'spot' ? DEFAULT_SPOT_LIGHT : DEFAULT_POINT_LIGHT;
+        edit(patchOp([partId], { [key]: { ...value } }));
+        setSelectedIds([partLightRef(partId, kind)]);
+    }, []);
     const pluginTarget = selected;
     const selectionInfo = useMemo(() => {
         if (!selectedParts.length) return null;
@@ -357,6 +378,22 @@ export default function App() {
     const activeModels = activePlugin ? pluginModels[activePlugin.id] ?? null : null;
 
     const select = useCallback((id, additive, normal, solo) => {
+        const lit = partLightOf(id);
+        if (lit) {
+            // Lights on parts gather the way parts do, as long as they are the same kind of light:
+            // a point and a spot have nothing in common to edit together.
+            setSelectedIds((cur) => {
+                const kept = additive
+                    ? cur.filter((x) => partLightOf(x)?.kind === lit.kind)
+                    : [];
+                if (kept.includes(id)) return kept.filter((x) => x !== id);
+
+                return [...kept, id];
+            });
+            setFaces({});
+
+            return;
+        }
         if (isLightRef(id)) {
             setSelectedIds([id]);
             setFaces({});
@@ -367,7 +404,7 @@ export default function App() {
         const group = id != null && !solo ? groupIndex(groupsRef.current).get(id) : null;
         const ids = group ? flagStore.selectable(flagsRef.current, group.ids) : null;
         setSelectedIds((all) => {
-            const cur = all.filter((x) => !isLightRef(x));
+            const cur = all.filter((x) => !isLightRef(x) && !partLightOf(x));
             if (id == null) return additive ? cur : [];
             if (ids?.length) {
                 if (!additive) return [...ids];
@@ -392,10 +429,12 @@ export default function App() {
     const setSelectedId = select;
 
     const selectMany = useCallback((ids, additive) => {
-        const free = flagStore.selectable(flagsRef.current, ids.filter((id) => !isLightRef(id)));
+        const free = flagStore.selectable(
+            flagsRef.current, ids.filter((id) => !isLightRef(id) && !partLightOf(id)),
+        );
         setSelectedIds((cur) => {
             if (!additive) return [...free];
-            const kept = cur.filter((x) => !isLightRef(x));
+            const kept = cur.filter((x) => !isLightRef(x) && !partLightOf(x));
             const seen = new Set(kept);
             return [...kept, ...free.filter((id) => !seen.has(id))];
         });
@@ -413,8 +452,15 @@ export default function App() {
 
         const inverse = invertOp(before, op);
         if (inverse) {
-            remember(history, { t: 'parts', op: inverse });
-            future.current = [];
+            // Still the same move? The entry already on the stack undoes the whole of it.
+            const key = editKey(op);
+            const now = performance.now();
+            const same = continues(lastEdit.current, key, now) && history.current.length;
+            lastEdit.current = { key, at: now };
+            if (!same) {
+                remember(history, { t: 'parts', op: inverse });
+                future.current = [];
+            }
         }
         dirty.current = true;
         setParts(next);
@@ -424,12 +470,23 @@ export default function App() {
     const step = useCallback((from, to) => {
         const entry = from.current.pop();
         if (!entry) return;
+        // Whatever comes next starts its own move, even if it touches the same field again.
+        lastEdit.current = { key: null, at: 0 };
 
-        if (entry.t === 'lights') {
-            remember(to, { t: 'lights', lights: lightsRef.current });
+        if (entry.t === 'lighting') {
+            remember(to, { t: 'lighting', lighting: lightingRef.current });
             dirty.current = true;
-            setLights(entry.lights);
-            liveRef.current.sendLights(entry.lights);
+            setLighting(entry.lighting);
+            liveRef.current.sendLighting(entry.lighting);
+
+            return;
+        }
+
+        if (entry.t === 'groups') {
+            remember(to, { t: 'groups', groups: groupsRef.current });
+            dirty.current = true;
+            setGroups(entry.groups);
+            liveRef.current.sendGroups(entry.groups);
 
             return;
         }
@@ -808,53 +865,61 @@ export default function App() {
         }
     };
 
+    // Folders go on the undo stack whole: they are a handful of names and id lists, so keeping the
+    // previous state costs nothing and grouping, renaming and ungrouping all undo the same way.
     const runGroupOp = useCallback((op) => {
+        remember(history, { t: 'groups', groups: groupsRef.current });
+        future.current = [];
+        lastEdit.current = { key: null, at: 0 };
         setGroups((gs) => applyGroupOp(gs, op));
         liveRef.current.sendGroupOp(op);
     }, []);
 
-    const commitLights = useCallback((next) => {
-        remember(history, { t: 'lights', lights: lightsRef.current });
+    // A whole tree at once, for when sending it group by group would pass through states where a
+    // parent has nothing in it yet.
+    const replaceGroups = useCallback((next) => {
+        remember(history, { t: 'groups', groups: groupsRef.current });
         future.current = [];
-        setLights(next);
-        dirty.current = true;
-        liveRef.current.sendLights(next);
+        setGroups(next);
+        liveRef.current.sendGroups(next);
     }, []);
 
-    const addLight = useCallback(() => {
-        if (!canEditRef.current) {
-            flash('You are a spectator in this session');
-
-            return;
+    const commitLighting = useCallback((next, key = null) => {
+        const now = performance.now();
+        const same = continues(lastEdit.current, key, now) && history.current.length;
+        lastEdit.current = { key, at: now };
+        if (!same) {
+            remember(history, { t: 'lighting', lighting: lightingRef.current });
+            future.current = [];
         }
-        const cur = lightsRef.current;
-        if (cur.length >= MAX_LIGHTS) {
-            flash(`A map can carry ${MAX_LIGHTS} lights`);
+        setLighting(next);
+        dirty.current = true;
+        liveRef.current.sendLighting(next);
+    }, []);
 
-            return;
-        }
-        const light = newLight({ N: `Light ${cur.length + 1}` });
-        commitLights([...cur, light]);
-        setSelectedIds([lightRef(light._id)]);
-    }, [commitLights, flash]);
-
-    const removeLight = useCallback((id) => {
+    const patchLighting = useCallback((patch) => {
         if (!canEditRef.current) return;
-        commitLights(lightsRef.current.filter((l) => l._id !== id));
-        setSelectedIds((cur) => cur.filter((x) => x !== lightRef(id)));
-    }, [commitLights]);
-
-    const patchLight = useCallback((id, patch) => {
-        if (!canEditRef.current) return;
-        commitLights(lightsRef.current.map((l) => (l._id === id ? { ...l, ...patch } : l)));
-    }, [commitLights]);
+        commitLighting(
+            { ...lightingRef.current, ...patch },
+            lightingKey(patch),
+        );
+    }, [commitLighting]);
 
     const groupSelection = useCallback(() => {
         if (selectedIds.length < 2) return;
+        // Grouping parts that all sit in one group nests the new group inside it, rather than
+        // pulling them out to the top level.
+        const byPart = groupIndex(groupsRef.current);
+        const homes = new Set(selectedIds.map((id) => byPart.get(id)?.id ?? null));
+        const parent = homes.size === 1 ? [...homes][0] : null;
         runGroupOp({
-            t: 'group', id: newGroupId(), name: `Group ${groupsRef.current.length + 1}`, ids: [...selectedIds],
+            t: 'group',
+            id: newGroupId(),
+            name: `Group ${groupsRef.current.length + 1}`,
+            ids: [...selectedIds],
+            ...(parent ? { parent } : {}),
         });
-        flash(`Grouped ${selectedIds.length} parts`);
+        flash(parent ? `Grouped ${selectedIds.length} parts inside` : `Grouped ${selectedIds.length} parts`);
     }, [selectedIds, flash, runGroupOp]);
 
     const ungroupSelection = useCallback(() => {
@@ -865,6 +930,28 @@ export default function App() {
     }, [selectedIds, flash, runGroupOp]);
 
     const ungroup = (groupId) => runGroupOp({ t: 'delete', id: groupId });
+
+    const reparentGroup = (groupId, parent) => runGroupOp({ t: 'reparent', id: groupId, parent });
+
+    // Dropping parts on a folder files them there; dropping them on the workspace takes them out.
+    const filePartsUnder = (ids, groupId) => {
+        const live = ids.filter((id) => partsRef.current.some((p) => p._id === id));
+        if (!live.length) return;
+        if (!groupId) {
+            runGroupOp({ t: 'ungroup', ids: live });
+
+            return;
+        }
+        const g = groupsRef.current.find((x) => x.id === groupId);
+        if (!g) return;
+        runGroupOp({
+            t: 'group',
+            id: g.id,
+            name: g.name,
+            ids: [...new Set([...g.ids, ...live])],
+            ...(g.parent ? { parent: g.parent } : {}),
+        });
+    };
 
     const renameGroup = (groupId, name) => runGroupOp({ t: 'rename', id: groupId, name });
 
@@ -879,8 +966,8 @@ export default function App() {
     }, [groups]);
 
     useEffect(() => {
-        if (mapName && lights !== loadedLights.current) dirty.current = true;
-    }, [lights]);
+        if (mapName && lighting !== loadedLighting.current) dirty.current = true;
+    }, [lighting]);
 
     const changeGraphics = (patch) => {
         setGraphics((g) => {
@@ -900,10 +987,10 @@ export default function App() {
         try {
             const doc = await loadMap(name, teamId);
             const ready = resetDocument(
-                name, doc.parts, false, doc.groups, teamId, doc.version, doc.lights, doc.projectId,
+                name, doc.parts, false, doc.groups, teamId, doc.version, doc.lighting, doc.projectId,
             );
             if (teamId != null) {
-                liveRef.current.openTeam(name, ready.parts, ready.groups, teamId, ready.lights);
+                liveRef.current.openTeam(name, ready.parts, ready.groups, teamId, ready.lighting);
             }
         } catch (e) {
             flash(String(e.message ?? e));
@@ -915,7 +1002,7 @@ export default function App() {
     const restore = (name, doc) => {
         resetDocument(
             name, doc.parts, true, doc.groups ?? null, null, null,
-            doc.lights ?? null, doc.projectId ?? null,
+            doc.lighting ?? null, doc.projectId ?? null,
         );
         flash(`Restored ${name}.json from this device`);
     };
@@ -926,9 +1013,9 @@ export default function App() {
             const groups = incoming
                 .map((g) => newGroup(g.name, g.slots.map((i) => seeded[i]?._id).filter(Boolean)))
                 .filter((g) => g.ids.length);
-            resetDocument(name, seeded, true, groups, null, null, doc?.lights, doc?.projectId);
+            resetDocument(name, seeded, true, groups, null, null, doc?.lighting, doc?.projectId);
         } else {
-            resetDocument(name, data, true, null, null, null, doc?.lights, doc?.projectId);
+            resetDocument(name, data, true, null, null, null, doc?.lighting, doc?.projectId);
         }
         flash(`Loaded upload as ${name}.json, Save to keep it`);
     };
@@ -961,10 +1048,14 @@ export default function App() {
             }
             const added = addMany(result.parts);
             if (result.groups?.length) {
-                for (const g of result.groups) {
-                    const ids = g.slots.map((i) => added[i]?._id).filter(Boolean);
-                    if (ids.length) runGroupOp({ t: 'group', id: newGroupId(), name: g.name, ids });
-                }
+                const idFor = new Map(result.groups.map((g) => [g.at, newGroupId()]));
+                const imported = result.groups.map((g) => ({
+                    id: idFor.get(g.at),
+                    name: g.name,
+                    ids: g.slots.map((i) => added[i]?._id).filter(Boolean),
+                    ...(g.parentAt === null ? {} : { parent: idFor.get(g.parentAt) }),
+                }));
+                replaceGroups(pruneEmptyGroups([...groupsRef.current, ...imported]));
             } else {
                 runGroupOp({
                     t: 'group',
@@ -980,7 +1071,7 @@ export default function App() {
                 .filter((g) => g.ids.length);
             resetDocument(
                 mapNameFrom(fileName), seeded, true, groups, null, null,
-                result.lights ?? [], result.projectId ?? null,
+                result.lighting ?? null, result.projectId ?? null,
             );
         }
         flash(importSummary(result));
@@ -1007,7 +1098,7 @@ export default function App() {
 
     const download = () => {
         if (!mapName) return;
-        const text = JSON.stringify(toProject(parts, groups, projectId.current ?? newProjectId(), lights));
+        const text = JSON.stringify(toProject(parts, groups, projectId.current ?? newProjectId(), lighting));
         if (text.length > ENGINE_MAX_BYTES) {
             flash(`This map is ${(text.length / 1048576).toFixed(1)} MB, over the 10 MB the game `
                 + 'accepts. Rebuild it with a lower Detail or a higher Merge angle.');
@@ -1030,7 +1121,7 @@ export default function App() {
             withNewId(NEW_SPAWN),
         ], true, null, teamId, null, [newLight(DEFAULT_SUN)], null);
         if (teamId != null) {
-            liveRef.current.openTeam(name, ready.parts, ready.groups, teamId, ready.lights);
+            liveRef.current.openTeam(name, ready.parts, ready.groups, teamId, ready.lighting);
         }
     };
 
@@ -1056,7 +1147,7 @@ export default function App() {
         }
         const snapshot = partsRef.current;
         const grouped = groupsRef.current;
-        const lit = lightsRef.current;
+        const lit = lightingRef.current;
         const project = projectId.current;
         const body = saveBody(snapshot, grouped, versionRef.current, lit, project);
         const backed = writeBackup(mapName, snapshot, body);
@@ -1108,7 +1199,7 @@ export default function App() {
 
     const goLive = () => {
         if (!mapName) return;
-        live.host(mapName, partsRef.current, groups, mapTeamRef.current, lightsRef.current);
+        live.host(mapName, partsRef.current, groups, mapTeamRef.current, lightingRef.current);
         setTeamOpen(true);
     };
 
@@ -1163,6 +1254,28 @@ export default function App() {
     );
 
     const updateSelected = (patch) => {
+        if (patch.N === null) {
+            edit(unsetOp(selectedIds, ['N']));
+
+            return;
+        }
+        const lit = partLightOf(selectedIds[selectedIds.length - 1]);
+        if (lit) {
+            const hosts = selectedIds
+                .map(partLightOf)
+                .filter((x) => x?.kind === lit.kind)
+                .map((x) => x.partId);
+            const gone = Object.entries(patch).filter(([, v]) => v === null).map(([k]) => k);
+            if (gone.length) {
+                edit(unsetOp(hosts, gone));
+                setSelectedIds(hosts);
+
+                return;
+            }
+            edit(patchOp(hosts, patch));
+
+            return;
+        }
         if (!selectedIds.length) return;
         edit(patchOp(selectedIds, patch));
     };
@@ -1220,7 +1333,22 @@ export default function App() {
 
     const removeSelected = useCallback(() => {
         if (!selectedIds.length) return;
-        edit(removeOp(selectedIds));
+        // Delete on a light takes the light off the part, not the part out of the map. The two
+        // halves of the map's own rig cannot be deleted at all.
+        const lit = partLightOf(selectedIds[selectedIds.length - 1]);
+        if (lit) {
+            const hosts = selectedIds
+                .map(partLightOf)
+                .filter((x) => x?.kind === lit.kind)
+                .map((x) => x.partId);
+            edit(unsetOp(hosts, [lit.kind === 'spot' ? 'spot_light' : 'point_light']));
+            setSelectedIds(hosts);
+
+            return;
+        }
+        const parts = selectedIds.filter((id) => !isLightRef(id));
+        if (!parts.length) return;
+        edit(removeOp(parts));
         setSelectedIds([]);
     }, [selectedIds, edit]);
 
@@ -1266,7 +1394,7 @@ export default function App() {
         if (!viewing) return;
         loadMapAsAdmin(viewing)
             .then((m) => {
-                resetDocument(m.name, m.parts, false, m.groups ?? [], null, null, m.lights ?? []);
+                resetDocument(m.name, m.parts, false, m.groups ?? [], null, null, m.lighting ?? m.lights ?? null);
                 flash(`Viewing ${m.name} as admin, read-only`);
             })
             .catch((e) => flash(String(e.message ?? e)));
@@ -1290,6 +1418,24 @@ export default function App() {
             if (e.ctrlKey && e.key.toLowerCase() === 's' && scriptTab) {
                 e.preventDefault();
                 saveTab(scriptTab);
+                return;
+            }
+            // Undo and redo belong to the map wherever the focus happens to be: a slider or a
+            // property box would otherwise hand them to the browser's own undo for that field.
+            // A textarea keeps them, since that is a script being written.
+            const typing = e.target.tagName === 'TEXTAREA' || e.target.isContentEditable;
+            if (!typing && e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
+                e.target.blur?.();
+                undo();
+
+                return;
+            }
+            if (!typing && e.ctrlKey && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
+                e.preventDefault();
+                e.target.blur?.();
+                redo();
+
                 return;
             }
             if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable) return;
@@ -1483,8 +1629,8 @@ export default function App() {
                         selectMany={selectMany}
                         faces={faces}
                         showFaces={!!activePlugin?.usesFaces}
-                        lights={lights}
-                        onLightTransform={patchLight}
+                        lighting={lighting}
+                        onSunRotate={(sun_rotation) => patchLighting({ sun_rotation })}
                         brush={brushRadius > 0 && !playing ? { radius: brushRadius } : null}
                         onBrush={brushStroke}
                         tintRef={tintRef}
@@ -1614,29 +1760,25 @@ export default function App() {
                             flags={flags}
                             onFlag={setFlag}
                             onClearFlags={clearFlag}
-                            lights={lights}
+                            lighting={lighting}
                             onAddPart={canEdit && mapName ? addPart : null}
-                            onAddLight={canEdit && mapName ? addLight : null}
-                            onRemoveLight={canEdit ? removeLight : null}
+                            onAddUnder={canEdit ? addUnderPart : null}
+                            onReparent={canEdit ? reparentGroup : null}
+                            onFilePartsUnder={canEdit ? filePartsUnder : null}
+                            onRenamePart={canEdit ? ((id, N) => edit(patchOp([id], { N }))) : null}
                             NEW_PART={NEW_PART}
-                        />
-                    )}
-                    {(!mobile || drawerTab === 'properties') && !selectedLight && selectedIds.length > 1 && (
-                        <Arrange
-                            selected={selectedParts}
-                            parts={visibleParts}
-                            onTransform={transformMany}
-                            readOnly={!canEdit}
                         />
                     )}
                     {(!mobile || drawerTab === 'properties') && (
                         <Properties
-                            part={selected}
                             count={selectedIds.length}
                             onChange={updateSelected}
                             readOnly={!canEdit}
+                            part={partLightHost ?? selected}
+                            partLight={selectedPartLight?.kind ?? null}
                             light={selectedLight}
-                            onLightChange={(patch) => selectedLight && patchLight(selectedLight._id, patch)}
+                            lighting={lighting}
+                            onLightChange={patchLighting}
                         />
                     )}
                 </div>

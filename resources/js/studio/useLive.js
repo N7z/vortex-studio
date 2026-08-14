@@ -6,7 +6,7 @@ const EMPTY = [];
 const CHAT_MAX = 200;
 
 export default function useLive({
-    onWelcome, onOp, onSnapshot, onGroups, onLights, onError, onNotice, onRefused, onSaved,
+    onWelcome, onOp, onSnapshot, onGroups, onLighting, onError, onNotice, onRefused, onSaved,
 }) {
     const [status, setStatus] = useState('offline');
     const [code, setCode] = useState(null);
@@ -18,7 +18,7 @@ export default function useLive({
 
     const cbs = useRef({});
     cbs.current = {
-        onWelcome, onOp, onSnapshot, onGroups, onLights, onError, onNotice, onRefused, onSaved,
+        onWelcome, onOp, onSnapshot, onGroups, onLighting, onError, onNotice, onRefused, onSaved,
     };
 
     const playRef = useRef(new Map());
@@ -80,7 +80,7 @@ export default function useLive({
             onOp: (msg) => cbs.current.onOp?.(msg),
             onSnapshot: (msg) => cbs.current.onSnapshot?.(msg),
             onGroups: (msg) => cbs.current.onGroups?.(msg),
-            onLights: (msg) => cbs.current.onLights?.(msg),
+            onLighting: (msg) => cbs.current.onLighting?.(msg),
             onSelection: (msg) => setMembers((ms) => ms.map(
                 (m) => (m.id === msg.id ? { ...m, selection: msg.selection } : m),
             )),
@@ -120,14 +120,14 @@ export default function useLive({
         });
     }
 
-    const host = useCallback((mapName, parts, groups, teamId = null, lights = []) => {
+    const host = useCallback((mapName, parts, groups, teamId = null, lighting = null) => {
         scope.current = { map: mapName, team: teamId };
-        client.current.create(mapName, parts, groups, lights);
+        client.current.create(mapName, parts, groups, lighting);
     }, []);
 
-    const openTeam = useCallback((mapName, parts, groups, teamId, lights = []) => {
+    const openTeam = useCallback((mapName, parts, groups, teamId, lighting = null) => {
         scope.current = { map: mapName, team: teamId };
-        client.current.openTeam(mapName, parts, groups, teamId, lights);
+        client.current.openTeam(mapName, parts, groups, teamId, lighting);
     }, []);
 
     const join = useCallback((joinCode) => {
@@ -149,7 +149,7 @@ export default function useLive({
 
     const sendOp = useCallback((op) => client.current.sendOp(op), []);
     const sendGroups = useCallback((groups) => client.current.sendGroups(groups), []);
-    const sendLights = useCallback((lights) => client.current.sendLights(lights), []);
+    const sendLighting = useCallback((lighting) => client.current.sendLighting(lighting), []);
     const sendGroupOp = useCallback((op) => client.current.sendGroupOp(op), []);
     const sendSelection = useCallback((ids) => client.current.sendSelection(ids), []);
     const sendView = useCallback((view) => client.current.sendView(view), []);
@@ -190,7 +190,7 @@ export default function useLive({
         leave,
         sendOp,
         sendGroups,
-        sendLights,
+        sendLighting,
         sendGroupOp,
         openTeam,
         sendSelection,
