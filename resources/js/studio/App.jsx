@@ -1252,7 +1252,18 @@ export default function App() {
 
     const removeSelected = useCallback(() => {
         if (!selectedIds.length) return;
-        edit(removeOp(selectedIds));
+        // Delete on a light takes the light off the part, not the part out of the map. The two
+        // halves of the map's own rig cannot be deleted at all.
+        const lit = partLightOf(selectedIds[selectedIds.length - 1]);
+        if (lit) {
+            edit(unsetOp([lit.partId], [lit.kind === 'spot' ? 'spot_light' : 'point_light']));
+            setSelectedIds([lit.partId]);
+
+            return;
+        }
+        const parts = selectedIds.filter((id) => !isLightRef(id));
+        if (!parts.length) return;
+        edit(removeOp(parts));
         setSelectedIds([]);
     }, [selectedIds, edit]);
 
