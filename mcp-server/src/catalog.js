@@ -21,13 +21,15 @@ export const MAX_JUMP_HEIGHT = (PLAY.jumpVelocity ** 2) / (2 * Math.abs(PLAY.gra
 
 export const DEFAULT_POINT_LIGHT = {
     color: 'ffe9c4',
-    intensity: 60000,
+    intensity: 3000,
     range: 40,
     shadow_maps_enabled: false,
 };
 
 export const DEFAULT_SPOT_LIGHT = {
     ...DEFAULT_POINT_LIGHT,
+    intensity: 6000,
+    range: 60,
     angle: 35,
     face: 'Bottom',
 };

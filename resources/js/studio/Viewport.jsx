@@ -169,9 +169,15 @@ export default function Viewport({
         scene.add(sun);
         scene.add(sun.target);
 
-        // A part can carry a point light and a spot light. They hang off the part's own mesh, so
-        // moving or turning the part takes its light with it, and the spot aims down a face.
+        // A part can carry a point light and a spot light. They cannot hang off the part's own
+        // mesh: an opaque part is drawn through a batch, which leaves its mesh invisible, and the
+        // renderer skips everything inside an invisible object. So the lights live here, in the
+        // scene, and follow the part they belong to.
         const partLights = new Map();
+        const lightHosts = new THREE.Group();
+        scene.add(lightHosts);
+        const lightAim = new THREE.Vector3();
+        const lightQuat = new THREE.Quaternion();
 
         const dropPartLights = (id) => {
             const held = partLights.get(id);
@@ -203,7 +209,7 @@ export default function Viewport({
 
             if (wantPoint && !held.point) {
                 held.point = new THREE.PointLight(0xffffff, 1);
-                mesh.add(held.point);
+                lightHosts.add(held.point);
             } else if (!wantPoint && held.point) {
                 held.point.removeFromParent();
                 held.point.dispose();
@@ -221,8 +227,8 @@ export default function Viewport({
             if (wantSpot && !held.spot) {
                 held.spot = new THREE.SpotLight(0xffffff, 1);
                 held.target = new THREE.Object3D();
-                mesh.add(held.spot);
-                mesh.add(held.target);
+                lightHosts.add(held.spot);
+                lightHosts.add(held.target);
                 held.spot.target = held.target;
             } else if (!wantSpot && held.spot) {
                 held.spot.removeFromParent();
@@ -233,7 +239,7 @@ export default function Viewport({
             }
             if (held.spot) {
                 const dir = FACE_DIRECTION[wantSpot.face] ?? FACE_DIRECTION.Bottom;
-                held.target.position.set(dir[0], dir[1], dir[2]);
+                held.spot.face = wantSpot.face;
                 held.spot.color.set(`#${wantSpot.color}`);
                 held.spot.power = wantSpot.intensity;
                 held.spot.distance = wantSpot.range;
@@ -242,6 +248,34 @@ export default function Viewport({
                 held.spot.decay = 2;
                 held.spot.castShadow = !!c?.shadows && wantSpot.shadow_maps_enabled === true;
             }
+
+            followPartLights(part._id, mesh);
+        };
+
+        // Where the light sits is the part's own place in the world, taken off the mesh so a light
+        // keeps up with a part being dragged, not just one that was committed.
+        const followPartLights = (id, mesh) => {
+            const held = partLights.get(id);
+            if (!held || !mesh) return;
+            mesh.updateWorldMatrix(true, false);
+            lightAim.setFromMatrixPosition(mesh.matrixWorld);
+            held.point?.position.copy(lightAim);
+            if (!held.spot) return;
+            held.spot.position.copy(lightAim);
+            const dir = FACE_DIRECTION[held.spot.face] ?? FACE_DIRECTION.Bottom;
+            mesh.matrixWorld.decompose(lightAim, lightQuat, new THREE.Vector3());
+            held.target.position
+                .set(dir[0], dir[1], dir[2])
+                .applyQuaternion(lightQuat)
+                .multiplyScalar(4)
+                .add(lightAim);
+            held.target.updateMatrixWorld();
+        };
+
+        const followAllPartLights = () => {
+            if (!partLights.size) return;
+            const c = ctx.current;
+            for (const id of partLights.keys()) followPartLights(id, c?.meshes.get(id));
         };
 
         const syncLighting = (rig) => {
@@ -1357,7 +1391,11 @@ export default function Viewport({
             const c = ctx.current;
             stepLivePeers(c, dt);
             if (flying || marquee?.active) invalidate();
-            if ((drag !== null && !drag.preview) || gizmo.dragging) reshadow();
+            if ((drag !== null && !drag.preview) || gizmo.dragging) {
+                reshadow();
+                // A part being dragged has not been committed yet, so its light follows the mesh.
+                followAllPartLights();
+            }
             if (dirty <= 0) {
                 countFps(now);
                 publishStats(c);
@@ -1478,6 +1516,7 @@ export default function Viewport({
             grid, applyScale, syncBatches, setBatchShadows, invalidate, reshadow,
             syncLighting,
             syncPartLights,
+            followAllPartLights,
             dropPartLights,
             sun,
             lighting: null,
@@ -1621,6 +1660,7 @@ export default function Viewport({
             grid.geometry.dispose();
             grid.material.dispose();
             for (const id of [...partLights.keys()]) dropPartLights(id);
+            scene.remove(lightHosts);
             sun.shadow.map?.dispose();
             sun.dispose();
             scene.remove(sun);
