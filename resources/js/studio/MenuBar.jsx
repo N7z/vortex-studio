@@ -3,7 +3,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import AboutWindow from './AboutWindow';
 import { loadStats } from './api';
 import useFullscreen, { canFullscreen } from './useFullscreen';
-import { MODES, PRESETS, SCALES, SHADOW_RES, presetName } from './graphics';
+import {
+    EXPOSURE, MODES, PRESETS, SCALES, SHADOW_RES, TONEMAPS, presetName,
+} from './graphics';
 import { THEMES, setTheme, useTheme } from './theme';
 
 const SEP = { sep: true };
@@ -264,6 +266,32 @@ export default function MenuBar({
                                 ))}
                             </select>
                         </div>
+                        <div className="gfx-row">
+                            <span>Tone mapping</span>
+                            <select
+                                value={graphics.tonemap}
+                                onChange={(e) => onGraphics({ tonemap: e.target.value })}
+                            >
+                                {TONEMAPS.map(([v, label]) => (
+                                    <option key={v} value={v}>{label}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="gfx-row">
+                            <span>Exposure</span>
+                            <span className="gfx-slider">
+                                <input
+                                    type="range"
+                                    min={EXPOSURE.min}
+                                    max={EXPOSURE.max}
+                                    step={EXPOSURE.step}
+                                    value={graphics.exposure}
+                                    disabled={graphics.tonemap === 'none'}
+                                    onChange={(e) => onGraphics({ exposure: Number(e.target.value) })}
+                                />
+                                <b>{graphics.exposure.toFixed(2)}</b>
+                            </span>
+                        </div>
                         <label className="arch-check">
                             <input
                                 type="checkbox"
@@ -285,6 +313,7 @@ export default function MenuBar({
                             <li><b>Shadows</b> draw every part twice</li>
                             <li><b>Stud textures</b> cost one texture per part</li>
                             <li><b>Render resolution</b> loses the least detail per frame saved</li>
+                            <li><b>Tone mapping</b> is free: it only changes how light is shown</li>
                         </ul>
                     </div>
                 </>

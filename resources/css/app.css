@@ -230,6 +230,37 @@ a.tool-btn { text-decoration: none; }
     font-size: 11px;
 }
 .gfx-row select:disabled { color: var(--faint-2); }
+.gfx-slider { display: flex; align-items: center; gap: 8px; }
+.gfx-slider b { min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
+.gfx-slider input[type='range'] { width: 96px; }
+
+/* One slider look for the graphics popover and the properties panel. */
+input[type='range'] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: var(--sunken);
+    border-radius: 2px;
+    outline: none;
+}
+input[type='range']::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 11px; height: 11px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+}
+input[type='range']::-moz-range-thumb {
+    width: 11px; height: 11px;
+    border: none;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+}
+input[type='range']:disabled { opacity: 0.45; }
+input[type='range']:disabled::-webkit-slider-thumb { background: var(--disabled); cursor: default; }
+input[type='range']:disabled::-moz-range-thumb { background: var(--disabled); cursor: default; }
 .gfx-note { color: var(--dim); font-size: 11px; margin-top: 8px; }
 
 .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }

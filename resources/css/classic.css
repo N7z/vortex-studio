@@ -545,3 +545,29 @@ html[data-theme='classic'] ::-webkit-scrollbar-button {
     background: linear-gradient(180deg, #fff 0%, #ece9d8 45%, #d8d4c2 100%);
     border: 1px solid #aca899;
 }
+
+/* ---------- sliders ---------- */
+
+/* Luna's trackbar: a sunken groove and a square beveled grip, not a round dot. */
+html[data-theme='classic'] input[type='range'] {
+    height: 4px;
+    background: #f1efe2;
+    border: 1px solid #aca899;
+    border-radius: 0;
+}
+html[data-theme='classic'] input[type='range']::-webkit-slider-thumb {
+    width: 10px; height: 18px;
+    border: 1px solid #aca899;
+    border-radius: 0;
+    background: linear-gradient(180deg, #fff 0%, #ece9d8 45%, #d8d4c2 100%);
+}
+html[data-theme='classic'] input[type='range']::-moz-range-thumb {
+    width: 10px; height: 18px;
+    border: 1px solid #aca899;
+    border-radius: 0;
+    background: linear-gradient(180deg, #fff 0%, #ece9d8 45%, #d8d4c2 100%);
+}
+html[data-theme='classic'] input[type='range']:disabled::-webkit-slider-thumb,
+html[data-theme='classic'] input[type='range']:disabled::-moz-range-thumb {
+    background: #ece9d8;
+}

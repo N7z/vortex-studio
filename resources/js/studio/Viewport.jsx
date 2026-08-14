@@ -19,6 +19,18 @@ const DEG = Math.PI / 180;
 const SUN_PER_LUX = DEFAULT_ILLUMINANCE / 1.6;
 
 const LIGHT_MARKER_R = 1.2;
+
+const TONEMAPPING = {
+    filmic: THREE.ACESFilmicToneMapping,
+    neutral: THREE.NeutralToneMapping,
+    none: THREE.NoToneMapping,
+};
+
+// The renderer recompiles the materials that need it on its own when the curve changes.
+function applyTonemap(renderer, gfx) {
+    renderer.toneMapping = TONEMAPPING[gfx?.tonemap] ?? THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = typeof gfx?.exposure === 'number' ? gfx.exposure : 1;
+}
 const IDENTITY_Q = new THREE.Quaternion();
 
 const round = (v) => Math.round(v * 100) / 100;
@@ -121,6 +133,7 @@ export default function Viewport({
         camera.position.set(40, 40, 40);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
+        applyTonemap(renderer, gfxRef.current);
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         renderer.shadowMap.autoUpdate = false;
@@ -1714,6 +1727,7 @@ export default function Viewport({
         const g = graphics;
         const shadows = g.shadows && (g.mode ?? 'lit') === 'lit';
         const was = c.shadows;
+        applyTonemap(c.renderer, g);
         c.shadows = shadows;
         c.renderer.shadowMap.enabled = shadows;
         c.grid.visible = g.grid;
