@@ -1643,7 +1643,12 @@ input[type='range']:disabled::-moz-range-thumb { background: var(--disabled); cu
     overflow-y: auto;
 }
 /* The explorer list scrolls and clips, so a row's menu is placed against the window instead. */
-.tree-add-menu { position: fixed; top: auto; left: auto; min-width: 140px; }
+.tree-add-menu { position: fixed; top: auto; left: auto; min-width: 150px; }
+/* Where a dragged folder or part would land. */
+.tree-item.drop-into {
+    background: var(--sel-soft);
+    box-shadow: inset 0 0 0 1px var(--accent);
+}
 .tree-add-backdrop { position: fixed; inset: 0; z-index: 69; }
 
 .menu-drop::-webkit-scrollbar { width: 8px; }

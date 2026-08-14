@@ -482,6 +482,15 @@ export default function App() {
             return;
         }
 
+        if (entry.t === 'groups') {
+            remember(to, { t: 'groups', groups: groupsRef.current });
+            dirty.current = true;
+            setGroups(entry.groups);
+            liveRef.current.sendGroups(entry.groups);
+
+            return;
+        }
+
         const before = partsRef.current;
         const next = applyOp(before, entry.op);
         if (next === before) return;
@@ -856,7 +865,12 @@ export default function App() {
         }
     };
 
+    // Folders go on the undo stack whole: they are a handful of names and id lists, so keeping the
+    // previous state costs nothing and grouping, renaming and ungrouping all undo the same way.
     const runGroupOp = useCallback((op) => {
+        remember(history, { t: 'groups', groups: groupsRef.current });
+        future.current = [];
+        lastEdit.current = { key: null, at: 0 };
         setGroups((gs) => applyGroupOp(gs, op));
         liveRef.current.sendGroupOp(op);
     }, []);
@@ -864,6 +878,8 @@ export default function App() {
     // A whole tree at once, for when sending it group by group would pass through states where a
     // parent has nothing in it yet.
     const replaceGroups = useCallback((next) => {
+        remember(history, { t: 'groups', groups: groupsRef.current });
+        future.current = [];
         setGroups(next);
         liveRef.current.sendGroups(next);
     }, []);
@@ -914,6 +930,28 @@ export default function App() {
     }, [selectedIds, flash, runGroupOp]);
 
     const ungroup = (groupId) => runGroupOp({ t: 'delete', id: groupId });
+
+    const reparentGroup = (groupId, parent) => runGroupOp({ t: 'reparent', id: groupId, parent });
+
+    // Dropping parts on a folder files them there; dropping them on the workspace takes them out.
+    const filePartsUnder = (ids, groupId) => {
+        const live = ids.filter((id) => partsRef.current.some((p) => p._id === id));
+        if (!live.length) return;
+        if (!groupId) {
+            runGroupOp({ t: 'ungroup', ids: live });
+
+            return;
+        }
+        const g = groupsRef.current.find((x) => x.id === groupId);
+        if (!g) return;
+        runGroupOp({
+            t: 'group',
+            id: g.id,
+            name: g.name,
+            ids: [...new Set([...g.ids, ...live])],
+            ...(g.parent ? { parent: g.parent } : {}),
+        });
+    };
 
     const renameGroup = (groupId, name) => runGroupOp({ t: 'rename', id: groupId, name });
 
@@ -1720,6 +1758,8 @@ export default function App() {
                             lighting={lighting}
                             onAddPart={canEdit && mapName ? addPart : null}
                             onAddUnder={canEdit ? addUnderPart : null}
+                            onReparent={canEdit ? reparentGroup : null}
+                            onFilePartsUnder={canEdit ? filePartsUnder : null}
                             NEW_PART={NEW_PART}
                         />
                     )}

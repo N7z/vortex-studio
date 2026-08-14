@@ -3,7 +3,9 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { WorkspaceIcon, LightingIcon, cubeIcon, FolderIcon, ChevronIcon } from './icons';
 import { groupIndex, groupParts, groupTree } from './groups';
 import { EMPTY, isHidden, isLocked } from './flags';
-import { AMBIENT, SUN, partLightRef, pointLightOf, spotLightOf } from './lighting';
+import {
+    AMBIENT, SUN, isLightRef, partLightRef, pointLightOf, spotLightOf,
+} from './lighting';
 
 const ICON_COLOR = {
     Part: '#b9b9c0',
@@ -45,14 +47,17 @@ const Twist = ({ open, onToggle }) => (onToggle ? (
 
 export default function Explorer({
     parts, selectedIds, setSelectedId, selectMany, groups = [], onUngroup, onRenameGroup, mapName,
-    flags = EMPTY, onFlag, onClearFlags, onAddPart, onAddUnder, NEW_PART
+    flags = EMPTY, onFlag, onClearFlags, onAddPart, onAddUnder, onReparent, onFilePartsUnder,
+    NEW_PART
 }) {
     const listRef = useRef(null);
     const [query, setQuery] = useState('');
     const [open, setOpen] = useState({});
     const [renaming, setRenaming] = useState(null);
-    // Which part's add menu is open, and where to hang it.
-    const [adding, setAdding] = useState(null);
+    // The floating menu: what is in it and where it hangs. Used by the + button and by right-click.
+    const [menu, setMenu] = useState(null);
+    const [dragging, setDragging] = useState(null);
+    const [dragOver, setDragOver] = useState(null);
     const [view, setView] = useState({ top: 0, h: 400 });
     const primary = selectedIds.length ? selectedIds[selectedIds.length - 1] : null;
 
@@ -143,6 +148,28 @@ export default function Explorer({
         return () => ro.disconnect();
     }, []);
 
+    // F2 renames the folder the selection is in, the way a file manager does.
+    const renamable = useMemo(() => {
+        if (!selectedIds.length) return null;
+        const byPart = groupIndex(groups);
+        const homes = new Set(selectedIds.map((id) => byPart.get(id)?.id));
+
+        return homes.size === 1 && !homes.has(undefined) ? [...homes][0] : null;
+    }, [groups, selectedIds]);
+
+    useEffect(() => {
+        if (!onRenameGroup) return undefined;
+        const onKey = (e) => {
+            if (e.key !== 'F2' || !renamable) return;
+            if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+            e.preventDefault();
+            setRenaming(renamable);
+        };
+        window.addEventListener('keydown', onKey);
+
+        return () => window.removeEventListener('keydown', onKey);
+    }, [renamable, onRenameGroup]);
+
     useEffect(() => {
         const el = listRef.current;
         if (!el || primary == null) return;
@@ -152,6 +179,64 @@ export default function Explorer({
         if (y < el.scrollTop) el.scrollTop = y;
         else if (y + ROW_H > el.scrollTop + el.clientHeight) el.scrollTop = y + ROW_H - el.clientHeight;
     }, [primary]);
+
+    const openMenu = (e, items) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const live = items.filter(Boolean);
+        if (!live.length) return;
+        setMenu({ x: e.clientX, y: e.clientY, items: live });
+    };
+
+    const addItems = (p) => (onAddUnder ? UNDER_PART.map((it) => ({
+        label: it.label,
+        disabled: it.held(p),
+        pick: () => onAddUnder(p._id, it.kind),
+    })) : []);
+
+    const partMenu = (p) => [
+        ...addItems(p),
+        ...(onAddUnder ? [{ sep: true }] : []),
+        {
+            label: isHidden(flags, p) ? 'Show' : 'Hide',
+            pick: () => onFlag?.('hide', [p._id], !isHidden(flags, p)),
+        },
+        {
+            label: isLocked(flags, p) ? 'Unlock' : 'Lock',
+            pick: () => onFlag?.('lock', [p._id], !isLocked(flags, p)),
+        },
+    ];
+
+    const groupMenu = (g) => [
+        { label: 'Rename', pick: () => setRenaming(g.id) },
+        { label: 'Select contents', pick: () => selectMany?.(groupParts(groups, g.id), false) },
+        { sep: true },
+        { label: 'Move to top level', disabled: !g.parent, pick: () => onReparent?.(g.id, null) },
+        { label: 'Ungroup', pick: () => onUngroup?.(g.id) },
+    ];
+
+    // Dragging a folder onto another puts it inside it; dragging parts onto one files them there.
+    const dropOn = (target) => {
+        const held = dragging;
+        setDragging(null);
+        if (!held) return;
+        if (held.kind === 'group') onReparent?.(held.id, target);
+        else onFilePartsUnder?.(held.ids, target);
+    };
+
+    const dropProps = (target, accepts) => ({
+        onDragOver: (e) => {
+            if (!dragging || !accepts(dragging)) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+        },
+        onDrop: (e) => {
+            if (!dragging || !accepts(dragging)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            dropOn(target);
+        },
+    });
 
     const toggles = (ids, hidden, locked) => (
         <span className="tree-flags">
@@ -184,6 +269,13 @@ export default function Explorer({
                 className={`tree-item child ${selected.has(p._id) ? 'selected' : ''}`
                     + `${hidden ? ' is-hidden' : ''}${locked ? ' is-locked' : ''}`}
                 onClick={(e) => setSelectedId(p._id, e.ctrlKey || e.metaKey, null, true)}
+                onContextMenu={(e) => openMenu(e, partMenu(p))}
+                draggable={!!onFilePartsUnder}
+                onDragStart={() => setDragging({
+                    kind: 'parts',
+                    ids: selected.has(p._id) ? selectedIds.filter((id) => !isLightRef(id)) : [p._id],
+                })}
+                onDragEnd={() => setDragging(null)}
             >
                 <Twist />
                 <span className="icon">{cubeIcon(ICON_COLOR[p.T] ?? '#b9b9c0')}</span>
@@ -192,13 +284,7 @@ export default function Explorer({
                     <button
                         className="add"
                         title="Add something under this part"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            const r = e.currentTarget.getBoundingClientRect();
-                            setAdding((cur) => (cur?.id === p._id
-                                ? null
-                                : { id: p._id, x: r.left, y: r.bottom + 2 }));
-                        }}
+                        onClick={(e) => openMenu(e, addItems(p))}
                     >
                         +
                     </button>
@@ -215,7 +301,15 @@ export default function Explorer({
         <div
             key={g.id}
             {...rowProps(depth)}
-            className={`tree-item group ${held.some((id) => selected.has(id)) ? 'selected' : ''}`}
+            className={`tree-item group ${held.some((id) => selected.has(id)) ? 'selected' : ''}`
+                + `${dragging && dragOver === g.id ? ' drop-into' : ''}`}
+            onContextMenu={(e) => openMenu(e, groupMenu(g))}
+            draggable={!!onReparent}
+            onDragStart={(e) => { e.stopPropagation(); setDragging({ kind: 'group', id: g.id }); }}
+            onDragEnd={() => { setDragging(null); setDragOver(null); }}
+            onDragEnter={() => dragging && setDragOver(g.id)}
+            onDragLeave={() => setDragOver((cur) => (cur === g.id ? null : cur))}
+            {...dropProps(g.id, (held2) => held2.kind !== 'group' || held2.id !== g.id)}
         >
             <Twist open={isOpen(g)} onToggle={() => toggle(g.id, !isOpen(g))} />
             <span className="icon"><FolderIcon /></span>
@@ -257,28 +351,25 @@ export default function Explorer({
         );
     };
 
-    const addingPart = adding ? parts.find((p) => p._id === adding.id) ?? null : null;
-
     return (
         <div className="panel explorer">
-            {addingPart && (
+            {menu && (
                 <>
-                    <div className="tree-add-backdrop" onClick={() => setAdding(null)} />
-                    <div className="menu-drop tree-add-menu" style={{ left: adding.x, top: adding.y }}>
-                        {UNDER_PART.map((it) => (
+                    <div className="tree-add-backdrop" onClick={() => setMenu(null)} onContextMenu={(e) => { e.preventDefault(); setMenu(null); }} />
+                    <div className="menu-drop tree-add-menu" style={{ left: menu.x, top: menu.y }}>
+                        {menu.items.map((it, i) => (it.sep ? (
+                            <div className="menu-sep" key={`s${i}`} />
+                        ) : (
                             <button
-                                key={it.kind}
+                                key={it.label}
                                 className="menu-item"
-                                disabled={it.held(addingPart)}
-                                onClick={() => {
-                                    setAdding(null);
-                                    onAddUnder(addingPart._id, it.kind);
-                                }}
+                                disabled={!!it.disabled}
+                                onClick={() => { setMenu(null); it.pick(); }}
                             >
                                 <span className="menu-tick" />
                                 <span className="menu-label">{it.label}</span>
                             </button>
-                        ))}
+                        )))}
                     </div>
                 </>
             )}
@@ -323,10 +414,13 @@ export default function Explorer({
                                         // I  anyone will replace this with "Add a part" with "Add a instance" and menu of instances because i dont know react :D
                                 return (
                                     <div
-                                        className="tree-item"
+                                        className={`tree-item${dragging && dragOver === 'ws' ? ' drop-into' : ''}`}
                                         key="ws"
                                         {...rowProps(0)}
                                         onClick={() => setSelectedId(null)}
+                                        onDragEnter={() => dragging && setDragOver('ws')}
+                                        onDragLeave={() => setDragOver((cur) => (cur === 'ws' ? null : cur))}
+                                        {...dropProps(null, () => true)}
                                     >
                                         <Twist open={rootOpen('ws')} onToggle={() => toggle('ws', !rootOpen('ws'))} />
                                         <span className="icon"><WorkspaceIcon /></span>
