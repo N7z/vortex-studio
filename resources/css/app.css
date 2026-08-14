@@ -483,6 +483,10 @@ input[type='range']:disabled::-moz-range-thumb { background: var(--disabled); cu
     font-size: 12px;
 }
 .prop-row input:focus, .prop-row select:focus { outline: none; border-color: var(--accent); }
+/* Slider first, box second: sweep for a feel, type for a value. */
+.prop-slider { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.prop-slider input[type='range'] { flex: 1; min-width: 40px; }
+.prop-slider .num, .prop-slider input[type='number'] { flex: none; width: 54px; }
 .prop-row input[type="number"], .prop-row .num, .arch-axes input[type="number"], .arch-axes .num {
     appearance: textfield;
     -moz-appearance: textfield;

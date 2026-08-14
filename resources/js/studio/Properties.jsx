@@ -23,6 +23,32 @@ function Vec3({ value, onChange, readOnly }) {
     );
 }
 
+// A number that has a floor and a ceiling is easier to feel out by dragging than by typing, so it
+// gets both: the slider to sweep it and the box to land on an exact value.
+function Slider({
+    value, min, max, step, readOnly, onChange,
+}) {
+    return (
+        <div className="prop-slider">
+            <input
+                type="range"
+                min={min}
+                max={max}
+                step={step}
+                value={value}
+                disabled={readOnly}
+                onChange={(e) => onChange(Number(e.target.value))}
+            />
+            <NumberInput
+                value={value}
+                readOnly={readOnly}
+                clamp={(v) => Math.min(max, Math.max(min, v))}
+                onChange={onChange}
+            />
+        </div>
+    );
+}
+
 function Toggle({ label, checked, readOnly, onChange }) {
     return (
         <div className="prop-row prop-check">
@@ -114,10 +140,12 @@ function LightProperties({ light, onChange, readOnly }) {
                     />
                     <div className="prop-row">
                         <label>Illuminance</label>
-                        <NumberInput
+                        <Slider
                             value={light.I}
+                            min={0}
+                            max={MAX_ILLUMINANCE}
+                            step={100}
                             readOnly={readOnly}
-                            clamp={(v) => Math.min(MAX_ILLUMINANCE, Math.max(0, v))}
                             onChange={(I) => onChange({ I })}
                         />
                     </div>
@@ -213,10 +241,12 @@ export default function Properties({
                     </div>
                     <div className="prop-row">
                         <label>Transparency</label>
-                        <NumberInput
+                        <Slider
                             value={part.Tr ?? 0}
+                            min={0}
+                            max={1}
+                            step={0.05}
                             readOnly={readOnly}
-                            clamp={(v) => Math.min(1, Math.max(0, v))}
                             onChange={(Tr) => onChange({ Tr })}
                         />
                     </div>
