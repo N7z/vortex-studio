@@ -361,13 +361,13 @@ export default function StartScreen({
                 <main className="scope-main">
                     {scope === 'ugc' ? <Clothing /> : (
                     <>
-                            {theme !== 'classic' && (
+                            {theme !== 'pink' && (
                                 <button
                                     type="button"
                                     className="theme-try"
-                                    onClick={() => setTheme('classic')}
+                                    onClick={() => setTheme('pink')}
                                 >
-                                    Try our new CLASSIC theme !
+                                    Try our new PINK theme ! ✿
                                 </button>
                             )}
                             <div className="scope-bar">

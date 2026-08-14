@@ -5,7 +5,10 @@ const KEY = 'studio_theme';
 export const THEMES = [
     ['dark', 'Vortex'],
     ['classic', 'Classic'],
+    ['pink', 'Pink'],
 ];
+
+export const isLight = (name) => name === 'classic' || name === 'pink';
 
 export const DEFAULT = 'dark';
 

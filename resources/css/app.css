@@ -2,6 +2,7 @@
 @import './modal.css';
 /* Last, so a theme can win a tie against the rules above without !important. */
 @import './classic.css';
+@import './pink.css';
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 

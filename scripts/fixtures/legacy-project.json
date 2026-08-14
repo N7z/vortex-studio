@@ -1,0 +1,93 @@
+{
+  "project_id": "5f3b1c7a9d2e4801b6c5a4f39e0d7b21",
+  "parts": [
+    {
+      "name": "Baseplate",
+      "position": { "x": 0.0, "y": 0.0, "z": 0.0 },
+      "rotation": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0 },
+      "scale": { "x": 200.0, "y": 2.0, "z": 200.0 },
+      "color": { "r": 0.49019608, "g": 0.49019608, "b": 0.52156866, "a": 1.0 },
+      "material": "Metal",
+      "group": null,
+      "cast_shadow": false,
+      "anchored": false,
+      "can_collide": false,
+      "spawn_location": false,
+      "baseplate": true,
+      "truss": false,
+      "textures": [
+        { "face": "Top", "kind": "Studs" },
+        { "face": "Bottom", "kind": "Inlets" }
+      ]
+    },
+    {
+      "name": "SpawnLocation",
+      "position": { "x": 0.0, "y": 2.5, "z": 0.0 },
+      "rotation": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0 },
+      "scale": { "x": 6.0, "y": 1.0, "z": 6.0 },
+      "color": { "r": 0.3019608, "g": 0.72156864, "b": 0.29411766, "a": 1.0 },
+      "material": "Plastic",
+      "group": null,
+      "cast_shadow": true,
+      "anchored": true,
+      "can_collide": true,
+      "spawn_location": true,
+      "baseplate": false,
+      "truss": false,
+      "textures": []
+    },
+    {
+      "name": "Part",
+      "position": { "x": -8.0, "y": 4.0, "z": 3.0 },
+      "rotation": { "x": 0.0, "y": 0.38268343, "z": 0.0, "w": 0.9238795 },
+      "scale": { "x": 4.0, "y": 1.0, "z": 2.0 },
+      "color": { "r": 0.6392157, "g": 0.63529414, "b": 0.6431373, "a": 1.0 },
+      "material": "Wood",
+      "group": 0,
+      "cast_shadow": true,
+      "anchored": true,
+      "can_collide": true,
+      "spawn_location": false,
+      "baseplate": false,
+      "truss": false,
+      "textures": []
+    },
+    {
+      "name": "Part",
+      "position": { "x": -8.0, "y": 6.0, "z": 3.0 },
+      "rotation": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0 },
+      "scale": { "x": 4.0, "y": 1.0, "z": 2.0 },
+      "color": { "r": 0.6392157, "g": 0.63529414, "b": 0.6431373, "a": 0.5 },
+      "material": "Plastic",
+      "group": 0,
+      "cast_shadow": true,
+      "anchored": true,
+      "can_collide": true,
+      "spawn_location": false,
+      "baseplate": false,
+      "truss": false,
+      "textures": []
+    }
+  ],
+  "lights": [
+    {
+      "name": "Sun",
+      "position": { "x": 80.0, "y": 160.0, "z": 60.0 },
+      "rotation": { "x": -0.5311862, "y": 0.14004472, "z": 0.24240407, "w": 0.79934263 },
+      "color": { "r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0 },
+      "illuminance": 10000.0,
+      "shadows_enabled": true
+    },
+    {
+      "name": "Fill",
+      "position": { "x": -40.0, "y": 60.0, "z": -20.0 },
+      "rotation": { "x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0 },
+      "color": { "r": 0.8, "g": 0.85, "b": 1.0, "a": 1.0 },
+      "illuminance": 2500.0,
+      "shadows_enabled": false
+    }
+  ],
+  "groups": [
+    { "name": "Platform", "parent_group": null }
+  ]
+}
