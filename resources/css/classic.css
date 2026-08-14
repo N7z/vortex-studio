@@ -574,14 +574,11 @@ html[data-theme='classic'] input[type='range']:disabled::-moz-range-thumb {
 
 /* ---------- light buttons ---------- */
 
-html[data-theme='classic'] .prop-add button,
 html[data-theme='classic'] .prop-remove {
     background: linear-gradient(180deg, #fff 0%, #ece9d8 45%, #d8d4c2 100%);
     border: 1px solid #aca899;
     border-radius: 3px;
     color: #000;
 }
-html[data-theme='classic'] .prop-add button:hover:not(:disabled),
 html[data-theme='classic'] .prop-remove:hover { border-color: #316ac5; color: #000; }
-html[data-theme='classic'] .prop-add button:disabled { color: #8a8a84; }
 html[data-theme='classic'] .prop-note { color: #555; }

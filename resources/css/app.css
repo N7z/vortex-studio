@@ -372,6 +372,8 @@ input[type='range']:disabled::-moz-range-thumb { background: var(--disabled); cu
     font-size: 12px; line-height: 1; padding: 0 4px; border-radius: 3px; height: 14px;
 }
 .tree-item .add:hover { color: var(--ink); border-color: var(--line-strong); }
+.tree-item.child .add { opacity: 0; transition: opacity 90ms linear; }
+.tree-item.child:hover .add, .tree-item.child.selected .add { opacity: 1; }
 .tree-item.group .group-name {
     flex: 1; min-width: 0; background: var(--field-alt); border: 1px solid var(--accent);
     color: var(--ink); border-radius: 3px; padding: 0 4px; font-size: 12px; height: 16px;
@@ -488,9 +490,7 @@ input[type='range']:disabled::-moz-range-thumb { background: var(--disabled); cu
 .prop-slider input[type='range'] { flex: 1; min-width: 40px; }
 .prop-slider .num, .prop-slider input[type='number'] { flex: none; width: 54px; }
 .prop-note { color: var(--dim); font-size: 11px; line-height: 1.4; }
-.prop-add { display: flex; gap: 6px; }
-.prop-add button, .prop-remove {
-    flex: 1;
+.prop-remove {
     background: var(--field);
     border: 1px solid var(--line);
     border-radius: 3px;
@@ -499,8 +499,7 @@ input[type='range']:disabled::-moz-range-thumb { background: var(--disabled); cu
     padding: 3px 6px;
     cursor: pointer;
 }
-.prop-add button:hover:not(:disabled), .prop-remove:hover { border-color: var(--accent); color: var(--ink-white); }
-.prop-add button:disabled { color: var(--disabled); cursor: default; }
+.prop-remove:hover { border-color: var(--accent); color: var(--ink-white); }
 .prop-remove { width: 100%; margin-top: 2px; }
 .prop-row input[type="number"], .prop-row .num, .arch-axes input[type="number"], .arch-axes .num {
     appearance: textfield;
@@ -1672,6 +1671,10 @@ input[type='range']:disabled::-moz-range-thumb { background: var(--disabled); cu
     max-height: calc(100vh - 40px);
     overflow-y: auto;
 }
+/* The explorer list scrolls and clips, so a row's menu is placed against the window instead. */
+.tree-add-menu { position: fixed; top: auto; left: auto; min-width: 140px; }
+.tree-add-backdrop { position: fixed; inset: 0; z-index: 69; }
+
 .menu-drop::-webkit-scrollbar { width: 8px; }
 .menu-drop::-webkit-scrollbar-track { background: transparent; }
 .menu-drop::-webkit-scrollbar-thumb { background: var(--line-mid); border-radius: 4px; }

@@ -340,15 +340,13 @@ export default function App() {
         selectedPartLight ? parts.find((p) => p._id === selectedPartLight.partId) ?? null : null
     ), [parts, selectedPartLight]);
 
-    const addPartLight = useCallback((kind) => {
+    const addUnderPart = useCallback((partId, kind) => {
         if (!canEditRef.current) return;
-        const target = selectedIds.find((id) => partsRef.current.some((p) => p._id === id));
-        if (!target) return;
         const key = kind === 'spot' ? 'spot_light' : 'point_light';
         const value = kind === 'spot' ? DEFAULT_SPOT_LIGHT : DEFAULT_POINT_LIGHT;
-        edit(patchOp([target], { [key]: { ...value } }));
-        setSelectedIds([partLightRef(target, kind)]);
-    }, [selectedIds]);
+        edit(patchOp([partId], { [key]: { ...value } }));
+        setSelectedIds([partLightRef(partId, kind)]);
+    }, []);
     const pluginTarget = selected;
     const selectionInfo = useMemo(() => {
         if (!selectedParts.length) return null;
@@ -1650,6 +1648,7 @@ export default function App() {
                             onClearFlags={clearFlag}
                             lighting={lighting}
                             onAddPart={canEdit && mapName ? addPart : null}
+                            onAddUnder={canEdit ? addUnderPart : null}
                             NEW_PART={NEW_PART}
                         />
                     )}
@@ -1668,7 +1667,6 @@ export default function App() {
                             readOnly={!canEdit}
                             part={partLightHost ?? selected}
                             partLight={selectedPartLight?.kind ?? null}
-                            onAddPartLight={addPartLight}
                             light={selectedLight}
                             lighting={lighting}
                             onLightChange={patchLighting}

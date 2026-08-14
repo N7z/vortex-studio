@@ -282,7 +282,7 @@ function PartLightProperties({
 
 export default function Properties({
     part, count = 0, onChange, readOnly = false, light = null, lighting = null, onLightChange = null,
-    partLight = null, onAddPartLight = null,
+    partLight = null,
 }) {
     const id = part?._id ?? null;
     const [draft, setColorDraft] = useColorDraft(id, (hex) => onChange({ C: hex }));
@@ -441,26 +441,6 @@ export default function Properties({
                             </select>
                         </div>
                     ))}
-
-                    {onAddPartLight && !readOnly && count === 1 && (
-                        <>
-                            <div className="prop-head">Lights</div>
-                            <div className="prop-add">
-                                <button
-                                    disabled={!!pointLightOf(part)}
-                                    onClick={() => onAddPartLight('point')}
-                                >
-                                    PointLight
-                                </button>
-                                <button
-                                    disabled={!!spotLightOf(part)}
-                                    onClick={() => onAddPartLight('spot')}
-                                >
-                                    SpotLight
-                                </button>
-                            </div>
-                        </>
-                    )}
 
                     {'ItemId' in part && (
                         <div className="prop-row">

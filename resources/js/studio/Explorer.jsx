@@ -16,6 +16,11 @@ const AUTO_OPEN_MAX = 25;
 const ROW_H = 20;
 const OVERSCAN = 8;
 
+const UNDER_PART = [
+    { kind: 'point', label: 'PointLight', held: (p) => !!pointLightOf(p) },
+    { kind: 'spot', label: 'SpotLight', held: (p) => !!spotLightOf(p) },
+];
+
 const RIG = [
     { ref: AMBIENT, label: 'Ambient', key: 'ambient' },
     { ref: SUN, label: 'Sun', key: 'sun' },
@@ -40,12 +45,14 @@ const Twist = ({ open, onToggle }) => (onToggle ? (
 
 export default function Explorer({
     parts, selectedIds, setSelectedId, selectMany, groups = [], onUngroup, onRenameGroup, mapName,
-    flags = EMPTY, onFlag, onClearFlags, onAddPart, NEW_PART
+    flags = EMPTY, onFlag, onClearFlags, onAddPart, onAddUnder, NEW_PART
 }) {
     const listRef = useRef(null);
     const [query, setQuery] = useState('');
     const [open, setOpen] = useState({});
     const [renaming, setRenaming] = useState(null);
+    // Which part's add menu is open, and where to hang it.
+    const [adding, setAdding] = useState(null);
     const [view, setView] = useState({ top: 0, h: 400 });
     const primary = selectedIds.length ? selectedIds[selectedIds.length - 1] : null;
 
@@ -168,6 +175,7 @@ export default function Explorer({
     const partRow = ({ p }, depth) => {
         const hidden = isHidden(flags, p);
         const locked = isLocked(flags, p);
+        const canAdd = onAddUnder && UNDER_PART.some((it) => !it.held(p));
 
         return (
             <div
@@ -180,6 +188,21 @@ export default function Explorer({
                 <Twist />
                 <span className="icon">{cubeIcon(ICON_COLOR[p.T] ?? '#b9b9c0')}</span>
                 {p.T}
+                {canAdd && (
+                    <button
+                        className="add"
+                        title="Add something under this part"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            const r = e.currentTarget.getBoundingClientRect();
+                            setAdding((cur) => (cur?.id === p._id
+                                ? null
+                                : { id: p._id, x: r.left, y: r.bottom + 2 }));
+                        }}
+                    >
+                        +
+                    </button>
+                )}
                 {toggles([p._id], hidden, locked)}
             </div>
         );
@@ -234,8 +257,31 @@ export default function Explorer({
         );
     };
 
+    const addingPart = adding ? parts.find((p) => p._id === adding.id) ?? null : null;
+
     return (
         <div className="panel explorer">
+            {addingPart && (
+                <>
+                    <div className="tree-add-backdrop" onClick={() => setAdding(null)} />
+                    <div className="menu-drop tree-add-menu" style={{ left: adding.x, top: adding.y }}>
+                        {UNDER_PART.map((it) => (
+                            <button
+                                key={it.kind}
+                                className="menu-item"
+                                disabled={it.held(addingPart)}
+                                onClick={() => {
+                                    setAdding(null);
+                                    onAddUnder(addingPart._id, it.kind);
+                                }}
+                            >
+                                <span className="menu-tick" />
+                                <span className="menu-label">{it.label}</span>
+                            </button>
+                        ))}
+                    </div>
+                </>
+            )}
             <div className="panel-title">Explorer</div>
             <div className="explorer-search">
                 <input
