@@ -65,7 +65,7 @@ const ClosePop = ({ onClose }) => (
 
 export default function MenuBar({
     hasMap, canEdit, hasSelection, hasClipboard,
-    onSave, canSave, onDownload, canDownload,
+    onSave, canSave, onDownload, onDownloadJson, canDownload,
     onImportRoblox, onPasteRoblox, canImport,
     onUndo, onRedo, onCopy, onPaste, onDuplicate, onDelete,
     onSelectAll, onGroup, onUngroup,
@@ -109,7 +109,8 @@ export default function MenuBar({
     const MENUS = [
         ['File', [
             { label: 'Save', shortcut: 'Ctrl+S', onClick: onSave, disabled: !canSave },
-            { label: 'Download .json', onClick: onDownload, disabled: !canDownload },
+            { label: 'Download .vrtx', onClick: onDownload, disabled: !canDownload },
+            { label: 'Download .json (legacy)', onClick: onDownloadJson, disabled: !canDownload },
             SEP,
             ...(mobile ? [] : [
                 { label: 'Import Roblox place...', onClick: () => robloxRef.current?.click(), disabled: !canImport },
@@ -179,7 +180,7 @@ export default function MenuBar({
             <input
                 ref={robloxRef}
                 type="file"
-                accept=".json,application/json"
+                accept=".json,.vrtx,application/json,application/octet-stream"
                 style={{ display: 'none' }}
                 onChange={(e) => {
                     const file = e.target.files?.[0];
@@ -385,7 +386,7 @@ export default function MenuBar({
                         <ul>
                             <li>Saved maps live in your anonymous session for 24 hours, counted from your last save</li>
                             <li>Every save also keeps a copy in this browser, listed under <b>On this device</b> on the start screen</li>
-                            <li>Use <b>Download</b> to keep a .json copy, and upload it back anytime</li>
+                            <li>Use <b>Download</b> to keep a .vrtx copy (or .json for older tools), and upload either back anytime</li>
                         </ul>
                     </div>
                 </>
