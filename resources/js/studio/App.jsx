@@ -42,6 +42,7 @@ import { MAX_DIM, MAX_RES, buildVoxels, loadModel, voxelCost } from './model';
 import { predict, record } from './estimate';
 import { convertRoblox, importSummary } from './roblox';
 import { fromProject, isProject, newProjectId, toProject } from './vortexProject';
+import { decodeVrtx, encodeVrtx, isVrtx } from './vrtx';
 import {
     AMBIENT, DEFAULT_LIGHTING, DEFAULT_POINT_LIGHT, DEFAULT_SPOT_LIGHT, SUN, isLightRef,
     partLightOf, partLightRef, repairLighting,
@@ -1021,14 +1022,24 @@ export default function App() {
     };
 
     const mapNameFrom = (fileName) => (fileName ?? '')
-        .replace(/\.json$/i, '')
+        .replace(/\.(json|vrtx)$/i, '')
         .replace(/[^A-Za-z0-9_-]/g, '-')
         .slice(0, 64) || 'roblox';
 
     const importRobloxText = (text, fileName) => {
+        let doc;
+        try {
+            doc = JSON.parse(text);
+        } catch (e) {
+            flash(`Could not import: ${e.message ?? e}`);
+            return;
+        }
+        importDoc(doc, fileName);
+    };
+
+    const importDoc = (doc, fileName) => {
         let result;
         try {
-            const doc = JSON.parse(text);
             const room = mapCap - (mapName ? partsRef.current.length : 0);
             result = isProject(doc) ? fromProject(doc, room) : convertRoblox(doc, room);
         } catch (e) {
@@ -1079,7 +1090,12 @@ export default function App() {
 
     const importRoblox = async (file) => {
         try {
-            importRobloxText(await file.text(), file.name);
+            const bytes = new Uint8Array(await file.arrayBuffer());
+            if (isVrtx(bytes)) {
+                importDoc(decodeVrtx(bytes), file.name);
+            } else {
+                importRobloxText(new TextDecoder().decode(bytes), file.name);
+            }
         } catch (e) {
             flash(`Could not read ${file.name}: ${e.message ?? e}`);
         }
@@ -1096,20 +1112,35 @@ export default function App() {
         if (text) importRobloxText(text, null);
     };
 
+    const saveBlob = (blob, fileName) => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = fileName;
+        a.click();
+        // Firefox cancels the download if the URL is revoked in the same tick.
+        setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    };
+
+    const currentProject = () => toProject(
+        parts, groups, projectId.current ?? newProjectId(), lighting,
+    );
+
+    // The default: the format the current Studio saves and opens.
     const download = () => {
         if (!mapName) return;
-        const text = JSON.stringify(toProject(parts, groups, projectId.current ?? newProjectId(), lighting));
+        const bytes = encodeVrtx(currentProject());
+        saveBlob(new Blob([bytes], { type: 'application/octet-stream' }), `${mapName}.vrtx`);
+    };
+
+    // Kept for the older Studio and for the game, which still read the JSON.
+    const downloadJson = () => {
+        if (!mapName) return;
+        const text = JSON.stringify(currentProject());
         if (text.length > ENGINE_MAX_BYTES) {
             flash(`This map is ${(text.length / 1048576).toFixed(1)} MB, over the 10 MB the game `
                 + 'accepts. Rebuild it with a lower Detail or a higher Merge angle.');
         }
-        const blob = new Blob([text], { type: 'application/json' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `${mapName}.json`;
-        a.click();
-        // Firefox cancels the download if the URL is revoked in the same tick.
-        setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+        saveBlob(new Blob([text], { type: 'application/json' }), `${mapName}.json`);
     };
 
     const createNew = (name, teamId = null) => {
@@ -1520,7 +1551,7 @@ export default function App() {
                 hasMap={!!mapName} canEdit={canEdit}
                 hasSelection={!!selected} hasClipboard={!!clipboard.current}
                 onSave={save} canSave={canSaveToServer}
-                onDownload={download} canDownload={!!mapName && canEdit}
+                onDownload={download} onDownloadJson={downloadJson} canDownload={!!mapName && canEdit}
                 onImportRoblox={importRoblox} onPasteRoblox={pasteRoblox}
                 canImport={!mapName || canEdit}
                 onUndo={undo} onRedo={redo}

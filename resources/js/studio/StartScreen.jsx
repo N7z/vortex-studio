@@ -7,6 +7,7 @@ import MoveMap from './MoveMap';
 import UserMenu from './UserMenu';
 import Clothing from './clothing/Clothing';
 import { fromProject, isProject } from './vortexProject';
+import { decodeVrtx, isVrtx } from './vrtx';
 import { setTheme, useTheme } from './theme';
 import { APP_VERSION } from './version';
 
@@ -145,7 +146,8 @@ export default function StartScreen({
         e.target.value = '';
         if (!file) return;
         try {
-            const doc = JSON.parse(await file.text());
+            const bytes = new Uint8Array(await file.arrayBuffer());
+            const doc = isVrtx(bytes) ? decodeVrtx(bytes) : JSON.parse(new TextDecoder().decode(bytes));
             let parts = doc;
             let groups = null;
             let carried = null;
@@ -157,7 +159,7 @@ export default function StartScreen({
                 throw new Error('not a map: expected a Vortex project or a JSON array of parts');
             }
             const name = file.name
-                .replace(/\.json$/i, '')
+                .replace(/\.(json|vrtx)$/i, '')
                 .replace(/[^A-Za-z0-9_-]/g, '-')
                 .slice(0, 64) || 'uploaded';
             onUpload(name, parts, groups, carried);
@@ -529,7 +531,7 @@ export default function StartScreen({
             <input
                 ref={fileRef}
                 type="file"
-                accept=".json,application/json"
+                accept=".json,.vrtx,application/json,application/octet-stream"
                 style={{ display: 'none' }}
                 onChange={onFile}
             />

@@ -152,8 +152,9 @@ function lightingToProject(lighting) {
         sun_color: colorTo(lit.sun_color),
         sun_illuminance: num(lit.sun_illuminance, DEFAULT_ILLUMINANCE),
         sun_shadow_maps_enabled: lit.sun_shadow_maps_enabled !== false,
-        // Where the sun comes from is ours and has no field here, and a document with a field the
-        // format does not know is refused whole, so it stays out and lives in the map instead.
+        // Since Studio v0.2.1 the sun direction is a field of its own, a quaternion, so it rides
+        // in the document now instead of only living in the map.
+        sun_rotation: quatFrom(lit.sun_rotation ?? DEFAULT_LIGHTING.sun_rotation),
     };
 }
 

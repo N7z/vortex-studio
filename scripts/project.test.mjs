@@ -52,7 +52,7 @@ test('a list of suns is folded into the one sun the rig now has', () => {
 
     const out = toProject(read.parts.map(withNewId), [], read.projectId, read.lighting);
     assert.deepEqual(Object.keys(out.lighting).sort(), [
-        'ambient_color', 'brightness', 'sun_color', 'sun_illuminance', 'sun_shadow_maps_enabled',
+        'ambient_color', 'brightness', 'sun_color', 'sun_illuminance', 'sun_rotation', 'sun_shadow_maps_enabled',
     ], 'and the rig is written with the fields the format has, no more');
     assert.equal(out.lighting.sun_illuminance, DEFAULT_ILLUMINANCE);
     assert.equal(Object.keys(out.lighting.ambient_color).sort().join(''), 'abgr');
