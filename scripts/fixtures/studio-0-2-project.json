@@ -100,7 +100,13 @@
       "a": 1.0
     },
     "sun_illuminance": 8000.0,
-    "sun_shadow_maps_enabled": true
+    "sun_shadow_maps_enabled": true,
+    "sun_rotation": {
+      "x": -0.394473,
+      "y": 0.439168,
+      "z": 0.223347,
+      "w": 0.775654
+    }
   },
   "groups": []
 }
