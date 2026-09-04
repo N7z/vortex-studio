@@ -116,6 +116,7 @@ This starts the backend, frontend asset compiler, scheduler, queue worker and, o
 To enable real-time multiplayer editing, install its dependencies once:
 
 ```bash
+git submodule update --init live-editing-server
 cd live-editing-server
 npm install
 cp .env.example .env

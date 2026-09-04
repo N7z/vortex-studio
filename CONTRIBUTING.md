@@ -17,9 +17,10 @@ php artisan key:generate
 Run the app with `php artisan serve` and `npm run dev` in two terminals.
 
 The live editing server is a separate package. If you are working on team editing,
-install it too:
+initialise its submodule and install it too:
 
 ```
+git submodule update --init live-editing-server
 cd live-editing-server
 npm install
 npm start

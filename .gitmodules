@@ -1,0 +1,3 @@
+[submodule "live-editing-server"]
+	path = live-editing-server
+	url = https://github.com/N7z/live-editing-server.git
