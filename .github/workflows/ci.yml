@@ -16,6 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          ssh-key: ${{ secrets.LIVE_EDITING_SERVER_DEPLOY_KEY }}
 
       - uses: shivammathur/setup-php@v2
         with:
@@ -54,6 +57,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          ssh-key: ${{ secrets.LIVE_EDITING_SERVER_DEPLOY_KEY }}
 
       - uses: actions/setup-node@v7
         with:
@@ -74,6 +80,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          ssh-key: ${{ secrets.LIVE_EDITING_SERVER_DEPLOY_KEY }}
 
       - uses: actions/setup-node@v7
         with:
