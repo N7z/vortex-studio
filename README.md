@@ -109,33 +109,9 @@ php artisan migrate
 php artisan dev
 ```
 
-This starts the backend, frontend asset compiler, scheduler, queue worker and, once its dependencies are installed, the live editing server. `composer run dev` does the same thing. Run `php artisan dev:list` to see the processes. Open your browser at `http://localhost:8000`.
+This starts the backend, frontend asset compiler, scheduler and queue worker. `composer run dev` does the same thing. Run `php artisan dev:list` to see the processes. Open your browser at `http://localhost:8000`.
 
-### 4. Optional: Live Editing Server
-
-To enable real-time multiplayer editing, install its dependencies once:
-
-```bash
-git submodule update --init live-editing-server
-cd live-editing-server
-npm install
-cp .env.example .env
-```
-
-From then on `php artisan dev` starts it along with everything else, as the `live` process. Until
-those dependencies exist it is skipped, so the dev stack still comes up without it. To run it on its
-own instead, use `npm start` from that directory.
-
-Then add these to your studio `.env`:
-
-```env
-VITE_LIVE_URL=ws://localhost:8787
-LIVE_SECRET=your_shared_secret_key
-```
-
-`LIVE_SECRET` must match in both `.env` files. Without it the server still works, but identity is not verified and members keep randomly generated names.
-
-### 5. Optional: MCP Server for AI Map Building
+### 4. Optional: MCP Server for AI Map Building
 
 To let Claude Code build maps in the editor:
 
@@ -147,8 +123,7 @@ claude mcp add vortex-studio -- node "$(pwd)/src/index.js"
 ```
 
 Put your Studio email and password in `mcp-server/.env` so the agent can sign in as you. It needs no
-port of its own - Claude Code runs it as a local subprocess. Live editing needs `LIVE_SECRET` set,
-as above. See [mcp-server/README.md](mcp-server/README.md).
+port of its own - Claude Code runs it as a local subprocess. See [mcp-server/README.md](mcp-server/README.md).
 
 ## Development and Testing
 
@@ -159,8 +134,7 @@ npm test
 npm run build
 node luacheck.mjs
 ./vendor/bin/pest
-cd live-editing-server && npm test
-cd ../mcp-server && npm test
+cd mcp-server && npm test
 ```
 
 All of it has to pass. See [CONTRIBUTING.md](CONTRIBUTING.md) for branch naming, commit style, and pull request guidelines.
