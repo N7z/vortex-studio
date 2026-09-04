@@ -15,6 +15,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Served behind a proxy that terminates TLS. Without this Laravel reads
+        // the connection as plain http and builds http:// URLs, and the browser
+        // treats the scheme change on a redirect as a change of origin.
+        $middleware->trustProxies(at: '*');
+
         // Nothing is exempt: the api routes authenticate by cookie, and reads are
         // never checked anyway.
         $middleware->validateCsrfTokens(except: []);
